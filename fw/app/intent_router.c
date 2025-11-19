@@ -1,9 +1,10 @@
 #include "intent_router.h"
-#include "C:\Users\decju\OneDrive\Bureau\N-Pulse_STM32G474QET6\ARM-SOFT-Firmware\fw\motors\motor_control\motor_control.h"
+#include "motor_control.h"
+#include "motor_map.h"    // <-- pour OPEN_POSITION, CLOSED_POSITION, etc.
 
 void IntentRouter_Handle(const intent_t *intent)
 {
-    switch (intent->id) {
+    /*switch (intent->id) {
     case INTENT_OPEN_HAND:
         Motor_SetAllTargets(OPEN_POSITION, intent->strength);
         break;
@@ -24,5 +25,5 @@ void IntentRouter_Handle(const intent_t *intent)
     default:
         // ignore / log
         break;
-    }
+    }*/
 }

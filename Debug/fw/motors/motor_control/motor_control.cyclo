@@ -1,0 +1,5 @@
+../fw/motors/motor_control/motor_control.c:6:6:Motor_InitAll	1
+../fw/motors/motor_control/motor_control.c:7:6:Motor_Update	1
+../fw/motors/motor_control/motor_control.c:9:6:Motor_SetTarget	1
+../fw/motors/motor_control/motor_control.c:15:6:Motor_SetAllTargets	1
+../fw/motors/motor_control/motor_control.c:22:6:Motor_StopAll	1

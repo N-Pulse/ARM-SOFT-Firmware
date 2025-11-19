@@ -20,7 +20,6 @@
 #include "main.h"
 #include "app.h"
 
-
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 
@@ -90,6 +89,7 @@ int main(void)
 
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
+  App_Init();
   /* USER CODE BEGIN 2 */
 
   /* USER CODE END 2 */
@@ -111,15 +111,13 @@ int main(void)
     Error_Handler();
   }
 
-  App_Init();
-
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
   while (1)
   {
-      App_Task();
-    /* USER CODE END WHILE */
 
+    /* USER CODE END WHILE */
+	  App_Task();
     /* USER CODE BEGIN 3 */
   }
   /* USER CODE END 3 */
