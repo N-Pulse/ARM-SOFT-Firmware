@@ -5,13 +5,22 @@
 
 # Add inputs and outputs from these tool invocations to the build variables 
 C_SRCS += \
-../fw/motors/motor_control/motor_control.c 
+../fw/motors/motor_control/motor_backend_hw.c \
+../fw/motors/motor_control/motor_backend_sim.c \
+../fw/motors/motor_control/motor_control.c \
+../fw/motors/motor_control/motor_safety.c 
 
 OBJS += \
-./fw/motors/motor_control/motor_control.o 
+./fw/motors/motor_control/motor_backend_hw.o \
+./fw/motors/motor_control/motor_backend_sim.o \
+./fw/motors/motor_control/motor_control.o \
+./fw/motors/motor_control/motor_safety.o 
 
 C_DEPS += \
-./fw/motors/motor_control/motor_control.d 
+./fw/motors/motor_control/motor_backend_hw.d \
+./fw/motors/motor_control/motor_backend_sim.d \
+./fw/motors/motor_control/motor_control.d \
+./fw/motors/motor_control/motor_safety.d 
 
 
 # Each subdirectory must supply rules for building sources it contributes
@@ -21,7 +30,7 @@ fw/motors/motor_control/%.o fw/motors/motor_control/%.su fw/motors/motor_control
 clean: clean-fw-2f-motors-2f-motor_control
 
 clean-fw-2f-motors-2f-motor_control:
-	-$(RM) ./fw/motors/motor_control/motor_control.cyclo ./fw/motors/motor_control/motor_control.d ./fw/motors/motor_control/motor_control.o ./fw/motors/motor_control/motor_control.su
+	-$(RM) ./fw/motors/motor_control/motor_backend_hw.cyclo ./fw/motors/motor_control/motor_backend_hw.d ./fw/motors/motor_control/motor_backend_hw.o ./fw/motors/motor_control/motor_backend_hw.su ./fw/motors/motor_control/motor_backend_sim.cyclo ./fw/motors/motor_control/motor_backend_sim.d ./fw/motors/motor_control/motor_backend_sim.o ./fw/motors/motor_control/motor_backend_sim.su ./fw/motors/motor_control/motor_control.cyclo ./fw/motors/motor_control/motor_control.d ./fw/motors/motor_control/motor_control.o ./fw/motors/motor_control/motor_control.su ./fw/motors/motor_control/motor_safety.cyclo ./fw/motors/motor_control/motor_safety.d ./fw/motors/motor_control/motor_safety.o ./fw/motors/motor_control/motor_safety.su
 
 .PHONY: clean-fw-2f-motors-2f-motor_control
 

@@ -30,4 +30,5 @@ fw/app \
 fw/comm \
 fw/motors/motor_control \
 fw/motors/motor_map \
+Middlewares/Third_Party/FreeRTOS-Kernel \
 

@@ -19,10 +19,15 @@
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
 #include "app.h"
+#include "motor_control.h"
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-
+#include "FreeRTOS.h"
+#include "task.h"
+#include "timers.h"
+#include "motor_safety.h"
+#include <stdio.h>
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -45,6 +50,10 @@
 COM_InitTypeDef BspCOMInit;
 
 /* USER CODE BEGIN PV */
+static TaskHandle_t sControlTaskHandle;
+static TaskHandle_t sSafetyTaskHandle;
+static TaskHandle_t sTelemetryTaskHandle;
+static TimerHandle_t sLedTimer;
 
 /* USER CODE END PV */
 
@@ -52,6 +61,12 @@ COM_InitTypeDef BspCOMInit;
 void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
 /* USER CODE BEGIN PFP */
+static void ControlTask(void *argument);
+static void SafetyTask(void *argument);
+static void TelemetryTask(void *argument);
+static void StartScheduler(void);
+static void CreateTasks(void);
+static void LedTimerCallback(TimerHandle_t timer);
 
 /* USER CODE END PFP */
 
@@ -111,16 +126,11 @@ int main(void)
     Error_Handler();
   }
 
-  /* Infinite loop */
-  /* USER CODE BEGIN WHILE */
-  while (1)
-  {
+  CreateTasks();
+  StartScheduler();
 
-    /* USER CODE END WHILE */
-	  App_Task();
-    /* USER CODE BEGIN 3 */
-  }
-  /* USER CODE END 3 */
+  /* Should never reach here */
+  Error_Handler();
 }
 
 /**
@@ -192,6 +202,99 @@ static void MX_GPIO_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
+static void CreateTasks(void)
+{
+  BaseType_t status = pdPASS;
+
+  status = xTaskCreate(ControlTask, "ctrl", 256, NULL, tskIDLE_PRIORITY + 3, &sControlTaskHandle);
+  configASSERT(status == pdPASS);
+
+  status = xTaskCreate(SafetyTask, "safe", 256, NULL, tskIDLE_PRIORITY + 2, &sSafetyTaskHandle);
+  configASSERT(status == pdPASS);
+
+  status = xTaskCreate(TelemetryTask, "tele", 256, NULL, tskIDLE_PRIORITY + 1, &sTelemetryTaskHandle);
+  configASSERT(status == pdPASS);
+
+  sLedTimer = xTimerCreate("led",
+                           pdMS_TO_TICKS(500),
+                           pdTRUE,
+                           NULL,
+                           LedTimerCallback);
+  configASSERT(sLedTimer != NULL);
+  xTimerStart(sLedTimer, 0);
+}
+
+static void StartScheduler(void)
+{
+  vTaskStartScheduler();
+}
+
+static void ControlTask(void *argument)
+{
+  (void)argument;
+  const TickType_t period = pdMS_TO_TICKS(10); /* 100 Hz loop */
+  TickType_t       last_wake = xTaskGetTickCount();
+
+  while (1)
+  {
+    App_Task();
+    Motor_Update();
+    vTaskDelayUntil(&last_wake, period);
+  }
+}
+
+static void SafetyTask(void *argument)
+{
+  (void)argument;
+  const TickType_t period = pdMS_TO_TICKS(20);
+  TickType_t       last_wake = xTaskGetTickCount();
+
+  while (1)
+  {
+    if (MotorSafety_IsFaultActive())
+    {
+      Motor_StopAll();
+    }
+    vTaskDelayUntil(&last_wake, period);
+  }
+}
+
+static void TelemetryTask(void *argument)
+{
+  (void)argument;
+  const TickType_t period = pdMS_TO_TICKS(1000);
+
+  while (1)
+  {
+    size_t free_heap = xPortGetFreeHeapSize();
+    UBaseType_t ctrl_hw = uxTaskGetStackHighWaterMark(sControlTaskHandle);
+    printf("[TEL] heap=%uB ctrlHW=%lu fault=%d\r\n",
+           (unsigned)free_heap,
+           (unsigned long)ctrl_hw,
+           MotorSafety_IsFaultActive());
+    vTaskDelay(period);
+  }
+}
+
+static void LedTimerCallback(TimerHandle_t timer)
+{
+  (void)timer;
+  BSP_LED_Toggle(LED_GREEN);
+}
+
+void vApplicationMallocFailedHook(void)
+{
+  taskDISABLE_INTERRUPTS();
+  Error_Handler();
+}
+
+void vApplicationStackOverflowHook(TaskHandle_t xTask, char *pcTaskName)
+{
+  (void)xTask;
+  (void)pcTaskName;
+  taskDISABLE_INTERRUPTS();
+  Error_Handler();
+}
 
 /* USER CODE END 4 */
 

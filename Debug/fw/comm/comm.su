@@ -1,2 +1,0 @@
-../fw/comm/comm.c:3:6:Comms_Init	4	static
-../fw/comm/comm.c:8:6:Comms_GetNextIntent	16	static

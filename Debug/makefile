@@ -17,6 +17,7 @@ RM := rm -rf
 -include Drivers/BSP/STM32G4xx_Nucleo/subdir.mk
 -include Core/Startup/subdir.mk
 -include Core/Src/subdir.mk
+-include Middlewares/Third_Party/FreeRTOS-Kernel/subdir.mk
 -include objects.mk
 
 ifneq ($(MAKECMDGOALS),clean)
@@ -65,8 +66,8 @@ all: main-build
 main-build: N-PULSE\ FIRMWARE.elf secondary-outputs
 
 # Tool invocations
-N-PULSE\ FIRMWARE.elf N-PULSE\ FIRMWARE.map: $(OBJS) $(USER_OBJS) C:\Users\decju\OneDrive\Bureau\N-Pulse_STM32G474QET6\N-PULSE\ FIRMWARE\STM32G474RETX_FLASH.ld makefile objects.list $(OPTIONAL_TOOL_DEPS)
-	arm-none-eabi-gcc -o "N-PULSE FIRMWARE.elf" @"objects.list" $(USER_OBJS) $(LIBS) -mcpu=cortex-m4 -T"C:\Users\decju\OneDrive\Bureau\N-Pulse_STM32G474QET6\N-PULSE FIRMWARE\STM32G474RETX_FLASH.ld" --specs=nosys.specs -Wl,-Map="N-PULSE FIRMWARE.map" -Wl,--gc-sections -static --specs=nano.specs -mfpu=fpv4-sp-d16 -mfloat-abi=hard -mthumb -Wl,--start-group -lc -lm -Wl,--end-group
+N-PULSE\ FIRMWARE.elf N-PULSE\ FIRMWARE.map: $(OBJS) $(USER_OBJS) ../STM32G474RETX_FLASH.ld makefile objects.list $(OPTIONAL_TOOL_DEPS)
+	arm-none-eabi-gcc -o "N-PULSE FIRMWARE.elf" @"objects.list" $(USER_OBJS) $(LIBS) -mcpu=cortex-m4 -T"../STM32G474RETX_FLASH.ld" --specs=nosys.specs -Wl,-Map="N-PULSE FIRMWARE.map" -Wl,--gc-sections -static --specs=nano.specs -mfpu=fpv4-sp-d16 -mfloat-abi=hard -mthumb -Wl,--start-group -lc -lm -Wl,--end-group
 	@echo 'Finished building target: $@'
 	@echo ' '
 

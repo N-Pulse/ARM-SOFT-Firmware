@@ -1,27 +1,42 @@
 #include "motor_control.h"
-#include <stdint.h>
+#include "motor_backend.h"
+#include "motor_safety.h"
 
-#define MOTOR_COUNT 8  // Met à jour ce nombre si tu ajoutes des moteurs
+void Motor_InitAll(void)
+{
+    MotorSafety_Init();
+    MotorBackend_Init();
+}
 
-void Motor_InitAll(void) {}
-void Motor_Update(void) {}
+void Motor_Update(void)
+{
+    MotorBackend_Flush();
+}
 
 void Motor_SetTarget(motor_id_t id, float position, uint8_t speed_percent)
 {
-    //(void)id; (void)position; (void)speed_percent;
-    // plus tard: appel au driver BLDC / FOC
+    float   safe_position = position;
+    uint8_t safe_speed    = speed_percent;
+    
+    if (!MotorSafety_FilterCommand(id, &safe_position, &safe_speed))
+    {
+        MotorBackend_StopAll();
+        return;
+    }
+
+    MotorBackend_SetTarget(id, safe_position, safe_speed);
 }
 
 void Motor_SetAllTargets(float position, uint8_t speed_percent)
 {
-    /*for (int i = 0; i < MOTOR_COUNT; ++i) {
+    for (int i = 0; i < MOTOR_COUNT; ++i)
+    {
         Motor_SetTarget((motor_id_t)i, position, speed_percent);
-    }*/
+    }
 }
 
 void Motor_StopAll(void)
 {
-    /*for (int i = 0; i < MOTOR_COUNT; ++i) {
-        Motor_SetTarget((motor_id_t)i, 0.0f, 0);
-    }*/
+    MotorSafety_RequestStop();
+    MotorBackend_StopAll();
 }
