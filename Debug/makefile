@@ -65,6 +65,14 @@ all: main-build
 # Main-build Target
 main-build: N-PULSE\ FIRMWARE.elf secondary-outputs
 
+# Generate objects.list from OBJS
+objects.list: $(OBJS) $(USER_OBJS)
+	@echo 'Building file: objects.list'
+	@echo 'Invoking: Generate objects list'
+	@echo $(OBJS) $(USER_OBJS) > objects.list
+	@echo 'Finished building: objects.list'
+	@echo ' '
+
 # Tool invocations
 N-PULSE\ FIRMWARE.elf N-PULSE\ FIRMWARE.map: $(OBJS) $(USER_OBJS) ../STM32G474RETX_FLASH.ld makefile objects.list $(OPTIONAL_TOOL_DEPS)
 	arm-none-eabi-gcc -o "N-PULSE FIRMWARE.elf" @"objects.list" $(USER_OBJS) $(LIBS) -mcpu=cortex-m4 -T"../STM32G474RETX_FLASH.ld" --specs=nosys.specs -Wl,-Map="N-PULSE FIRMWARE.map" -Wl,--gc-sections -static --specs=nano.specs -mfpu=fpv4-sp-d16 -mfloat-abi=hard -mthumb -Wl,--start-group -lc -lm -Wl,--end-group

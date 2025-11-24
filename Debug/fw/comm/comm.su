@@ -1,0 +1,5 @@
+../fw/comm/comm.c:29:6:Comms_Init	32	static
+../fw/comm/comm.c:51:6:Comms_GetNextIntent	16	static
+../fw/comm/comm.c:61:25:enqueue_intent	32	static
+../fw/comm/comm.c:82:13:Comms_Task	16	static
+../fw/comm/comm.c:96:13:Comms_HeartbeatTimeout	16	static

@@ -2,6 +2,8 @@
 #include "motor_control.h"
 #include "motor_map.h"
 
+#include <stddef.h>
+
 static float blend_pose(motor_pose_id_t from, motor_pose_id_t to, float blend, motor_id_t id)
 {
     float start  = MotorMap_GetPose(from, id);

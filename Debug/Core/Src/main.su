@@ -1,0 +1,12 @@
+../Core/Src/main.c:82:5:main	8	static
+../Core/Src/main.c:140:6:SystemClock_Config	88	static
+../Core/Src/main.c:187:13:MX_GPIO_Init	24	static
+../Core/Src/main.c:205:13:CreateTasks	48	static
+../Core/Src/main.c:227:13:StartScheduler	8	static
+../Core/Src/main.c:232:13:ControlTask	24	static
+../Core/Src/main.c:246:13:SafetyTask	24	static
+../Core/Src/main.c:262:13:TelemetryTask	32	static
+../Core/Src/main.c:279:13:LedTimerCallback	16	static
+../Core/Src/main.c:285:6:vApplicationMallocFailedHook	16	static
+../Core/Src/main.c:291:6:vApplicationStackOverflowHook	24	static
+../Core/Src/main.c:305:6:Error_Handler	4	static

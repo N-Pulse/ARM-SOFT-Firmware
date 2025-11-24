@@ -58,7 +58,7 @@ bool Comms_GetNextIntent(intent_t *out_intent)
     return (xQueueReceive(s_intent_queue, out_intent, 0) == pdPASS);
 }
 
-static void enqueue_intent(const intent_t *intent) COMM_UNUSED
+static COMM_UNUSED void enqueue_intent(const intent_t *intent)
 {
     if ((intent == NULL) || (s_intent_queue == NULL))
     {

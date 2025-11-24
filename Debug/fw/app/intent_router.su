@@ -1,0 +1,5 @@
+../fw/app/intent_router.c:7:14:blend_pose	24	static
+../fw/app/intent_router.c:14:14:strength_to_blend	24	static
+../fw/app/intent_router.c:28:13:apply_pose	32	static
+../fw/app/intent_router.c:38:13:apply_pinch	32	static
+../fw/app/intent_router.c:49:6:IntentRouter_Handle	16	static

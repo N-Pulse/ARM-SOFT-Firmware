@@ -62,6 +62,7 @@ extern "C" {
 #define INCLUDE_eTaskGetState                   1
 #define INCLUDE_xTaskAbortDelay                 0
 #define INCLUDE_xQueueGetMutexHolder            1
+#define INCLUDE_uxTaskGetStackHighWaterMark    1
 
 #ifdef __cplusplus
 }
