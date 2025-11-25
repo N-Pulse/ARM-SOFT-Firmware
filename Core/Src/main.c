@@ -104,7 +104,6 @@ int main(void)
 
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
-  App_Init();
   /* USER CODE BEGIN 2 */
 
   /* USER CODE END 2 */
@@ -125,6 +124,9 @@ int main(void)
   {
     Error_Handler();
   }
+
+  /* Initialize application AFTER UART is ready (needed for motor backend SIM) */
+  App_Init();
 
   CreateTasks();
   StartScheduler();
