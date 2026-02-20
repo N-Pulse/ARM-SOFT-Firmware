@@ -73,7 +73,7 @@ We received **7 motors** from Faulhaber, split into two types:
 | Voltage manageable                  | ✅     | 6 V and 12 V easily provided by battery + regulators             |
 | Current within STM32 limits         | ⚠️     | Motors draw too much current for direct GPIO drive → **H-bridge driver required** |
 | Encoder feedback available          | ✅     | Integrated 4096 PPR quadrature encoder on each motor             |
-| 7 motors vs 8 firmware slots        | ⚠️     | Firmware defines 8 motor IDs (MOTOR_COUNT=8); one will be unused |
+| 7 motors = 7 firmware slots         | ✅     | Firmware MOTOR_COUNT should be updated to 7 (see Section 9)      |
 
 ### ⚠️ Important: H-Bridge Drivers Required
 
@@ -158,15 +158,15 @@ That's **7 timers** — exactly matching our **7 motors**! However, on the **LQF
 
 On the current **Nucleo-G474RE (LQFP64)**, we can use **5 hardware encoder interfaces** without conflicts:
 
-| Encoder # | Timer | CH1 Pin | CH2 Pin | Motor Assignment      |
-|-----------|-------|---------|---------|-----------------------|
-| 1         | TIM1  | PA8     | PA9     | Thumb (1627)          |
-| 2         | TIM2  | PA0     | PA1     | Index (1218)          |
-| 3         | TIM3  | PB4     | PB5     | Middle (1218)         |
-| 4         | TIM4  | PB6     | PB7     | Ring (1218)           |
-| 5         | TIM8  | PC6     | PC7     | Little (1218)         |
+| Encoder # | Timer | CH1 Pin | CH2 Pin | Motor Assignment              |
+|-----------|-------|---------|---------|-------------------------------|
+| 1         | TIM1  | PA8     | PA9     | Thumb Flexion (1627)          |
+| 2         | TIM2  | PA0     | PA1     | Thumb Opposition (1627)       |
+| 3         | TIM3  | PB4     | PB5     | Index (1218)                  |
+| 4         | TIM4  | PB6     | PB7     | Middle (1218)                 |
+| 5         | TIM8  | PC6     | PC7     | Ring+Little coupled (1218)    |
 
-For the **2 remaining encoders** (Wrist motor 1627 + Palm motor 1218), you have three options:
+For the **2 remaining encoders** (Wrist motor 1218 + Palm motor 1218), you have three options:
 
 #### Option A: Software Encoder via GPIO Interrupts (No extra hardware)
 
@@ -273,41 +273,41 @@ Since these are brushed DC motors, each motor needs a **single H-bridge** to con
 
 #### Encoder Inputs (Hardware Timer Encoder Mode)
 
-| Motor        | Timer | CH1 (A) | CH2 (B) | Index (I)     |
-|--------------|-------|---------|---------|---------------|
-| Thumb        | TIM1  | PA8     | PA9     | PA10 (optional)|
-| Index finger | TIM2  | PA0     | PA1     | PC0 (GPIO)    |
-| Middle finger| TIM3  | PB4     | PB5     | PC1 (GPIO)    |
-| Ring finger  | TIM4  | PB6     | PB7     | PC2 (GPIO)    |
-| Little finger| TIM8  | PC6     | PC7     | PC3 (GPIO)    |
-| Wrist (1627) | —     | *See Option A/B in Section 4.3*      |
-| Palm (1218)  | —     | *See Option A/B in Section 4.3*      |
+| Motor             | Timer | CH1 (A) | CH2 (B) | Index (I)      |
+|-------------------|-------|---------|---------|----------------|
+| Thumb Flexion     | TIM1  | PA8     | PA9     | PA10 (optional)|
+| Thumb Opposition  | TIM2  | PA0     | PA1     | PC0 (GPIO)     |
+| Index finger      | TIM3  | PB4     | PB5     | PC1 (GPIO)     |
+| Middle finger     | TIM4  | PB6     | PB7     | PC2 (GPIO)     |
+| Ring+Little       | TIM8  | PC6     | PC7     | PC3 (GPIO)     |
+| Wrist (1218)      | —     | *See Option A/B in Section 4.3*       |
+| Palm (1218)       | —     | *See Option A/B in Section 4.3*       |
 
 > Index pulse (Channel I) is optional — it can be read as a GPIO interrupt for homing.
 
 #### PWM Outputs (Motor Speed Control)
 
-| Motor        | PWM Pin  | Timer/Channel       |
-|--------------|----------|----------------------|
-| Thumb        | PB8      | TIM16_CH1 (AF1)      |
-| Index finger | PB9      | TIM17_CH1 (AF1)      |
-| Middle finger| PB14     | TIM15_CH1 (AF1)      |
-| Ring finger  | PB15     | TIM15_CH2 (AF1)      |
-| Little finger| PA10     | HRTIM_CHB1 (AF13)    |
-| Wrist        | PA11     | HRTIM_CHB2 (AF13)    |
-| Palm         | PB12     | HRTIM_CHC1 (AF13)    |
+| Motor             | PWM Pin  | Timer/Channel       |
+|-------------------|----------|----------------------|
+| Thumb Flexion     | PB8      | TIM16_CH1 (AF1)      |
+| Thumb Opposition  | PB9      | TIM17_CH1 (AF1)      |
+| Index finger      | PB14     | TIM15_CH1 (AF1)      |
+| Middle finger     | PB15     | TIM15_CH2 (AF1)      |
+| Ring+Little       | PA10     | HRTIM_CHB1 (AF13)    |
+| Wrist             | PA11     | HRTIM_CHB2 (AF13)    |
+| Palm              | PB12     | HRTIM_CHC1 (AF13)    |
 
 #### Direction GPIOs
 
-| Motor        | DIR Pin  |
-|--------------|----------|
-| Thumb        | PC4      |
-| Index finger | PC5      |
-| Middle finger| PC8      |
-| Ring finger  | PC9      |
-| Little finger| PC10     |
-| Wrist        | PC11     |
-| Palm         | PC12     |
+| Motor             | DIR Pin  |
+|-------------------|----------|
+| Thumb Flexion     | PC4      |
+| Thumb Opposition  | PC5      |
+| Index finger      | PC8      |
+| Middle finger     | PC9      |
+| Ring+Little       | PC10     |
+| Wrist             | PC11     |
+| Palm              | PC12     |
 
 ### 6.3 – Pin Summary Count
 
@@ -412,16 +412,16 @@ Since these are brushed DC motors, each motor needs a **single H-bridge** to con
 
 ### 7.4 – Connecting 4× TB6612FNG to the Nucleo
 
-| Board # | Channel | Motor          | VM    | PWM Pin | AIN1 Pin | AIN2 Pin |
-|---------|---------|----------------|-------|---------|----------|----------|
-| 1       | A       | Thumb (1627)   | 6V    | PB8     | PC4      | (inv)    |
-| 1       | B       | Wrist (1627)   | 6V    | PA11    | PC11     | (inv)    |
-| 2       | A       | Index (1218)   | 12V   | PB9     | PC5      | (inv)    |
-| 2       | B       | Middle (1218)  | 12V   | PB14    | PC8      | (inv)    |
-| 3       | A       | Ring (1218)    | 12V   | PB15    | PC9      | (inv)    |
-| 3       | B       | Little (1218)  | 12V   | PA10    | PC10     | (inv)    |
-| 4       | A       | Palm (1218)    | 12V   | PB12    | PC12     | (inv)    |
-| 4       | B       | (spare)        | —     | —       | —        | —        |
+| Board # | Channel | Motor                 | VM    | PWM Pin | AIN1 Pin | AIN2 Pin |
+|---------|---------|------------------------|-------|---------|----------|----------|
+| 1       | A       | Thumb Flex (1627)      | 6V    | PB8     | PC4      | (inv)    |
+| 1       | B       | Thumb Opp (1627)       | 6V    | PB9     | PC5      | (inv)    |
+| 2       | A       | Index (1218)           | 12V   | PB14    | PC8      | (inv)    |
+| 2       | B       | Middle (1218)          | 12V   | PB15    | PC9      | (inv)    |
+| 3       | A       | Ring+Little (1218)     | 12V   | PA10    | PC10     | (inv)    |
+| 3       | B       | Wrist (1218)           | 12V   | PA11    | PC11     | (inv)    |
+| 4       | A       | Palm (1218)            | 12V   | PB12    | PC12     | (inv)    |
+| 4       | B       | (spare)                | —     | —       | —        | —        |
 
 > **(inv)** = Use a second GPIO per motor or wire AIN2 through a simple NOT gate (74HC04) from AIN1. For prototyping, using 2 GPIOs per motor is simplest (14 GPIOs total for direction, plenty available).
 
@@ -443,10 +443,10 @@ Since these are brushed DC motors, each motor needs a **single H-bridge** to con
 ```
  12V LiPo battery (3S = 11.1V nominal, close enough to 12V)
       │
-      ├──► 12V bus → TB6612 boards #2, #3, #4 (VM pin)
+      ├──► 12V bus → TB6612 boards #2, #3, #4 (VM pin for 1218 motors)
       │
       ├──► 6V step-down regulator (e.g. Pololu D24V10F6)
-      │         └──► TB6612 boards #1 (VM pin for 1627 motors)
+      │         └──► TB6612 board #1 (VM pin for 2× 1627 thumb motors)
       │
       ├──► 5V step-down regulator (e.g. Pololu D24V5F5 or Nucleo 5V from USB)
       │         └──► All 7 encoder VCC pins
@@ -460,22 +460,71 @@ Since these are brushed DC motors, each motor needs a **single H-bridge** to con
 
 ## 9. Motor-to-Finger Assignment
 
-The firmware defines 8 motor IDs but we only have 7 motors:
+The thumb uses **2 motors** (flexion + opposition/rotation) and ring+little are **coupled** on a single motor, giving exactly **7 motors = 7 firmware IDs**.
 
-| Motor ID (firmware)  | Physical Motor     | Type   | Voltage |
-|-----------------------|--------------------|--------|---------|
-| `MOTOR_THUMB`   (0)  | Faulhaber 1627 #1  | Type A | 6 V     |
-| `MOTOR_INDEX`   (1)  | Faulhaber 1218 #1  | Type B | 12 V    |
-| `MOTOR_MIDDLE`  (2)  | Faulhaber 1218 #2  | Type B | 12 V    |
-| `MOTOR_RING`    (3)  | Faulhaber 1218 #3  | Type B | 12 V    |
-| `MOTOR_LITTLE`  (4)  | Faulhaber 1218 #4  | Type B | 12 V    |
-| `MOTOR_WRIST_X` (5)  | Faulhaber 1627 #2  | Type A | 6 V     |
-| `MOTOR_WRIST_Y` (6)  | *(unused — no motor)* | —   | —       |
-| `MOTOR_PALM`    (7)  | Faulhaber 1218 #5  | Type B | 12 V    |
+### 9.1 – Physical Assignment
 
-> The assignment above is a suggestion. The 1627 motors are larger and produce more torque — they suit the thumb and wrist. The 1218 motors are smaller — better for individual finger flexion and the palm.
->
-> **`MOTOR_WRIST_Y` (ID 6) is unused.** The safety layer will ignore commands to this ID since there's no physical motor. Consider updating `MOTOR_COUNT` to 7 or adding a guard in `motor_backend_hw.c`.
+| Motor ID (firmware)       | Physical Motor     | Type   | Voltage | Role                                    |
+|----------------------------|--------------------|--------|---------|-----------------------------------------|
+| `MOTOR_THUMB_FLEX`   (0)  | Faulhaber 1627 #1  | Type A | 6 V     | Thumb flexion/extension                 |
+| `MOTOR_THUMB_OPP`    (1)  | Faulhaber 1627 #2  | Type A | 6 V     | Thumb opposition/rotation               |
+| `MOTOR_INDEX`         (2) | Faulhaber 1218 #1  | Type B | 12 V    | Index finger flexion                    |
+| `MOTOR_MIDDLE`        (3) | Faulhaber 1218 #2  | Type B | 12 V    | Middle finger flexion                   |
+| `MOTOR_RING_LITTLE`   (4) | Faulhaber 1218 #3  | Type B | 12 V    | Ring + Little fingers (coupled)         |
+| `MOTOR_WRIST`         (5) | Faulhaber 1218 #4  | Type B | 12 V    | Wrist rotation                          |
+| `MOTOR_PALM`          (6) | Faulhaber 1218 #5  | Type B | 12 V    | Palm flex / grip assist                 |
+
+> **MOTOR_COUNT = 7** (no unused slot).
+
+### 9.2 – Why 2 Motors for the Thumb?
+
+The human thumb has two key degrees of freedom that are critical for grip:
+- **Flexion/Extension** — bending the thumb towards the palm (closing) / straightening it (opening)
+- **Opposition** — rotating the thumb to face the other fingers (essential for pinch and power grip)
+
+The 1627 motors (16 mm, 6 V) are larger and provide more torque (~800–1,200 mN·m after gearhead) — ideal for the thumb which bears the most load during gripping.
+
+### 9.3 – Why Couple Ring + Little?
+
+In most prosthetic hand designs, the ring and little fingers move together mechanically. Coupling them on a single motor:
+- Saves 1 motor, 1 H-bridge channel, and 1 encoder input
+- Simplifies the mechanical design (single tendon/linkage)
+- Has minimal impact on functionality — independent ring/little control is rarely needed
+
+### 9.4 – Required Firmware Changes
+
+The current `motor_control.h` defines 8 motor IDs. It needs to be updated:
+
+**Current** (`motor_control.h`):
+```c
+typedef enum {
+    MOTOR_THUMB,
+    MOTOR_INDEX,
+    MOTOR_MIDDLE,
+    MOTOR_RING,
+    MOTOR_LITTLE,
+    MOTOR_WRIST_X,
+    MOTOR_WRIST_Y,
+    MOTOR_PALM,
+    MOTOR_COUNT      // = 8
+} motor_id_t;
+```
+
+**Updated** (proposed):
+```c
+typedef enum {
+    MOTOR_THUMB_FLEX,    // Thumb flexion/extension (1627 #1)
+    MOTOR_THUMB_OPP,     // Thumb opposition (1627 #2)
+    MOTOR_INDEX,         // Index finger (1218 #1)
+    MOTOR_MIDDLE,        // Middle finger (1218 #2)
+    MOTOR_RING_LITTLE,   // Ring + Little coupled (1218 #3)
+    MOTOR_WRIST,         // Wrist rotation (1218 #4)
+    MOTOR_PALM,          // Palm grip (1218 #5)
+    MOTOR_COUNT          // = 7
+} motor_id_t;
+```
+
+> ⚠️ **This change also requires updating**: `motor_map.c` (pose tables), `motor_safety.c` (joint limits), `intent_router.c` (pose application), and `motor_backend_sim.c` (MAX_SIM_MOTORS).
 
 ---
 
@@ -520,7 +569,7 @@ Once hardware is connected:
    - `MotorBackend_StopAll()` → PWM = 0, coast or brake
    - `MotorBackend_OnFeedback()` → Read timer counter → convert to angle
 
-3. **Update `MOTOR_COUNT`** or guard unused ID (MOTOR_WRIST_Y)
+3. **Update `motor_control.h`** — rename motor IDs and set `MOTOR_COUNT = 7` (see Section 9.4)
 
 4. **Calibrate PID / motion profiles** for real motor response
 
