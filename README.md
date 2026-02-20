@@ -206,18 +206,94 @@ Un protocole série robuste a été conçu pour la communication entre le STM32 
 
 ### Format Q15 pour les Positions
 
-Les positions sont encodées en format **Q15** (nombre fixe 16 bits) :
-- Valeur normalisée entre -1.0 et +1.0
-- Représentée sur 16 bits signés (-32767 à +32767)
-- Permet une précision suffisante tout en optimisant la bande passante
+Les positions sont encodées en format **Q15** (nombre fixe 16 bits) pour optimiser la communication série :
+
+#### Qu'est-ce que le format Q15 ?
+
+**Q15** est un format de nombre fixe (fixed-point) où :
+- On représente un nombre décimal sur **16 bits signés** (int16_t)
+- La plage est **-32767 à +32767**
+- Ces valeurs représentent des positions normalisées entre **-1.0 et +1.0**
+- **1 bit de signe** + **15 bits de précision** = Q15
+
+**Avantages :**
+- ✅ **Économie de bande passante** : 16 bits (2 octets) au lieu de 32 bits (4 octets) pour un float
+- ✅ **Précision suffisante** : ~0.00003 de précision (32767 niveaux)
+- ✅ **Pas de virgule flottante** : Conversion rapide, compatible avec des systèmes sans FPU
+
+#### Où est-il implémenté ?
+
+**1. Dans le firmware C (`fw/motors/motor_control/motor_backend_sim.c`) :**
 
 ```c
-// Conversion float → Q15
-int16_t float_to_q15(float value) {
-    float normalized = clamp(value / PI, -1.0, 1.0);
-    return (int16_t)(normalized * 32767.0);
+#define SIM_POSITION_RANGE_RAD 3.1415926f  // Plage: -π à +π radians
+
+// Conversion float (radians) → Q15 (pour envoi)
+static int16_t float_to_q15(float value)
+{
+    // Normalise entre -1.0 et +1.0 (par rapport à π)
+    float normalized = value / SIM_POSITION_RANGE_RAD;
+    if (normalized > 1.0f) normalized = 1.0f;
+    else if (normalized < -1.0f) normalized = -1.0f;
+    
+    // Multiplie par 32767 pour obtenir la valeur Q15
+    return (int16_t)lrintf(normalized * 32767.0f);
+}
+
+// Conversion Q15 → float (radians) (pour réception)
+static float q15_to_float(int16_t raw)
+{
+    // Dénormalise : divise par 32767 puis multiplie par π
+    return ((float)raw / 32767.0f) * SIM_POSITION_RANGE_RAD;
 }
 ```
+
+**2. Utilisation lors de l'envoi de commandes (ligne 428) :**
+
+```c
+// Convertit la position float en Q15 avant l'envoi
+int16_t position_q15 = float_to_q15(s_pending_cmds[i].position);
+
+// Encode sur 2 octets (little-endian)
+payload[offset++] = (uint8_t)(position_q15 & 0xFFU);        // Byte bas
+payload[offset++] = (uint8_t)((position_q15 >> 8U) & 0xFFU); // Byte haut
+```
+
+**3. Utilisation lors de la réception de feedback (ligne 308) :**
+
+```c
+// Décode 2 octets en Q15 (little-endian)
+int16_t pos_raw = (int16_t)((payload[offset + 1U] << 8U) | payload[offset]);
+offset += 2U;
+
+// Convertit Q15 → float
+feedback.position = q15_to_float(pos_raw);
+```
+
+**4. Dans le bridge ROS2 Python (`tools/ros2_bridge/serial_bridge.py`) :**
+
+Les mêmes conversions sont implémentées côté Python pour maintenir la compatibilité :
+
+```python
+SIM_POSITION_RANGE_RAD = 3.1415926
+
+def float_to_q15(value: float) -> int:
+    normalized = max(-1.0, min(1.0, value / SIM_POSITION_RANGE_RAD))
+    return int(round(normalized * 32767.0))
+
+def q15_to_float(raw: int) -> float:
+    return (raw / 32767.0) * SIM_POSITION_RANGE_RAD
+```
+
+#### Exemple concret
+
+Pour une position de **+1.57 radians** (π/2, 90°) :
+1. Normalisation : `1.57 / 3.14159 = 0.5`
+2. Conversion Q15 : `0.5 × 32767 = 16383`
+3. Encodage : `[0xFF, 0x3F]` (16383 en little-endian sur 2 octets)
+4. Réception : Décode `[0xFF, 0x3F]` → `16383` → `0.5 × 3.14159 = 1.57 rad`
+
+Cette représentation permet d'envoyer 8 positions de moteurs (16 octets) au lieu de 32 octets avec des floats, tout en gardant une précision largement suffisante pour le contrôle de position.
 
 ## 🌉 Bridge entre Hardware et Simulation ROS2
 
