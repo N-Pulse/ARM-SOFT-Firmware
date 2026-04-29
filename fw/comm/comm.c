@@ -4,6 +4,16 @@
 #include "task.h"
 #include "timers.h"
 #include "motor_safety.h"
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+#include "rx.h" 
+
+#ifdef __cplusplus
+}
+#endif
+
 
 #define UART_START_BYTE 0xAA
 #define COMMS_QUEUE_LENGTH 8
@@ -45,49 +55,26 @@ static void enqueue_intent(const intent_t *intent) {
     }
 }
 
-void Comms_Task(void *argument) {
-    uart_state_t state = STATE_WAIT_START;
-    intent_t incoming;
-    uint8_t pos_idx = 0;
-    uint8_t crc = 0;
+static uint8_t s_rx_buffer[RX_BUFFER_SIZE];
+static uint8_t s_rx_length = 0;
 
-    while (1) {
-        uint8_t byte = UART_ReadByte(); // Blocks or waits for notification
+
+static void Comms_Task(void *argument)
+{
+    (void)argument;
+
+    while (1)
+    {
         
-        switch (state) {
-            case STATE_WAIT_START:
-                if (byte == UART_START_BYTE) {
-                    state = STATE_GET_TYPE;
-                    crc = 0; // Reset checksum
-                }
-                break;
-
-            case STATE_GET_TYPE:
-                incoming.id = (intent_id_t)byte;
-                crc ^= byte;
-                state = (incoming.id == INTENT_DIRECT_CONTROL) ? STATE_GET_POSITIONS : STATE_GET_STRENGTH;
-                pos_idx = 0;
-                break;
-
-            case STATE_GET_STRENGTH:
-                incoming.strength = byte;
-                crc ^= byte;
-                state = STATE_GET_CRC;
-                break;
-
-            case STATE_GET_POSITIONS:
-                // Handle Little-Endian Q15 (2 bytes per motor * 5 motors = 10 bytes)
-                ((uint8_t*)incoming.positions)[pos_idx++] = byte;
-                crc ^= byte;
-                if (pos_idx >= 10) state = STATE_GET_CRC;
-                break;
-
-            case STATE_GET_CRC:
-                if (byte == crc) {
-                    enqueue_intent(&incoming);
-                }
-                state = STATE_WAIT_START;
-                break;
+        if (ReceiveMessage(s_rx_buffer, s_rx_length))
+        {
+            
+            HandleReceivedMessage(s_rx_buffer, s_rx_length);
+            
+            
         }
+        
+        // Minor yield to prevent watchdog issues if UART is flooded
+        vTaskDelay(pdMS_TO_TICKS(1));
     }
 }
