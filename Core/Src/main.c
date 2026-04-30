@@ -28,6 +28,7 @@
 #include "timers.h"
 #include "motor_safety.h"
 #include <stdio.h>
+#include "comm.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -216,6 +217,8 @@ static void CreateTasks(void)
 
   status = xTaskCreate(TelemetryTask, "tele", 256, NULL, tskIDLE_PRIORITY + 1, &sTelemetryTaskHandle);
   configASSERT(status == pdPASS);
+
+  Comms_TaskCreate();
 
   sLedTimer = xTimerCreate("led",
                            pdMS_TO_TICKS(500),
