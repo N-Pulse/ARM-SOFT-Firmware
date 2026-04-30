@@ -1,48 +1,175 @@
-# Core Control Pipeline
+# Control Pipeline — N-Pulse STM32G474
 
-This document summarizes how intents travel through the firmware stack—from BMI input to final motor commands—highlighting the role of each folder/module.
+Ce document décrit comment un intent (commande de geste) voyage depuis la réception UART jusqu'aux moteurs, couche par couche.
 
-## 1. Intent Acquisition (`fw/comm/`)
-- **`Comms_Init`** spins up a FreeRTOS task and queue to handle incoming BMI/CAN/UART data.
-- **`Comms_Task`** (currently stubbed) will parse incoming frames, convert them to `intent_t`, and enqueue them.
-- A 100 ms heartbeat timer (`Comms_HeartbeatTimeout`) ensures that if BMI data stops arriving, the safety layer is tripped via `MotorSafety_RequestStop`.
+---
 
-## 2. Application Layer (`fw/app/`)
-- **`App_Init`** initializes motors and comms.
-- **`App_Task`** runs at 100 Hz (invoked by `ControlTask` in `Core/Src/main.c`): it dequeues the latest intent via `Comms_GetNextIntent` and routes it to `IntentRouter_Handle`.
-- **`IntentRouter`** maps high-level intents (open, close, pinch, point, stop) to per-joint targets by blending pose data from `fw/motors/motor_map/`.
+## Pipeline complète
 
-## 3. Safety Layer (`fw/motors/motor_control/motor_safety.*`)
-- `MotorSafety_FilterCommand` clamps each command to joint limits, applies rate limiting, and reduces speed when force readings exceed soft thresholds.
-- Hard limit breaches or heartbeat/ROS watchdog expirations call `MotorSafety_RequestStop`, causing `Motor_SetTarget` to reject further commands and `MotorSafety_IsFaultActive` to remain true until cleared.
-- `MotorSafety_OnFeedback` ingests encoder/FSR feedback (currently supplied by the sim backend) so force/position checks operate on real data once hardware sensors are wired in.
-
-## 4. Motor API (`fw/motors/motor_control/`)
-- Provides `Motor_InitAll`, `Motor_SetTarget`, `Motor_SetAllTargets`, `Motor_Update`, and `Motor_StopAll` for the rest of the firmware.
-- After safety filtering, commands are forwarded to the active backend (sim or hardware).
-- `Motor_Update` is called every control tick to let the backend flush batched commands (e.g., send serial frames).
-
-## 5. Backend Abstraction (`fw/motors/motor_control/motor_backend_*`)
-- `motor_backend_hw.c`: placeholder for real motor drivers (PWM/FOC) once hardware is ready.
-- `motor_backend_sim.c`: current implementation; serializes commands into the USB CDC frame format, transmits them via a FreeRTOS task, and parses feedback from the ROS2 bridge. Includes a ROS heartbeat watchdog tied into the safety layer.
-
-## 6. Pose Data (`fw/motors/motor_map/`)
-- Stores per-joint angles for canonical poses (open, closed, pinch, point, neutral). Updating these tables changes the kinematic targets without modifying code.
-- `IntentRouter` blends between OPEN and target poses based on intent strength, providing smooth proportional control.
-
-## 7. System Scheduling (`Core/Src/main.c` + FreeRTOS)
-- `ControlTask` (100 Hz) executes `App_Task` and `Motor_Update` on a fixed period using `vTaskDelayUntil`.
-- `SafetyTask` (50 Hz) polls `MotorSafety_IsFaultActive` and enforces `Motor_StopAll` if needed.
-- `TelemetryTask` (1 Hz) emits diagnostics (heap, stack watermark, safety state) for future logging hooks.
-- A FreeRTOS software timer toggles the BSP LED as a heartbeat, and tickless idle is enabled to conserve power between loops.
-
-## Data Flow Summary
 ```
-BMI UART/CAN (fw/comm) → Intent queue → App_Task → IntentRouter (fw/app)
-→ Pose blending (fw/motors/motor_map) → Motor_SetTarget
-→ MotorSafety filter (limits, rate, force) → Motor backend (sim/hw)
-→ Motors / ROS2 simulation → Feedback → MotorSafety_OnFeedback
+[Hôte / module BLE]
+      │  trame protobuf SelectMode (UART)
+      ▼
+fw/bsp/usart_usb/          ← HAL UART + DMA — reçoit les octets bruts
+      │  byte-by-byte dans ring buffer
+      ▼
+fw/comm-stack/ (submodule) ← décode la trame protobuf
+  ReceiveMessage()         ← bloque jusqu'à une trame complète
+  HandleReceivedMessage()  ← décode proto → appelle enqueue_intent_from_proto()
+      │
+      ▼
+fw/comm/comm.c — CommsTask (FreeRTOS, prio 2)
+  enqueue_intent_from_proto(intent_id_t id)
+  → xQueueSendToBack(s_intent_queue)
+  → reset heartbeat timer 100 ms
+      │
+      │  [FreeRTOS queue, depth 8]
+      │
+      ▼
+fw/app/app.c — ControlTask (FreeRTOS, prio 3, 100 Hz)
+  App_Task()
+  → Comms_GetNextIntent()   ← xQueueReceive non-bloquant
+  → IntentRouter_Handle()
+      │
+      ▼
+fw/app/intent_router.c
+  MODE_OPEN    → MotorMap_GetPose(OPEN)   × 8 moteurs
+  MODE_CLOSE   → MotorMap_GetPose(CLOSED) × 8 moteurs
+  MODE_PINCH   → MotorMap_GetPose(PINCH)  × 8 moteurs
+  MODE_WRIST_R → Motor_SetTarget(WRIST_X, +1.57 rad)
+  MODE_WRIST_L → Motor_SetTarget(WRIST_X, -1.57 rad)
+  default      → Motor_StopAll()
+      │
+      ▼
+fw/motors/motor_map/motor_map.c
+  MotorMap_GetPose(pose, motor_id) → angle en radians
+  Table statique : 5 poses × 8 moteurs
+      │
+      ▼
+fw/motors/motor_control/motor_control.c
+  Motor_SetTarget(id, position, speed)
+      │
+      ▼
+fw/motors/motor_control/motor_safety.c
+  MotorSafety_FilterCommand()
+  → clamp position dans [min, max] par articulation
+  → rate-limit à 180°/s
+  → réduction vitesse si force > seuil soft (1200 mN)
+  → fault si force > seuil hard (1600 mN)
+      │
+      ▼
+fw/motors/motor_control/motor_backend_*.c
+  ┌─ SIM  (define MOTOR_BACKEND_SIM) ─────────────────────────┐
+  │  motor_backend_sim.c                                       │
+  │  Encode les commandes en frames Q15 → HAL_UART_Transmit   │
+  │  SimTxTask notifié par Motor_Update() à chaque tick        │
+  │  Reçoit feedback position/FSR depuis ROS2 via UART         │
+  │  Watchdog ROS 150 ms → MotorSafety_RequestStop si timeout  │
+  └────────────────────────────────────────────────────────────┘
+  ┌─ HW   (défaut, sans define) ──────────────────────────────┐
+  │  motor_backend_hw.c                                        │
+  │  TODO: HRTIM_BSP_SetDuty() + direction GPIO               │
+  │  → voir fw/bsp/hrtim/hrtim_bsp.c                          │
+  └────────────────────────────────────────────────────────────┘
+      │
+      ▼
+[Moteurs physiques]
+      │  feedback courant (ADC DMA) + position (encodeur)
+      ▼
+MotorBackend_OnFeedback() → MotorSafety_OnFeedback()
+→ met à jour s_latest_force[] et s_last_command[]
 ```
 
-This layered design lets each team work independently: comms define the intent schema, application logic maps behaviors, safety enforces limits, and backends swap between simulation and real hardware with minimal changes.
+---
 
+## Intents disponibles
+
+Définis dans `fw/app/intent_router.h` — correspondent aux valeurs du proto `SelectMode` :
+
+| Valeur | Nom | Comportement |
+|--------|-----|--------------|
+| 0 | `MODE_OPEN` | Tous les moteurs → pose OPEN |
+| 1 | `MODE_CLOSE` | Tous les moteurs → pose CLOSED |
+| 2 | `MODE_PINCH` | Tous les moteurs → pose PINCH |
+| 3 | `MODE_WRIST_R` | Poignet → +1.57 rad (rotation droite) |
+| 4 | `MODE_WRIST_L` | Poignet → -1.57 rad (rotation gauche) |
+| — | défaut | `Motor_StopAll()` |
+
+---
+
+## Tâches FreeRTOS
+
+| Tâche | Priorité | Période | Rôle |
+|-------|----------|---------|------|
+| `ControlTask` | `IDLE + 3` | 10 ms (100 Hz) | `App_Task()` + `Motor_Update()` |
+| `SafetyTask` | `IDLE + 2` | 20 ms (50 Hz) | Vérifie fault → `Motor_StopAll()` |
+| `CommsTask` | `IDLE + 2` | bloquant sur UART | Reçoit proto → remplit la queue |
+| `TelemetryTask` | `IDLE + 1` | 1 s | Log heap / stack watermark / fault |
+| `SimTxTask` | `IDLE + 3` | notifié par `Motor_Update` | Envoie frames Q15 vers ROS2 (sim uniquement) |
+
+---
+
+## Sécurité
+
+`motor_safety.c` filtre **chaque commande** avant qu'elle atteigne le backend :
+
+- **Limites angulaires** : chaque articulation a un `[min, max]` en radians (ex. pouce : -10° / +90°).
+- **Rate-limit** : variation max de 180°/s — empêche les mouvements brusques.
+- **Seuil soft** (1200 mN) : réduit la vitesse à 25 %.
+- **Seuil hard** (1600 mN) : déclenche un fault → toutes les commandes rejetées.
+- **Heartbeat 100 ms** : si aucun intent n'arrive pendant 100 ms, `MotorSafety_RequestStop()` est appelé automatiquement.
+- **Watchdog ROS 150 ms** (sim) : idem si le PC/ROS2 ne répond plus.
+
+Un fault reste actif jusqu'à ce que `s_fault_active` soit remis à `false` manuellement (reset système ou future commande de clear à implémenter).
+
+---
+
+## Poses moteur (`fw/motors/motor_map/motor_map.c`)
+
+Table statique `s_pose_table[pose][motor_id]`, angles en radians :
+
+| Moteur | OPEN | CLOSED | PINCH | POINT | NEUTRAL |
+|--------|------|--------|-------|-------|---------|
+| THUMB (0) | 5° | 85° | 70° | 40° | 20° |
+| INDEX (1) | 0° | 85° | 70° | 5° | 20° |
+| MIDDLE (2) | 0° | 85° | 25° | 70° | 20° |
+| RING (3) | 0° | 80° | 20° | 70° | 20° |
+| LITTLE (4) | 0° | 75° | 20° | 65° | 20° |
+| WRIST_X (5) | 0° | 15° | 5° | 10° | 0° |
+| WRIST_Y (6) | 0° | 15° | 5° | 0° | 0° |
+| PALM (7) | 0° | 10° | 5° | 0° | 0° |
+
+---
+
+## État d'avancement
+
+| Couche | État | Fichier |
+|--------|------|---------|
+| Intent routing | ✅ Complet | `fw/app/intent_router.c` |
+| Queue + heartbeat | ✅ Complet | `fw/comm/comm.c` |
+| Safety (limites, rate, force) | ✅ Complet | `fw/motors/motor_control/motor_safety.c` |
+| Backend simulation (ROS2) | ✅ Complet | `fw/motors/motor_control/motor_backend_sim.c` |
+| Comm-stack protobuf | ⏳ Submodule à initialiser | `fw/comm-stack/` |
+| BSP HRTIM (PWM moteurs) | ⏳ TODO hardware | `fw/bsp/hrtim/hrtim_bsp.c` |
+| BSP UART (réception proto) | ⏳ TODO hardware | `fw/bsp/usart_usb/usart_usb_bsp.c` |
+| BSP ADC DMA (courant) | ⏳ TODO hardware | `fw/bsp/adc_dma/adc_dma_bsp.c` |
+| BSP Encodeurs (position) | ⏳ TODO hardware | `fw/bsp/encoder/encoder_bsp.c` |
+| Backend hardware (PWM réel) | ⏳ TODO hardware | `fw/motors/motor_control/motor_backend_hw.c` |
+| Mapping des pins | ⏳ À confirmer sur schéma | `.ioc` + tous les BSP |
+
+---
+
+## Activer le mode simulation
+
+Ajoute `MOTOR_BACKEND_SIM` dans les preprocessor symbols STM32CubeIDE :
+> Project → Properties → C/C++ Build → Settings → MCU GCC Compiler → Preprocessor → Defined symbols
+
+Le `motor_backend_sim.c` prend le relai et envoie les commandes vers ROS2 via UART.
+
+## Activer le comm-stack (protobuf réel)
+
+```bash
+git submodule update --init --recursive
+```
+
+Puis ajoute `COMM_STACK_AVAILABLE` aux preprocessor symbols et le chemin `fw/comm-stack/inc` aux include paths. Les stubs dans `fw/comm/comm.c` seront exclus automatiquement.
