@@ -1,35 +1,33 @@
-#include "app.h"
-#include "motor_control.h"
-#include "comm.h"
+#include "cmsis_os2.h"    // Use CMSIS-RTOS2 for FreeRTOS
 #include "intent_router.h"
 
-/**
- * @brief Initializes all high-level application modules.
- * Called once during system startup after the HAL and RTOS are ready.
- */
-void App_Init(void)
-{
-    /* Initialize motor controllers and safety limits */
-    Motor_InitAll();
-
-    /* Initialize UART communication and the FreeRTOS intent queue */
-    Comms_Init();
-}
+/* The queue handle is defined in comm.c and accessed here */
+extern osMessageQueueId_t s_intent_queue;
 
 /**
- * @brief Main application logic loop.
- * This is typically called from a dedicated FreeRTOS task.
+ * @brief Main Application Task.
+ * This task blocks until an intent is received, ensuring low CPU usage.
  */
-void App_Task(void)
-{
-    intent_t intent;
+void Start_App_Task(void *argument) {
+    intent_t current_intent;
 
-    /* * Non-blocking check for new messages from the UART parser.
-     * If a valid packet (Gesture or Direct Positions) was received, 
-     * it is passed to the Router.
-     */
-    if (Comms_GetNextIntent(&intent)) 
-    {
-        IntentRouter_Handle(&intent);
+    /* Ensure the queue exists before starting the loop */
+    while (s_intent_queue == NULL) {
+        osDelay(10);
+    }
+
+    for (;;) {
+        /* Wait forever (osWaitForever) for an intent from the comms task */
+        osStatus_t status = osMessageQueueGet(s_intent_queue, &current_intent, NULL, osWaitForever);
+
+        if (status == osOK) {
+            /* 
+             * Execute the motor logic. 
+             * Note: In a real system, you might add logic here to check
+             * if the hand is currently in a "Global Stop" state.
+             */
+            IntentRouter_Handle(&current_intent);
+        }
     }
 }
+

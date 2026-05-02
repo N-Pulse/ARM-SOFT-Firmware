@@ -1,28 +1,50 @@
 #include "intent_router.h"
-#include "motor_control.h"
-#include "motor_map.h"
-#include <stddef.h>
+#include "motor_driver.h" // Assume this provides Motor_SetPosition, Motor_Stop, etc.
 
-static void apply_full_pose(motor_pose_id_t pose)
-{
-    for (int i = 0; i < MOTOR_COUNT; i++)
-    {
-        float target_rad = MotorMap_GetPose(pose, (motor_id_t)i);
-        Motor_SetTarget((motor_id_t)i, target_rad, 100);
-    }
-}
+/**
+ * @brief Translates an abstract intent into hardware actions.
+ */
+void IntentRouter_Handle(const intent_t* intent) {
+    if (!intent) return;
 
-void IntentRouter_Handle(const intent_t *intent)
-{
-    if (intent == NULL) return;
+    switch (intent->id) {
+        case ACTION_OPEN_HAND:
+            // Move all fingers to 0 degrees (fully open)
+            Motor_SetPosition(MOTOR_THUMB, 0);
+            Motor_SetPosition(MOTOR_INDEX, 0);
+            Motor_SetPosition(MOTOR_MIDDLE, 0);
+            Motor_SetPosition(MOTOR_RING, 0);
+            Motor_SetPosition(MOTOR_PINKY, 0);
+            break;
 
-    switch (intent->id)
-    {
-        case MODE_OPEN:    apply_full_pose(MOTOR_POSE_OPEN);              break;
-        case MODE_CLOSE:   apply_full_pose(MOTOR_POSE_CLOSED);            break;
-        case MODE_PINCH:   apply_full_pose(MOTOR_POSE_PINCH);             break;
-        case MODE_WRIST_R: Motor_SetTarget(MOTOR_WRIST_X,  1.57f, 100);  break;
-        case MODE_WRIST_L: Motor_SetTarget(MOTOR_WRIST_X, -1.57f, 100);  break;
-        default:           Motor_StopAll();                                break;
+        case ACTION_CLOSE_HAND:
+            // Move all fingers to 90 degrees (clenched fist)
+            Motor_SetPosition(MOTOR_THUMB, 90);
+            Motor_SetPosition(MOTOR_INDEX, 90);
+            Motor_SetPosition(MOTOR_MIDDLE, 90);
+            Motor_SetPosition(MOTOR_RING, 90);
+            Motor_SetPosition(MOTOR_PINKY, 90);
+            break;
+
+        case ACTION_PINCH:
+            // Thumb and Index move, others remain open
+            Motor_SetPosition(MOTOR_THUMB, 45);
+            Motor_SetPosition(MOTOR_INDEX, 45);
+            Motor_SetPosition(MOTOR_MIDDLE, 0);
+            break;
+
+        case ACTION_ROTATE_WRIST_R:
+            Motor_StepWrist(10); // Rotate 10 degrees CW
+            break;
+
+        case ACTION_ROTATE_WRIST_L:
+            Motor_StepWrist(-10); // Rotate 10 degrees CCW
+            break;
+
+        case ACTION_UNKNOWN:
+        default:
+            // Safety fallback
+            Motor_StopAll();
+            break;
     }
 }

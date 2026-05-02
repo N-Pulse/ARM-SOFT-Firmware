@@ -3,27 +3,28 @@
 
 #include <stdint.h>
 
-// We adapt to use 'selected_mode' values as our intent IDs
+/**
+ * @brief Intent IDs mapped to the Protobuf Action enumeration.
+ */
 typedef enum {
-    MODE_OPEN   = 0,
-    MODE_CLOSE  = 1,
-    MODE_PINCH  = 2,
-    MODE_WRIST_R = 3,
-    MODE_WRIST_L = 4
+    ACTION_OPEN_HAND      = 0,
+    ACTION_CLOSE_HAND     = 1,
+    ACTION_PINCH          = 2,
+    ACTION_ROTATE_WRIST_R = 3,
+    ACTION_ROTATE_WRIST_L = 4,
+    ACTION_UNKNOWN        = 99 // Used for safety stops/timeouts
 } intent_id_t;
 
+/**
+ * @brief The data structure sent through the FreeRTOS queue.
+ */
 typedef struct {
     intent_id_t id;
 } intent_t;
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-
+/**
+ * @brief Dispatches the intent to the corresponding motor drivers.
+ */
 void IntentRouter_Handle(const intent_t* intent);
 
-#ifdef __cplusplus
-}
-#endif
-
-#endif
+#endif /* INTENT_ROUTER_H */
