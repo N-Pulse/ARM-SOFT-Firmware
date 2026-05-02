@@ -61,6 +61,14 @@ void MotorBackend_SetTarget(motor_id_t id, float position, uint8_t speed_percent
     (void)speed_percent;
 }
 
+void MotorBackend_SendPreview(motor_id_t id, float position, uint8_t speed_percent)
+{
+    // No serial port in HW mode — preview is a sim-only feature.
+    (void)id;
+    (void)position;
+    (void)speed_percent;
+}
+
 void MotorBackend_Flush(void)
 {
     // HW backend writes directly to HRTIM compare registers — nothing to flush.

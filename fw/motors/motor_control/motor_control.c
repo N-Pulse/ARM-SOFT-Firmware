@@ -17,13 +17,14 @@ void Motor_SetTarget(motor_id_t id, float position, uint8_t speed_percent)
 {
     float   safe_position = position;
     uint8_t safe_speed    = speed_percent;
-    
+
     if (!MotorSafety_FilterCommand(id, &safe_position, &safe_speed))
     {
         MotorBackend_StopAll();
         return;
     }
 
+    MotorBackend_SendPreview(id, safe_position, safe_speed);
     MotorBackend_SetTarget(id, safe_position, safe_speed);
 }
 

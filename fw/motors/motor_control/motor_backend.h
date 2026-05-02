@@ -14,6 +14,7 @@ typedef struct
 
 void MotorBackend_Init(void);
 void MotorBackend_SetTarget(motor_id_t id, float position, uint8_t speed_percent);
+void MotorBackend_SendPreview(motor_id_t id, float position, uint8_t speed_percent);
 void MotorBackend_Flush(void);
 void MotorBackend_StopAll(void);
 void MotorBackend_OnFeedback(const motor_feedback_t *feedback);

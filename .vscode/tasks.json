@@ -1,0 +1,58 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "Build SIM",
+            "type": "shell",
+            "command": "C:/Program Files/Git/bin/bash.exe",
+            "args": [
+                "-c",
+                "cd '${workspaceFolder}/Debug' && make SIM_MODE=1 -j4 2>&1"
+            ],
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+            "presentation": {
+                "reveal": "always",
+                "panel": "shared",
+                "clear": true
+            },
+            "problemMatcher": {
+                "owner": "gcc",
+                "fileLocation": ["autoDetect", "${workspaceFolder}"],
+                "pattern": {
+                    "regexp": "^(.+):(\\d+):(\\d+):\\s+(warning|error):\\s+(.+)$",
+                    "file": 1,
+                    "line": 2,
+                    "column": 3,
+                    "severity": 4,
+                    "message": 5
+                }
+            }
+        },
+        {
+            "label": "Flash",
+            "type": "shell",
+            "command": "C:/Program Files/STMicroelectronics/STM32Cube/STM32CubeProgrammer/bin/STM32_Programmer_CLI.exe",
+            "args": [
+                "-c", "port=SWD",
+                "-w", "${workspaceFolder}/Debug/N-PULSE FIRMWARE.elf",
+                "-rst"
+            ],
+            "group": "none",
+            "presentation": {
+                "reveal": "always",
+                "panel": "shared"
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "Build SIM + Flash",
+            "dependsOn": ["Build SIM", "Flash"],
+            "dependsOrder": "sequence",
+            "group": "none",
+            "problemMatcher": []
+        }
+    ]
+}

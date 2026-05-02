@@ -202,5 +202,10 @@ void EXTI15_10_IRQHandler(void)
 }
 
 /* USER CODE BEGIN 1 */
+extern UART_HandleTypeDef hcom_uart[COMn];
 
+void LPUART1_IRQHandler(void)
+{
+    HAL_UART_IRQHandler(&hcom_uart[COM1]);
+}
 /* USER CODE END 1 */

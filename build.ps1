@@ -15,7 +15,7 @@ Write-Host "Compilation du projet STM32..." -ForegroundColor Green
 $bashPath = "C:\Program Files\Git\bin\bash.exe"
 $debugPath = (Join-Path $projectRoot "Debug") -replace '\\', '/' -replace '^C:', '/c'
 
-& $bashPath -c "cd '$debugPath' && make"
+& $bashPath -c "cd '$debugPath' && make clean && make SIM_MODE=1"
 
 if ($LASTEXITCODE -eq 0) {
     Write-Host "`nCompilation réussie !" -ForegroundColor Green

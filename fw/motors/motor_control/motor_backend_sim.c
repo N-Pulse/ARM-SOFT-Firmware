@@ -12,6 +12,7 @@
 #include "task.h"
 #include "timers.h"
 
+#include "comm.h"
 #include "main.h"
 #include "motor_safety.h"
 #include "stm32g4xx_nucleo.h"
@@ -24,6 +25,9 @@
 #define SIM_MSG_JOINT_FEEDBACK 0x10U
 #define SIM_MSG_FSR_FEEDBACK   0x11U
 #define SIM_MSG_HEARTBEAT_ACK  0x12U
+#define SIM_MSG_SELECT_MODE    0x20U
+#define SIM_MSG_INTENT_ACK     0x21U
+#define SIM_MSG_MOTOR_PREVIEW  0x22U
 #define SIM_MAX_PAYLOAD        96U
 #define SIM_POSITION_RANGE_RAD 3.1415926f
 
@@ -55,9 +59,13 @@ typedef struct
 static motor_cmd_t          s_pending_cmds[MAX_SIM_MOTORS];
 static uint8_t              s_cmd_count;
 static uint16_t             s_heartbeat_counter;
+static volatile bool        s_ack_pending;
+static volatile uint8_t     s_ack_intent_id;
+static motor_cmd_t          s_preview_cmds[MAX_SIM_MOTORS];
+static uint8_t              s_preview_count;
 static UART_HandleTypeDef  *s_uart_handle;
-static uint8_t              s_rx_byte;
-static bool                 s_rx_armed;
+static volatile uint8_t     s_rx_byte;
+static volatile bool        s_rx_armed;
 static rx_parser_t          s_rx_parser;
 static uint16_t             s_last_ack;
 static TaskHandle_t         s_tx_task;
@@ -87,8 +95,16 @@ static void   transmit_frame(uint8_t msg_id, const uint8_t *payload, uint8_t len
 static void   SimTxTask(void *argument);
 static void   RosWatchdogTimeout(TimerHandle_t timer);
 
+/* Temporary step beacons for MotorBackend_Init diagnosis — remove once boot confirmed */
+#define MINIT_BEACON(id, crc) \
+    do { \
+        uint8_t _mb[] = {0xAAU, 0x01U, (id), 0x00U, (crc)}; \
+        HAL_UART_Transmit(&hcom_uart[COM1], _mb, sizeof(_mb), 20U); \
+    } while(0)
+
 void MotorBackend_Init(void)
 {
+    MINIT_BEACON(0xE0U, 0xD7U); /* E0: MotorBackend_Init entered */
     memset(s_pending_cmds, 0, sizeof(s_pending_cmds));
     s_cmd_count          = 0U;
     s_heartbeat_counter  = 0U;
@@ -98,12 +114,14 @@ void MotorBackend_Init(void)
     s_tx_task            = NULL;
     s_cmd_lock           = xSemaphoreCreateMutex();
     configASSERT(s_cmd_lock != NULL);
+    MINIT_BEACON(0xE1U, 0x9BU); /* E1: mutex OK */
     s_ros_watchdog      = xTimerCreate("rosHB",
                                        pdMS_TO_TICKS(150),
                                        pdFALSE,
                                        NULL,
                                        RosWatchdogTimeout);
     configASSERT(s_ros_watchdog != NULL);
+    MINIT_BEACON(0xE2U, 0x4FU); /* E2: timer OK */
     s_ros_timer_started = false;
     reset_rx_parser();
 
@@ -114,11 +132,24 @@ void MotorBackend_Init(void)
                                     tskIDLE_PRIORITY + 3,
                                     &s_tx_task);
     configASSERT(status == pdPASS);
+    MINIT_BEACON(0xE3U, 0x03U); /* E3: SimTxTask created OK */
 }
 
 void MotorBackend_SetTarget(motor_id_t id, float position, uint8_t speed_percent)
 {
     enqueue_cmd(id, position, speed_percent);
+}
+
+void MotorBackend_SendPreview(motor_id_t id, float position, uint8_t speed_percent)
+{
+    if (s_preview_count >= MAX_SIM_MOTORS)
+    {
+        return;
+    }
+    s_preview_cmds[s_preview_count].id            = id;
+    s_preview_cmds[s_preview_count].position      = position;
+    s_preview_cmds[s_preview_count].speed_percent = speed_percent;
+    s_preview_count++;
 }
 
 void MotorBackend_Flush(void)
@@ -178,7 +209,17 @@ static void ensure_uart_ready(void)
     if ((s_uart_handle == NULL) && (hcom_uart[COM1].Instance != NULL))
     {
         s_uart_handle = &hcom_uart[COM1];
+        // Priority must be >= configLIBRARY_MAX_SYSCALL_INTERRUPT_PRIORITY (5)
+        // so that ISR-safe FreeRTOS APIs (vTaskNotifyGiveFromISR etc.) are legal.
+        HAL_NVIC_SetPriority(LPUART1_IRQn, 6, 0);
+        HAL_NVIC_EnableIRQ(LPUART1_IRQn);
+        // Clear any overrun/framing errors from bytes that arrived before the
+        // interrupt was enabled (Python heartbeats sent during firmware boot).
+        __HAL_UART_CLEAR_FLAG(s_uart_handle, UART_CLEAR_OREF | UART_CLEAR_NEF | UART_CLEAR_FEF);
+        s_uart_handle->ErrorCode = HAL_UART_ERROR_NONE;
         start_rx_interrupt();
+        // Diagnostic: send one beacon so Python can confirm TX path is alive.
+        transmit_frame(0xFE, NULL, 0U);
     }
 }
 
@@ -186,8 +227,10 @@ static void start_rx_interrupt(void)
 {
     if ((s_uart_handle != NULL) && !s_rx_armed)
     {
-        HAL_UART_Receive_IT(s_uart_handle, &s_rx_byte, 1U);
-        s_rx_armed = true;
+        if (HAL_UART_Receive_IT(s_uart_handle, (uint8_t *)&s_rx_byte, 1U) == HAL_OK)
+        {
+            s_rx_armed = true;
+        }
     }
 }
 
@@ -264,6 +307,28 @@ static void reset_rx_parser(void)
     s_rx_parser.length = 0U;
 }
 
+static void process_select_mode(const uint8_t *payload, uint8_t length)
+{
+    // Minimal protobuf decode: SelectMode { uint32 selected_mode = 1; }
+    // Wire encoding: [0x08][varint mode_id]
+    if (length < 2U || payload[0U] != 0x08U)
+    {
+        return;
+    }
+
+    // Store intent ID for SimTxTask — do NOT call enqueue_intent_from_proto here.
+    // This runs inside HAL_UART_RxCpltCallback (ISR context); xQueueSendToBack and
+    // xTimerStart are not ISR-safe and will corrupt the scheduler if called here.
+    s_ack_intent_id = payload[1U];
+    s_ack_pending   = true;
+    if (s_tx_task != NULL)
+    {
+        BaseType_t higher_woken = pdFALSE;
+        vTaskNotifyGiveFromISR(s_tx_task, &higher_woken);
+        portYIELD_FROM_ISR(higher_woken);
+    }
+}
+
 static void process_frame(uint8_t msg_id, const uint8_t *payload, uint8_t length)
 {
     switch (msg_id)
@@ -276,6 +341,9 @@ static void process_frame(uint8_t msg_id, const uint8_t *payload, uint8_t length
         break;
     case SIM_MSG_HEARTBEAT_ACK:
         process_heartbeat_ack(payload, length);
+        break;
+    case SIM_MSG_SELECT_MODE:
+        process_select_mode(payload, length);
         break;
     default:
         break;
@@ -516,9 +584,53 @@ static void SimTxTask(void *argument)
     (void)argument;
     const TickType_t period = pdMS_TO_TICKS(10);
 
+    /* Task-start beacon: FreeRTOS scheduler running, SimTxTask scheduled.
+     * Frame: [0xAA][0x01][0xFA][0x00][CRC=0xA1] */
+    {
+        uint8_t task_beacon[] = {0xAAU, 0x01U, 0xFAU, 0x00U, 0xA1U};
+        HAL_UART_Transmit(&hcom_uart[COM1], task_beacon, sizeof(task_beacon), 50U);
+    }
+
     while (1)
     {
         ulTaskNotifyTake(pdTRUE, period);
+
+        ensure_uart_ready();
+
+        if (s_ack_pending)
+        {
+            s_ack_pending = false;
+            // Safe to call non-ISR FreeRTOS APIs here (task context).
+            enqueue_intent_from_proto((intent_id_t)s_ack_intent_id);
+            ensure_uart_ready();
+            if (s_uart_handle != NULL)
+            {
+                uint8_t ack_payload[1] = { s_ack_intent_id };
+                transmit_frame(SIM_MSG_INTENT_ACK, ack_payload, 1U);
+            }
+        }
+
+        if (s_preview_count > 0U)
+        {
+            ensure_uart_ready();
+            if (s_uart_handle != NULL)
+            {
+                uint8_t payload[SIM_MAX_PAYLOAD] = {0};
+                uint8_t offset = 0U;
+                payload[offset++] = s_preview_count;
+                for (uint8_t i = 0U; i < s_preview_count; ++i)
+                {
+                    payload[offset++] = (uint8_t)s_preview_cmds[i].id;
+                    int16_t q15 = float_to_q15(s_preview_cmds[i].position);
+                    payload[offset++] = (uint8_t)(q15 & 0xFFU);
+                    payload[offset++] = (uint8_t)((q15 >> 8U) & 0xFFU);
+                    payload[offset++] = s_preview_cmds[i].speed_percent;
+                }
+                transmit_frame(SIM_MSG_MOTOR_PREVIEW, payload, offset);
+            }
+            s_preview_count = 0U;
+        }
+
         send_pending_commands();
     }
 }

@@ -27,7 +27,6 @@
 #include "task.h"
 #include "timers.h"
 #include "motor_safety.h"
-#include <stdio.h>
 #include "comm.h"
 /* USER CODE END Includes */
 
@@ -55,6 +54,8 @@ static TaskHandle_t sControlTaskHandle;
 static TaskHandle_t sSafetyTaskHandle;
 static TaskHandle_t sTelemetryTaskHandle;
 static TimerHandle_t sLedTimer;
+
+extern UART_HandleTypeDef hcom_uart[COMn];
 
 /* USER CODE END PV */
 
@@ -126,9 +127,17 @@ int main(void)
     Error_Handler();
   }
 
-  /* Initialize application AFTER UART is ready (needed for motor backend SIM) */
-  App_Init();
+  /* Force unbuffered stdout so every printf transmits immediately via HAL_UART_Transmit.
+   * Without this, newlib may buffer output in a heap-allocated buffer and only flush
+   * when that buffer fills, causing diagnostic prints to appear much later. */
+  /* Boot beacon: raw binary frame sent before FreeRTOS starts.
+   * Frame: [0xAA][0x01][0xFD][0x00][CRC=0x58] */
+  {
+    static const uint8_t kBootBeacon[] = {0xAAU, 0x01U, 0xFDU, 0x00U, 0x58U};
+    HAL_UART_Transmit(&hcom_uart[COM1], (uint8_t *)kBootBeacon, sizeof(kBootBeacon), 10U);
+  }
 
+  App_Init();
   CreateTasks();
   StartScheduler();
 
@@ -271,12 +280,6 @@ static void TelemetryTask(void *argument)
 
   while (1)
   {
-    size_t free_heap = xPortGetFreeHeapSize();
-    UBaseType_t ctrl_hw = uxTaskGetStackHighWaterMark(sControlTaskHandle);
-    printf("[TEL] heap=%uB ctrlHW=%lu fault=%d\r\n",
-           (unsigned)free_heap,
-           (unsigned long)ctrl_hw,
-           MotorSafety_IsFaultActive());
     vTaskDelay(period);
   }
 }

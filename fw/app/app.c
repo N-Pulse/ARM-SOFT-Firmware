@@ -2,6 +2,15 @@
 #include "motor_control.h"
 #include "comm.h"
 #include "intent_router.h"
+#include "main.h"
+
+extern UART_HandleTypeDef hcom_uart[COMn];
+
+#define APP_BEACON(id, crc) \
+    do { \
+        uint8_t _b[] = {0xAAU, 0x01U, (id), 0x00U, (crc)}; \
+        HAL_UART_Transmit(&hcom_uart[COM1], _b, sizeof(_b), 20U); \
+    } while(0)
 
 /**
  * @brief Initializes all high-level application modules.
@@ -9,10 +18,9 @@
  */
 void App_Init(void)
 {
-    /* Initialize motor controllers and safety limits */
+    APP_BEACON(0xFCU, 0x14U); /* 0xFC: App_Init entered, about to call Motor_InitAll */
     Motor_InitAll();
-
-    /* Initialize UART communication and the FreeRTOS intent queue */
+    APP_BEACON(0xFBU, 0xEDU); /* 0xFB: Motor_InitAll returned */
     Comms_Init();
 }
 
