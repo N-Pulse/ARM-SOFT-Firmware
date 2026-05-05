@@ -9,7 +9,7 @@ extern UART_HandleTypeDef hcom_uart[COMn];
 #define APP_BEACON(id, crc) \
     do { \
         uint8_t _b[] = {0xAAU, 0x01U, (id), 0x00U, (crc)}; \
-        HAL_UART_Transmit(&hcom_uart[COM1], _b, sizeof(_b), 20U); \
+        HAL_UART_Transmit(&hcom_uart[COM1], _b, sizeof(_b), 50U); \
     } while(0)
 
 /**

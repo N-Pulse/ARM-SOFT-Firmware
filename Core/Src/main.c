@@ -75,6 +75,7 @@ static void LedTimerCallback(TimerHandle_t timer);
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
 
+
 /* USER CODE END 0 */
 
 /**
@@ -127,11 +128,7 @@ int main(void)
     Error_Handler();
   }
 
-  /* Force unbuffered stdout so every printf transmits immediately via HAL_UART_Transmit.
-   * Without this, newlib may buffer output in a heap-allocated buffer and only flush
-   * when that buffer fills, causing diagnostic prints to appear much later. */
-  /* Boot beacon: raw binary frame sent before FreeRTOS starts.
-   * Frame: [0xAA][0x01][0xFD][0x00][CRC=0x58] */
+  /* Boot beacon: raw binary frame sent before FreeRTOS starts. */
   {
     static const uint8_t kBootBeacon[] = {0xAAU, 0x01U, 0xFDU, 0x00U, 0x58U};
     HAL_UART_Transmit(&hcom_uart[COM1], (uint8_t *)kBootBeacon, sizeof(kBootBeacon), 10U);
@@ -139,6 +136,13 @@ int main(void)
 
   App_Init();
   CreateTasks();
+
+  /* Set up LPUART RX IRQ before scheduler starts. */
+  __HAL_UART_CLEAR_FLAG(&hcom_uart[COM1], UART_CLEAR_OREF | UART_CLEAR_NEF | UART_CLEAR_FEF);
+  hcom_uart[COM1].Instance->CR1 |= USART_CR1_RXNEIE_RXFNEIE;
+  HAL_NVIC_SetPriority(LPUART1_IRQn, 6, 0);
+  HAL_NVIC_EnableIRQ(LPUART1_IRQn);
+
   StartScheduler();
 
   /* Should never reach here */

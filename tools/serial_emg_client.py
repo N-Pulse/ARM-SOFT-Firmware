@@ -60,6 +60,10 @@ MSG_MOTOR_INIT_OK  = 0xFB   # STM32→PC  beacon Motor_InitAll() retourne OK
 MSG_APP_INIT_START = 0xFC   # STM32→PC  beacon App_Init entre dans Motor_InitAll
 MSG_BOOT_BEACON    = 0xFD   # STM32→PC  beacon pre-FreeRTOS (HAL_UART_Transmit direct)
 MSG_SIM_BEACON     = 0xFE   # STM32→PC  beacon ensure_uart_ready OK, RX arme
+# Motor_InitAll step beacons (diagnostic — removed once boot confirmed)
+MSG_MIA_ENTER      = 0xD0   # Motor_InitAll entered
+MSG_MIA_SAFETY_OK  = 0xD1   # MotorSafety_Init returned
+MSG_MIA_BACKEND_OK = 0xD2   # MotorBackend_Init returned
 # MotorBackend_Init step beacons (diagnostic — removed once boot confirmed)
 MSG_MINIT_ENTER    = 0xE0   # MotorBackend_Init entered
 MSG_MINIT_MUTEX_OK = 0xE1   # xSemaphoreCreateMutex OK
@@ -399,6 +403,18 @@ class SerialWorker:
 
         elif msg_id == MSG_SIM_BEACON:
             print(f"  [{_ts()}]  [0xFE] SIM BEACON  — UART RX arme, pret pour commandes")
+            sys.stdout.flush()
+
+        elif msg_id == MSG_MIA_ENTER:
+            print(f"  [{_ts()}]  [0xD0] MIA ENTER    — Motor_InitAll demarre")
+            sys.stdout.flush()
+
+        elif msg_id == MSG_MIA_SAFETY_OK:
+            print(f"  [{_ts()}]  [0xD1] MIA SAFETY   — MotorSafety_Init OK")
+            sys.stdout.flush()
+
+        elif msg_id == MSG_MIA_BACKEND_OK:
+            print(f"  [{_ts()}]  [0xD2] MIA BACKEND  — MotorBackend_Init OK")
             sys.stdout.flush()
 
         elif msg_id == MSG_MINIT_ENTER:

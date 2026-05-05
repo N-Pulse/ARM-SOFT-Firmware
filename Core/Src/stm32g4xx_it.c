@@ -203,9 +203,19 @@ void EXTI15_10_IRQHandler(void)
 
 /* USER CODE BEGIN 1 */
 extern UART_HandleTypeDef hcom_uart[COMn];
+extern void handle_rx_byte_external(uint8_t b);
 
 void LPUART1_IRQHandler(void)
 {
-    HAL_UART_IRQHandler(&hcom_uart[COM1]);
+    USART_TypeDef *u = LPUART1;
+    /* Clear any error flags first */
+    if (u->ISR & (USART_ISR_ORE | USART_ISR_FE | USART_ISR_NE)) {
+        u->ICR = USART_ICR_ORECF | USART_ICR_FECF | USART_ICR_NECF;
+    }
+    /* Read RDR if data available (RXNE/RXFNE) */
+    if (u->ISR & USART_ISR_RXNE_RXFNE) {
+        uint8_t b = (uint8_t)u->RDR;
+        handle_rx_byte_external(b);
+    }
 }
 /* USER CODE END 1 */
