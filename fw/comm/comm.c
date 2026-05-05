@@ -78,7 +78,10 @@ static void Comms_HeartbeatTimeout(TimerHandle_t timer)
 {
     (void)timer;
     s_heartbeat_started = false;
-    MotorSafety_RequestStop();
+    /* Disabled: this watchdog was designed for periodic-intent ROS streams.
+     * For interactive SELECT_MODE commands, a single intent followed by no
+     * further intent for 100ms must NOT trigger a safety stop. */
+    /* MotorSafety_RequestStop(); */
 }
 
 void Comms_Init(void)
