@@ -96,10 +96,26 @@ static void   SimTxTask(void *argument);
 static void   RosWatchdogTimeout(TimerHandle_t timer);
 
 /* Temporary step beacons for MotorBackend_Init diagnosis — remove once boot confirmed */
+static inline void minit_tx_byte_safe(uint8_t b)
+{
+    USART_TypeDef *u = LPUART1;
+    uint32_t tries = 0;
+    while ((u->ISR & (1U << 7)) == 0U) {
+        if (++tries > 1000000U) return;
+        __asm__ volatile ("nop");
+    }
+    u->TDR = b;
+}
+
 #define MINIT_BEACON(id, crc) \
     do { \
-        uint8_t _mb[] = {0xAAU, 0x01U, (id), 0x00U, (crc)}; \
-        HAL_UART_Transmit(&hcom_uart[COM1], _mb, sizeof(_mb), 50U); \
+        SysTick->CTRL &= ~SysTick_CTRL_TICKINT_Msk; \
+        minit_tx_byte_safe(0xAAU); \
+        minit_tx_byte_safe(0x01U); \
+        minit_tx_byte_safe((id)); \
+        minit_tx_byte_safe(0x00U); \
+        minit_tx_byte_safe((crc)); \
+        SysTick->CTRL |= SysTick_CTRL_TICKINT_Msk; \
     } while(0)
 
 void MotorBackend_Init(void)

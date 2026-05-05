@@ -128,16 +128,26 @@ int main(void)
     Error_Handler();
   }
 
-  /* Boot beacon: raw binary frame sent before FreeRTOS starts. */
+  /* Boot beacon — mask SysTick during transmission so xPortSysTickHandler
+   * can't corrupt FreeRTOS task lists before the scheduler is initialised. */
   {
+    SysTick->CTRL &= ~SysTick_CTRL_TICKINT_Msk;
     static const uint8_t kBootBeacon[] = {0xAAU, 0x01U, 0xFDU, 0x00U, 0x58U};
-    HAL_UART_Transmit(&hcom_uart[COM1], (uint8_t *)kBootBeacon, sizeof(kBootBeacon), 10U);
+    USART_TypeDef *u = LPUART1;
+    for (size_t i = 0; i < sizeof(kBootBeacon); ++i) {
+      uint32_t tries = 0;
+      while ((u->ISR & (1U << 7)) == 0U) {
+        if (++tries > 1000000U) break;
+      }
+      u->TDR = kBootBeacon[i];
+    }
+    SysTick->CTRL |= SysTick_CTRL_TICKINT_Msk;
   }
 
   App_Init();
   CreateTasks();
 
-  /* Set up LPUART RX IRQ before scheduler starts. */
+  /* Set up LPUART RX IRQ for incoming SELECT_MODE frames. */
   __HAL_UART_CLEAR_FLAG(&hcom_uart[COM1], UART_CLEAR_OREF | UART_CLEAR_NEF | UART_CLEAR_FEF);
   hcom_uart[COM1].Instance->CR1 |= USART_CR1_RXNEIE_RXFNEIE;
   HAL_NVIC_SetPriority(LPUART1_IRQn, 6, 0);
@@ -255,6 +265,10 @@ static void ControlTask(void *argument)
 
   while (1)
   {
+    /* Force LPUART1 RX IRQ to stay enabled — gets disabled by something. */
+    LPUART1->CR1 |= USART_CR1_RE | USART_CR1_RXNEIE_RXFNEIE;
+    NVIC->ISER[2] = (1U << 27);  /* enable IRQ 91 */
+
     App_Task();
     Motor_Update();
     vTaskDelayUntil(&last_wake, period);

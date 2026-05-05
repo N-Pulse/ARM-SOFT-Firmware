@@ -205,17 +205,20 @@ void EXTI15_10_IRQHandler(void)
 extern UART_HandleTypeDef hcom_uart[COMn];
 extern void handle_rx_byte_external(uint8_t b);
 
+volatile uint32_t g_lpuart_irq_count = 0;
+volatile uint8_t  g_lpuart_last_byte = 0;
+
 void LPUART1_IRQHandler(void)
 {
     USART_TypeDef *u = LPUART1;
-    /* Clear any error flags first */
+    g_lpuart_irq_count++;
     if (u->ISR & (USART_ISR_ORE | USART_ISR_FE | USART_ISR_NE)) {
         u->ICR = USART_ICR_ORECF | USART_ICR_FECF | USART_ICR_NECF;
     }
-    /* Read RDR if data available (RXNE/RXFNE) */
     if (u->ISR & USART_ISR_RXNE_RXFNE) {
         uint8_t b = (uint8_t)u->RDR;
-        handle_rx_byte_external(b);
+        g_lpuart_last_byte = b;
+        /* handle_rx_byte_external(b); -- temporarily disabled to test IRQ alone */
     }
 }
 /* USER CODE END 1 */
