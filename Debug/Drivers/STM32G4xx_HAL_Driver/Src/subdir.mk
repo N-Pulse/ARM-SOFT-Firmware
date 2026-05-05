@@ -18,10 +18,12 @@ C_SRCS += \
 ../Drivers/STM32G4xx_HAL_Driver/Src/stm32g4xx_hal_pwr_ex.c \
 ../Drivers/STM32G4xx_HAL_Driver/Src/stm32g4xx_hal_rcc.c \
 ../Drivers/STM32G4xx_HAL_Driver/Src/stm32g4xx_hal_rcc_ex.c \
+../Drivers/STM32G4xx_HAL_Driver/Src/stm32g4xx_hal_tim.c \
+../Drivers/STM32G4xx_HAL_Driver/Src/stm32g4xx_hal_tim_ex.c \
 ../Drivers/STM32G4xx_HAL_Driver/Src/stm32g4xx_hal_uart.c \
 ../Drivers/STM32G4xx_HAL_Driver/Src/stm32g4xx_hal_uart_ex.c \
 ../Drivers/STM32G4xx_HAL_Driver/Src/stm32g4xx_hal_usart.c \
-../Drivers/STM32G4xx_HAL_Driver/Src/stm32g4xx_hal_usart_ex.c 
+../Drivers/STM32G4xx_HAL_Driver/Src/stm32g4xx_hal_usart_ex.c
 
 OBJS += \
 ./Drivers/STM32G4xx_HAL_Driver/Src/stm32g4xx_hal.o \
@@ -37,6 +39,8 @@ OBJS += \
 ./Drivers/STM32G4xx_HAL_Driver/Src/stm32g4xx_hal_pwr_ex.o \
 ./Drivers/STM32G4xx_HAL_Driver/Src/stm32g4xx_hal_rcc.o \
 ./Drivers/STM32G4xx_HAL_Driver/Src/stm32g4xx_hal_rcc_ex.o \
+./Drivers/STM32G4xx_HAL_Driver/Src/stm32g4xx_hal_tim.o \
+./Drivers/STM32G4xx_HAL_Driver/Src/stm32g4xx_hal_tim_ex.o \
 ./Drivers/STM32G4xx_HAL_Driver/Src/stm32g4xx_hal_uart.o \
 ./Drivers/STM32G4xx_HAL_Driver/Src/stm32g4xx_hal_uart_ex.o \
 ./Drivers/STM32G4xx_HAL_Driver/Src/stm32g4xx_hal_usart.o \
@@ -56,6 +60,8 @@ C_DEPS += \
 ./Drivers/STM32G4xx_HAL_Driver/Src/stm32g4xx_hal_pwr_ex.d \
 ./Drivers/STM32G4xx_HAL_Driver/Src/stm32g4xx_hal_rcc.d \
 ./Drivers/STM32G4xx_HAL_Driver/Src/stm32g4xx_hal_rcc_ex.d \
+./Drivers/STM32G4xx_HAL_Driver/Src/stm32g4xx_hal_tim.d \
+./Drivers/STM32G4xx_HAL_Driver/Src/stm32g4xx_hal_tim_ex.d \
 ./Drivers/STM32G4xx_HAL_Driver/Src/stm32g4xx_hal_uart.d \
 ./Drivers/STM32G4xx_HAL_Driver/Src/stm32g4xx_hal_uart_ex.d \
 ./Drivers/STM32G4xx_HAL_Driver/Src/stm32g4xx_hal_usart.d \

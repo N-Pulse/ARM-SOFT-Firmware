@@ -1,4 +1,5 @@
 ../Middlewares/Third_Party/FreeRTOS-Kernel/stream_buffer.c:321:26:xStreamBufferGenericCreate	64	static
+../Middlewares/Third_Party/FreeRTOS-Kernel/stream_buffer.c:398:26:xStreamBufferGenericCreateStatic	80	static
 ../Middlewares/Third_Party/FreeRTOS-Kernel/stream_buffer.c:477:6:vStreamBufferDelete	24	static
 ../Middlewares/Third_Party/FreeRTOS-Kernel/stream_buffer.c:510:12:xStreamBufferReset	64	static
 ../Middlewares/Third_Party/FreeRTOS-Kernel/stream_buffer.c:567:12:xStreamBufferSetTriggerLevel	32	static
@@ -19,3 +20,6 @@
 ../Middlewares/Third_Party/FreeRTOS-Kernel/stream_buffer.c:1294:15:prvReadBytesFromBuffer	40	static
 ../Middlewares/Third_Party/FreeRTOS-Kernel/stream_buffer.c:1338:15:prvBytesInBuffer	24	static
 ../Middlewares/Third_Party/FreeRTOS-Kernel/stream_buffer.c:1359:13:prvInitialiseNewStreamBuffer	32	static
+../Middlewares/Third_Party/FreeRTOS-Kernel/stream_buffer.c:1400:17:uxStreamBufferGetStreamBufferNumber	16	static
+../Middlewares/Third_Party/FreeRTOS-Kernel/stream_buffer.c:1410:10:vStreamBufferSetStreamBufferNumber	16	static
+../Middlewares/Third_Party/FreeRTOS-Kernel/stream_buffer.c:1421:13:ucStreamBufferGetStreamBufferType	16	static

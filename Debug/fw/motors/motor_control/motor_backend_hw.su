@@ -1,5 +1,0 @@
-../fw/motors/motor_control/motor_backend_hw.c:6:6:MotorBackend_Init	4	static
-../fw/motors/motor_control/motor_backend_hw.c:11:6:MotorBackend_SetTarget	16	static
-../fw/motors/motor_control/motor_backend_hw.c:19:6:MotorBackend_Flush	4	static
-../fw/motors/motor_control/motor_backend_hw.c:24:6:MotorBackend_StopAll	4	static
-../fw/motors/motor_control/motor_backend_hw.c:29:6:MotorBackend_OnFeedback	16	static

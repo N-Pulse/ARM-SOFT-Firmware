@@ -6,28 +6,10 @@
 
 extern UART_HandleTypeDef hcom_uart[COMn];
 
-/* Send a beacon byte safely — caller must mask SysTick to prevent
- * pre-scheduler xPortSysTickHandler from corrupting FreeRTOS state. */
-static inline void app_tx_byte_safe(uint8_t b)
-{
-    USART_TypeDef *u = LPUART1;
-    uint32_t tries = 0;
-    while ((u->ISR & (1U << 7)) == 0U) {
-        if (++tries > 1000000U) return;
-        __asm__ volatile ("nop");
-    }
-    u->TDR = b;
-}
-
 #define APP_BEACON(id, crc) \
     do { \
-        SysTick->CTRL &= ~SysTick_CTRL_TICKINT_Msk; \
-        app_tx_byte_safe(0xAAU); \
-        app_tx_byte_safe(0x01U); \
-        app_tx_byte_safe((id)); \
-        app_tx_byte_safe(0x00U); \
-        app_tx_byte_safe((crc)); \
-        SysTick->CTRL |= SysTick_CTRL_TICKINT_Msk; \
+        uint8_t _b[] = {0xAAU, 0x01U, (id), 0x00U, (crc)}; \
+        HAL_UART_Transmit(&hcom_uart[COM1], _b, sizeof(_b), 50U); \
     } while(0)
 
 /**

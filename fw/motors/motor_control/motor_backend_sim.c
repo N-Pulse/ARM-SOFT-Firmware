@@ -96,26 +96,10 @@ static void   SimTxTask(void *argument);
 static void   RosWatchdogTimeout(TimerHandle_t timer);
 
 /* Temporary step beacons for MotorBackend_Init diagnosis — remove once boot confirmed */
-static inline void minit_tx_byte_safe(uint8_t b)
-{
-    USART_TypeDef *u = LPUART1;
-    uint32_t tries = 0;
-    while ((u->ISR & (1U << 7)) == 0U) {
-        if (++tries > 1000000U) return;
-        __asm__ volatile ("nop");
-    }
-    u->TDR = b;
-}
-
 #define MINIT_BEACON(id, crc) \
     do { \
-        SysTick->CTRL &= ~SysTick_CTRL_TICKINT_Msk; \
-        minit_tx_byte_safe(0xAAU); \
-        minit_tx_byte_safe(0x01U); \
-        minit_tx_byte_safe((id)); \
-        minit_tx_byte_safe(0x00U); \
-        minit_tx_byte_safe((crc)); \
-        SysTick->CTRL |= SysTick_CTRL_TICKINT_Msk; \
+        uint8_t _mb[] = {0xAAU, 0x01U, (id), 0x00U, (crc)}; \
+        HAL_UART_Transmit(&hcom_uart[COM1], _mb, sizeof(_mb), 50U); \
     } while(0)
 
 void MotorBackend_Init(void)
@@ -141,10 +125,14 @@ void MotorBackend_Init(void)
     s_ros_timer_started = false;
     reset_rx_parser();
 
-    /* SimTxTask creation disabled — RX is handled directly in LPUART1_IRQHandler
-     * which sends the ACK from ISR context (isr_send_intent_ack). */
-    (void)SimTxTask;
-    MINIT_BEACON(0xE3U, 0x03U); /* E3: skipped SimTxTask */
+    BaseType_t status = xTaskCreate(SimTxTask,
+                                    "simtx",
+                                    512,
+                                    NULL,
+                                    tskIDLE_PRIORITY + 3,
+                                    &s_tx_task);
+    configASSERT(status == pdPASS);
+    MINIT_BEACON(0xE3U, 0x03U); /* E3: SimTxTask created OK */
 }
 
 void MotorBackend_SetTarget(motor_id_t id, float position, uint8_t speed_percent)
@@ -339,19 +327,18 @@ static void isr_send_intent_ack(uint8_t intent_id)
 
 static void process_select_mode(const uint8_t *payload, uint8_t length)
 {
-    /* Minimal protobuf decode: SelectMode { uint32 selected_mode = 1; }
-     * Wire encoding: [0x08][varint mode_id] */
     if (length < 2U || payload[0U] != 0x08U)
     {
         return;
     }
-
     s_ack_intent_id = payload[1U];
     s_ack_pending   = true;
-
-    /* Send ACK immediately from ISR — bypasses SimTxTask which faults
-     * on FreeRTOS blocking calls. */
-    isr_send_intent_ack(payload[1U]);
+    if (s_tx_task != NULL)
+    {
+        BaseType_t higher_woken = pdFALSE;
+        vTaskNotifyGiveFromISR(s_tx_task, &higher_woken);
+        portYIELD_FROM_ISR(higher_woken);
+    }
 }
 
 static void process_frame(uint8_t msg_id, const uint8_t *payload, uint8_t length)
@@ -600,12 +587,7 @@ static void SimTxTask(void *argument)
 
     while (1)
     {
-        /* Busy-wait without FreeRTOS blocking calls — they fault when SysTick guard
-         * is active during boot. Poll xTickCount (volatile) until period elapsed. */
-        TickType_t start = xTaskGetTickCount();
-        while ((xTaskGetTickCount() - start) < period) {
-            __asm__ volatile ("nop");
-        }
+        ulTaskNotifyTake(pdTRUE, period);
 
         ensure_uart_ready();
 

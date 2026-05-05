@@ -18,8 +18,6 @@
 /* USER CODE END Header */
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
-#include "app.h"
-#include "motor_control.h"
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
@@ -48,8 +46,8 @@
 /* Private variables ---------------------------------------------------------*/
 
 COM_InitTypeDef BspCOMInit;
-
 /* USER CODE BEGIN PV */
+static TaskHandle_t sDefaultTaskHandle;
 static TaskHandle_t sControlTaskHandle;
 static TaskHandle_t sSafetyTaskHandle;
 static TaskHandle_t sTelemetryTaskHandle;
@@ -62,14 +60,16 @@ extern UART_HandleTypeDef hcom_uart[COMn];
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
+void StartDefaultTask(void *argument);
+
 /* USER CODE BEGIN PFP */
 static void ControlTask(void *argument);
 static void SafetyTask(void *argument);
 static void TelemetryTask(void *argument);
-static void StartScheduler(void);
 static void CreateTasks(void);
 static void LedTimerCallback(TimerHandle_t timer);
-
+void App_Init(void);
+void App_Task(void);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -111,6 +111,15 @@ int main(void)
 
   /* USER CODE END 2 */
 
+  /* USER CODE BEGIN RTOS_THREADS */
+  /* Create defaultTask (responsible for App_Init + CreateTasks once scheduler runs) */
+  {
+    BaseType_t s = xTaskCreate(StartDefaultTask, "defTask", 256, NULL,
+                               tskIDLE_PRIORITY + 1, &sDefaultTaskHandle);
+    configASSERT(s == pdPASS);
+  }
+  /* USER CODE END RTOS_THREADS */
+
   /* Initialize led */
   BSP_LED_Init(LED_GREEN);
 
@@ -128,35 +137,21 @@ int main(void)
     Error_Handler();
   }
 
-  /* Boot beacon — mask SysTick during transmission so xPortSysTickHandler
-   * can't corrupt FreeRTOS task lists before the scheduler is initialised. */
+  /* Start scheduler (FreeRTOS native API) */
+  vTaskStartScheduler();
+
+  /* We should never get here as control is now taken by the scheduler */
+
+  /* Infinite loop */
+  /* USER CODE BEGIN WHILE */
+  while (1)
   {
-    SysTick->CTRL &= ~SysTick_CTRL_TICKINT_Msk;
-    static const uint8_t kBootBeacon[] = {0xAAU, 0x01U, 0xFDU, 0x00U, 0x58U};
-    USART_TypeDef *u = LPUART1;
-    for (size_t i = 0; i < sizeof(kBootBeacon); ++i) {
-      uint32_t tries = 0;
-      while ((u->ISR & (1U << 7)) == 0U) {
-        if (++tries > 1000000U) break;
-      }
-      u->TDR = kBootBeacon[i];
-    }
-    SysTick->CTRL |= SysTick_CTRL_TICKINT_Msk;
+
+    /* USER CODE END WHILE */
+
+    /* USER CODE BEGIN 3 */
   }
-
-  App_Init();
-  CreateTasks();
-
-  /* Set up LPUART RX IRQ for incoming SELECT_MODE frames. */
-  __HAL_UART_CLEAR_FLAG(&hcom_uart[COM1], UART_CLEAR_OREF | UART_CLEAR_NEF | UART_CLEAR_FEF);
-  hcom_uart[COM1].Instance->CR1 |= USART_CR1_RXNEIE_RXFNEIE;
-  HAL_NVIC_SetPriority(LPUART1_IRQn, 6, 0);
-  HAL_NVIC_EnableIRQ(LPUART1_IRQn);
-
-  StartScheduler();
-
-  /* Should never reach here */
-  Error_Handler();
+  /* USER CODE END 3 */
 }
 
 /**
@@ -265,10 +260,6 @@ static void ControlTask(void *argument)
 
   while (1)
   {
-    /* Force LPUART1 RX IRQ to stay enabled — gets disabled by something. */
-    LPUART1->CR1 |= USART_CR1_RE | USART_CR1_RXNEIE_RXFNEIE;
-    NVIC->ISER[2] = (1U << 27);  /* enable IRQ 91 */
-
     App_Task();
     Motor_Update();
     vTaskDelayUntil(&last_wake, period);
@@ -322,7 +313,92 @@ void vApplicationStackOverflowHook(TaskHandle_t xTask, char *pcTaskName)
   Error_Handler();
 }
 
+/* Required when configSUPPORT_STATIC_ALLOCATION = 1 */
+static StaticTask_t s_idle_tcb;
+static StackType_t  s_idle_stack[configMINIMAL_STACK_SIZE];
+void vApplicationGetIdleTaskMemory(StaticTask_t **ppxIdleTaskTCBBuffer,
+                                   StackType_t  **ppxIdleTaskStackBuffer,
+                                   uint32_t      *pulIdleTaskStackSize)
+{
+  *ppxIdleTaskTCBBuffer   = &s_idle_tcb;
+  *ppxIdleTaskStackBuffer = s_idle_stack;
+  *pulIdleTaskStackSize   = configMINIMAL_STACK_SIZE;
+}
+
+static StaticTask_t s_timer_tcb;
+static StackType_t  s_timer_stack[configTIMER_TASK_STACK_DEPTH];
+void vApplicationGetTimerTaskMemory(StaticTask_t **ppxTimerTaskTCBBuffer,
+                                    StackType_t  **ppxTimerTaskStackBuffer,
+                                    uint32_t      *pulTimerTaskStackSize)
+{
+  *ppxTimerTaskTCBBuffer   = &s_timer_tcb;
+  *ppxTimerTaskStackBuffer = s_timer_stack;
+  *pulTimerTaskStackSize   = configTIMER_TASK_STACK_DEPTH;
+}
+
 /* USER CODE END 4 */
+
+/* USER CODE BEGIN Header_StartDefaultTask */
+/**
+  * @brief  Function implementing the defaultTask thread.
+  * @param  argument: Not used
+  * @retval None
+  */
+/* USER CODE END Header_StartDefaultTask */
+void StartDefaultTask(void *argument)
+{
+  /* USER CODE BEGIN 5 */
+  (void)argument;
+
+  /* Boot beacon — scheduler is now running, HAL timebase is TIM6
+   * (independent of FreeRTOS SysTick), so HAL_UART_Transmit is safe. */
+  {
+    uint8_t boot[] = {0xAAU, 0x01U, 0xFDU, 0x00U, 0x58U};
+    HAL_UART_Transmit(&hcom_uart[COM1], boot, sizeof(boot), 100U);
+  }
+
+  /* App init: creates motor backend (mutex, timer, SimTxTask),
+   * comm queue/timer. Safe here since scheduler is running. */
+  App_Init();
+
+  /* Create user tasks (Control, Safety, Telemetry, Comms). */
+  CreateTasks();
+
+  /* Arm LPUART1 RX IRQ for incoming SELECT_MODE frames. */
+  __HAL_UART_CLEAR_FLAG(&hcom_uart[COM1], UART_CLEAR_OREF | UART_CLEAR_NEF | UART_CLEAR_FEF);
+  hcom_uart[COM1].Instance->CR1 |= USART_CR1_RXNEIE_RXFNEIE;
+  HAL_NVIC_SetPriority(LPUART1_IRQn, 6, 0);
+  HAL_NVIC_EnableIRQ(LPUART1_IRQn);
+
+  /* defaultTask done with init — idle forever. */
+  for(;;)
+  {
+    vTaskDelay(pdMS_TO_TICKS(1000));
+  }
+  /* USER CODE END 5 */
+}
+
+/**
+  * @brief  Period elapsed callback in non blocking mode
+  * @note   This function is called  when TIM6 interrupt took place, inside
+  * HAL_TIM_IRQHandler(). It makes a direct call to HAL_IncTick() to increment
+  * a global variable "uwTick" used as application time base.
+  * @param  htim : TIM handle
+  * @retval None
+  */
+void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
+{
+  /* USER CODE BEGIN Callback 0 */
+
+  /* USER CODE END Callback 0 */
+  if (htim->Instance == TIM6)
+  {
+    HAL_IncTick();
+  }
+  /* USER CODE BEGIN Callback 1 */
+
+  /* USER CODE END Callback 1 */
+}
 
 /**
   * @brief  This function is executed in case of error occurrence.

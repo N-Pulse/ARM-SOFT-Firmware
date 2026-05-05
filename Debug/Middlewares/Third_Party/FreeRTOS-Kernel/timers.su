@@ -1,5 +1,6 @@
-../Middlewares/Third_Party/FreeRTOS-Kernel/timers.c:233:16:xTimerCreateTimerTask	24	static
+../Middlewares/Third_Party/FreeRTOS-Kernel/timers.c:233:16:xTimerCreateTimerTask	48	static
 ../Middlewares/Third_Party/FreeRTOS-Kernel/timers.c:288:23:xTimerCreate	40	static
+../Middlewares/Third_Party/FreeRTOS-Kernel/timers.c:315:23:xTimerCreateStatic	48	static
 ../Middlewares/Third_Party/FreeRTOS-Kernel/timers.c:355:17:prvInitialiseNewTimer	32	static
 ../Middlewares/Third_Party/FreeRTOS-Kernel/timers.c:386:16:xTimerGenericCommand	48	static
 ../Middlewares/Third_Party/FreeRTOS-Kernel/timers.c:433:18:xTimerGetTimerDaemonTaskHandle	16	static
@@ -18,9 +19,11 @@
 ../Middlewares/Third_Party/FreeRTOS-Kernel/timers.c:716:23:prvInsertTimerInActiveList	32	static
 ../Middlewares/Third_Party/FreeRTOS-Kernel/timers.c:760:17:prvProcessReceivedCommands	48	static
 ../Middlewares/Third_Party/FreeRTOS-Kernel/timers.c:908:17:prvSwitchTimerLists	16	static
-../Middlewares/Third_Party/FreeRTOS-Kernel/timers.c:933:17:prvCheckForValidListAndQueue	8	static
+../Middlewares/Third_Party/FreeRTOS-Kernel/timers.c:933:17:prvCheckForValidListAndQueue	16	static
 ../Middlewares/Third_Party/FreeRTOS-Kernel/timers.c:984:16:xTimerIsTimerActive	32	static
 ../Middlewares/Third_Party/FreeRTOS-Kernel/timers.c:1009:12:pvTimerGetTimerID	32	static
 ../Middlewares/Third_Party/FreeRTOS-Kernel/timers.c:1026:10:vTimerSetTimerID	24	static
 ../Middlewares/Third_Party/FreeRTOS-Kernel/timers.c:1043:20:xTimerPendFunctionCallFromISR	48	static
 ../Middlewares/Third_Party/FreeRTOS-Kernel/timers.c:1070:20:xTimerPendFunctionCall	48	static
+../Middlewares/Third_Party/FreeRTOS-Kernel/timers.c:1102:21:uxTimerGetTimerNumber	16	static
+../Middlewares/Third_Party/FreeRTOS-Kernel/timers.c:1112:14:vTimerSetTimerNumber	16	static

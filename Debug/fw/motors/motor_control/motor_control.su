@@ -1,5 +1,5 @@
 ../fw/motors/motor_control/motor_control.c:5:6:Motor_InitAll	8	static
 ../fw/motors/motor_control/motor_control.c:11:6:Motor_Update	8	static
 ../fw/motors/motor_control/motor_control.c:16:6:Motor_SetTarget	24	static
-../fw/motors/motor_control/motor_control.c:30:6:Motor_SetAllTargets	24	static
-../fw/motors/motor_control/motor_control.c:38:6:Motor_StopAll	8	static
+../fw/motors/motor_control/motor_control.c:31:6:Motor_SetAllTargets	24	static
+../fw/motors/motor_control/motor_control.c:39:6:Motor_StopAll	8	static

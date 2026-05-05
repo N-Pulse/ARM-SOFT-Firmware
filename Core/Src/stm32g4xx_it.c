@@ -57,6 +57,7 @@
 /* USER CODE END 0 */
 
 /* External variables --------------------------------------------------------*/
+extern TIM_HandleTypeDef htim6;
 
 /* USER CODE BEGIN EV */
 extern void xPortPendSVHandler(void);
@@ -143,14 +144,6 @@ void UsageFault_Handler(void)
 }
 
 /**
-  * @brief This function handles System service call via SWI instruction.
-  */
-void SVC_Handler(void)
-{
-  vPortSVCHandler();
-}
-
-/**
   * @brief This function handles Debug monitor.
   */
 void DebugMon_Handler(void)
@@ -161,23 +154,6 @@ void DebugMon_Handler(void)
   /* USER CODE BEGIN DebugMonitor_IRQn 1 */
 
   /* USER CODE END DebugMonitor_IRQn 1 */
-}
-
-/**
-  * @brief This function handles Pendable request for system service.
-  */
-void PendSV_Handler(void)
-{
-  xPortPendSVHandler();
-}
-
-/**
-  * @brief This function handles System tick timer.
-  */
-void SysTick_Handler(void)
-{
-  HAL_IncTick();
-  xPortSysTickHandler();
 }
 
 /******************************************************************************/
@@ -201,24 +177,35 @@ void EXTI15_10_IRQHandler(void)
   /* USER CODE END EXTI15_10_IRQn 1 */
 }
 
+/**
+  * @brief This function handles TIM6 global interrupt, DAC1 and DAC3 channel underrun error interrupts.
+  */
+void TIM6_DAC_IRQHandler(void)
+{
+  HAL_TIM_IRQHandler(&htim6);
+}
+
+/**
+  * @brief SysTick is used exclusively by FreeRTOS (HAL timebase is TIM6).
+  */
+void SysTick_Handler(void)
+{
+  xPortSysTickHandler();
+}
+
 /* USER CODE BEGIN 1 */
 extern UART_HandleTypeDef hcom_uart[COMn];
 extern void handle_rx_byte_external(uint8_t b);
 
-volatile uint32_t g_lpuart_irq_count = 0;
-volatile uint8_t  g_lpuart_last_byte = 0;
-
 void LPUART1_IRQHandler(void)
 {
     USART_TypeDef *u = LPUART1;
-    g_lpuart_irq_count++;
     if (u->ISR & (USART_ISR_ORE | USART_ISR_FE | USART_ISR_NE)) {
         u->ICR = USART_ICR_ORECF | USART_ICR_FECF | USART_ICR_NECF;
     }
     if (u->ISR & USART_ISR_RXNE_RXFNE) {
         uint8_t b = (uint8_t)u->RDR;
-        g_lpuart_last_byte = b;
-        /* handle_rx_byte_external(b); -- temporarily disabled to test IRQ alone */
+        handle_rx_byte_external(b);
     }
 }
 /* USER CODE END 1 */

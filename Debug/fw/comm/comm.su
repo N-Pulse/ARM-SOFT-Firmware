@@ -1,5 +1,8 @@
-../fw/comm/comm.c:29:6:Comms_Init	32	static
-../fw/comm/comm.c:51:6:Comms_GetNextIntent	16	static
-../fw/comm/comm.c:61:25:enqueue_intent	32	static
-../fw/comm/comm.c:82:13:Comms_Task	16	static
-../fw/comm/comm.c:96:13:Comms_HeartbeatTimeout	16	static
+../fw/comm/comm.c:35:13:ReceiveMessage	24	static
+../fw/comm/comm.c:47:13:HandleReceivedMessage	16	static
+../fw/comm/comm.c:77:13:Comms_HeartbeatTimeout	16	static
+../fw/comm/comm.c:84:6:Comms_Init	24	static
+../fw/comm/comm.c:98:6:enqueue_intent_from_proto	40	static
+../fw/comm/comm.c:117:6:Comms_GetNextIntent	16	static
+../fw/comm/comm.c:125:13:Comms_Task	24	static
+../fw/comm/comm.c:142:6:Comms_TaskCreate	24	static
