@@ -18,11 +18,16 @@ void IntentRouter_Handle(const intent_t *intent)
 
     switch (intent->id)
     {
-        case MODE_OPEN:    apply_full_pose(MOTOR_POSE_OPEN);              break;
-        case MODE_CLOSE:   apply_full_pose(MOTOR_POSE_CLOSED);            break;
-        case MODE_PINCH:   apply_full_pose(MOTOR_POSE_PINCH);             break;
-        case MODE_WRIST_R: Motor_SetTarget(MOTOR_WRIST_X,  1.57f, 100);  break;
-        case MODE_WRIST_L: Motor_SetTarget(MOTOR_WRIST_X, -1.57f, 100);  break;
-        default:           Motor_StopAll();                                break;
+        case ACTION_OPEN_HAND:      apply_full_pose(MOTOR_POSE_OPEN);              break;
+        case ACTION_CLOSE_HAND:     apply_full_pose(MOTOR_POSE_CLOSED);            break;
+        case ACTION_PINCH:          apply_full_pose(MOTOR_POSE_PINCH);             break;
+        case ACTION_ROTATE_WRIST_R: Motor_SetTarget(MOTOR_WRIST_X,  1.57f, 100);   break;
+        case ACTION_ROTATE_WRIST_L: Motor_SetTarget(MOTOR_WRIST_X, -1.57f, 100);   break;
+
+        case ACTION_UNKNOWN:
+        default:
+            /* Safety fallback (link timeout or unrecognised intent). */
+            Motor_StopAll();
+            break;
     }
 }

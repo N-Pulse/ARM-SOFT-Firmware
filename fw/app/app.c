@@ -14,7 +14,7 @@ extern UART_HandleTypeDef hcom_uart[COMn];
 
 /**
  * @brief Initializes all high-level application modules.
- * Called once during system startup after the HAL and RTOS are ready.
+ * Called once from StartDefaultTask after the FreeRTOS scheduler is running.
  */
 void App_Init(void)
 {
@@ -25,18 +25,14 @@ void App_Init(void)
 }
 
 /**
- * @brief Main application logic loop.
- * This is typically called from a dedicated FreeRTOS task.
+ * @brief Main application logic loop, called from ControlTask at 100 Hz.
+ * Drains the FreeRTOS intent queue (filled by Comms_Task) and routes each
+ * intent to motor commands via IntentRouter_Handle().
  */
 void App_Task(void)
 {
     intent_t intent;
-
-    /* * Non-blocking check for new messages from the UART parser.
-     * If a valid packet (Gesture or Direct Positions) was received, 
-     * it is passed to the Router.
-     */
-    if (Comms_GetNextIntent(&intent)) 
+    if (Comms_GetNextIntent(&intent))
     {
         IntentRouter_Handle(&intent);
     }
