@@ -1,8 +1,7 @@
-../fw/comm/comm.c:35:13:ReceiveMessage	24	static
-../fw/comm/comm.c:47:13:HandleReceivedMessage	16	static
-../fw/comm/comm.c:77:13:Comms_HeartbeatTimeout	16	static
-../fw/comm/comm.c:87:6:Comms_Init	24	static
-../fw/comm/comm.c:101:6:enqueue_intent_from_proto	40	static
-../fw/comm/comm.c:120:6:Comms_GetNextIntent	16	static
-../fw/comm/comm.c:128:13:Comms_Task	24	static
-../fw/comm/comm.c:145:6:Comms_TaskCreate	24	static
+../fw/comm/comm.c:15:13:emit_debug_beacon	24	static
+../fw/comm/comm.c:27:13:Comms_HeartbeatTimeout	24	static
+../fw/comm/comm.c:37:6:Comms_Init	24	static
+../fw/comm/comm.c:50:6:Comms_GetNextIntent	16	static
+../fw/comm/comm.c:59:6:enqueue_intent_from_proto	24	static
+../fw/comm/comm.c:70:13:Comms_Task	48	static
+../fw/comm/comm.c:106:6:Comms_TaskCreate	24	static

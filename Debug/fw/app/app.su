@@ -1,2 +1,2 @@
 ../fw/app/app.c:19:6:App_Init	24	static
-../fw/app/app.c:31:6:App_Task	16	static
+../fw/app/app.c:32:6:App_Task	16	static

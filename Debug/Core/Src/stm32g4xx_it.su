@@ -7,4 +7,3 @@
 ../Core/Src/stm32g4xx_it.c:169:6:EXTI15_10_IRQHandler	8	static
 ../Core/Src/stm32g4xx_it.c:183:6:TIM6_DAC_IRQHandler	8	static
 ../Core/Src/stm32g4xx_it.c:191:6:SysTick_Handler	8	static
-../Core/Src/stm32g4xx_it.c:200:6:LPUART1_IRQHandler	16	static

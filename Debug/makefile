@@ -12,11 +12,13 @@ RM := rm -rf
 -include fw/motors/motor_map/subdir.mk
 -include fw/motors/motor_control/subdir.mk
 -include fw/comm/subdir.mk
+-include fw/comm-stack/subdir.mk
 -include fw/app/subdir.mk
 -include Drivers/STM32G4xx_HAL_Driver/Src/subdir.mk
 -include Drivers/BSP/STM32G4xx_Nucleo/subdir.mk
 -include Core/Startup/subdir.mk
 -include Core/Src/subdir.mk
+-include Middlewares/Third_Party/EmbeddedProto/src/subdir.mk
 -include Middlewares/Third_Party/FreeRTOS-Kernel/subdir.mk
 -include objects.mk
 
@@ -29,6 +31,9 @@ ifneq ($(strip $(S_UPPER_DEPS)),)
 endif
 ifneq ($(strip $(C_DEPS)),)
 -include $(C_DEPS)
+endif
+ifneq ($(strip $(CPP_DEPS)),)
+-include $(CPP_DEPS)
 endif
 endif
 
@@ -75,7 +80,7 @@ objects.list: $(OBJS) $(USER_OBJS)
 
 # Tool invocations
 N-PULSE\ FIRMWARE.elf N-PULSE\ FIRMWARE.map: $(OBJS) $(USER_OBJS) ../STM32G474RETX_FLASH.ld makefile objects.list $(OPTIONAL_TOOL_DEPS)
-	arm-none-eabi-gcc -o "N-PULSE FIRMWARE.elf" @"objects.list" $(USER_OBJS) $(LIBS) -mcpu=cortex-m4 -T"../STM32G474RETX_FLASH.ld" --specs=nosys.specs -Wl,-Map="N-PULSE FIRMWARE.map" -Wl,--gc-sections -static --specs=nano.specs -mfpu=fpv4-sp-d16 -mfloat-abi=hard -mthumb -Wl,--start-group -lc -lm -Wl,--end-group
+	arm-none-eabi-g++ -o "N-PULSE FIRMWARE.elf" @"objects.list" $(USER_OBJS) $(LIBS) -mcpu=cortex-m4 -T"../STM32G474RETX_FLASH.ld" --specs=nosys.specs -Wl,-Map="N-PULSE FIRMWARE.map" -Wl,--gc-sections -static --specs=nano.specs -mfpu=fpv4-sp-d16 -mfloat-abi=hard -mthumb -Wl,--start-group -lc -lm -lstdc++ -lsupc++ -Wl,--end-group
 	@echo 'Finished building target: $@'
 	@echo ' '
 

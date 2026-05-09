@@ -1,0 +1,19 @@
+../Middlewares/Third_Party/EmbeddedProto/src/WireFormatter.h:130:33:static constexpr uint32_t EmbeddedProto::WireFormatter::MakeTag(uint32_t, WireType)	16	static
+../Middlewares/Third_Party/EmbeddedProto/src/WireFormatter.h:456:20:static EmbeddedProto::Error EmbeddedProto::WireFormatter::DeserializeFloat(EmbeddedProto::ReadBufferInterface&, float&)	32	static
+../Middlewares/Third_Party/EmbeddedProto/src/WireFormatter.h:470:20:static EmbeddedProto::Error EmbeddedProto::WireFormatter::DeserializeDouble(EmbeddedProto::ReadBufferInterface&, double&)	40	static
+../Middlewares/Third_Party/EmbeddedProto/src/MessageInterface.cpp:38:9:virtual EmbeddedProto::Error EmbeddedProto::MessageInterface::serialize_with_id(uint32_t, EmbeddedProto::WriteBufferInterface&, bool) const	40	static
+../Middlewares/Third_Party/EmbeddedProto/src/ReadBufferInterface.h:48:15:EmbeddedProto::ReadBufferInterface::~ReadBufferInterface()	16	static
+../Middlewares/Third_Party/EmbeddedProto/src/ReadBufferInterface.h:48:15:virtual EmbeddedProto::ReadBufferInterface::~ReadBufferInterface()	16	static
+../Middlewares/Third_Party/EmbeddedProto/src/ReadBufferSection.h:63:7:EmbeddedProto::ReadBufferSection::~ReadBufferSection()	16	static
+../Middlewares/Third_Party/EmbeddedProto/src/ReadBufferSection.h:63:7:virtual EmbeddedProto::ReadBufferSection::~ReadBufferSection()	16	static
+../Middlewares/Third_Party/EmbeddedProto/src/MessageInterface.cpp:74:9:virtual EmbeddedProto::Error EmbeddedProto::MessageInterface::deserialize_check_type(EmbeddedProto::ReadBufferInterface&, const EmbeddedProto::WireFormatter::WireType&)	48	static
+../Middlewares/Third_Party/EmbeddedProto/src/MessageInterface.cpp:93:9:EmbeddedProto::Error EmbeddedProto::MessageInterface::skip_unknown_field(EmbeddedProto::ReadBufferInterface&, const EmbeddedProto::WireFormatter::WireType&) const	32	static
+../Middlewares/Third_Party/EmbeddedProto/src/MessageInterface.cpp:125:9:EmbeddedProto::Error EmbeddedProto::MessageInterface::skip_varint(EmbeddedProto::ReadBufferInterface&) const	24	static
+../Middlewares/Third_Party/EmbeddedProto/src/MessageInterface.cpp:133:9:EmbeddedProto::Error EmbeddedProto::MessageInterface::skip_fixed32(EmbeddedProto::ReadBufferInterface&) const	24	static
+../Middlewares/Third_Party/EmbeddedProto/src/MessageInterface.cpp:139:9:EmbeddedProto::Error EmbeddedProto::MessageInterface::skip_fixed64(EmbeddedProto::ReadBufferInterface&) const	24	static
+../Middlewares/Third_Party/EmbeddedProto/src/MessageInterface.cpp:145:9:EmbeddedProto::Error EmbeddedProto::MessageInterface::skip_length_delimited(EmbeddedProto::ReadBufferInterface&) const	24	static
+../Middlewares/Third_Party/EmbeddedProto/src/WireFormatter.h:523:20:static EmbeddedProto::Error EmbeddedProto::WireFormatter::SerializeVarint(UINT_TYPE, EmbeddedProto::WriteBufferInterface&) [with UINT_TYPE = long unsigned int]	24	static
+../Middlewares/Third_Party/EmbeddedProto/src/WireFormatter.h:548:20:static EmbeddedProto::Error EmbeddedProto::WireFormatter::DeserializeVarint(EmbeddedProto::ReadBufferInterface&, UINT_TYPE&) [with UINT_TYPE = long unsigned int]	48	static
+../Middlewares/Third_Party/EmbeddedProto/src/WireFormatter.h:405:20:static EmbeddedProto::Error EmbeddedProto::WireFormatter::DeserializeFixed(EmbeddedProto::ReadBufferInterface&, TYPE&) [with TYPE = long unsigned int]	32	static
+../Middlewares/Third_Party/EmbeddedProto/src/WireFormatter.h:405:20:static EmbeddedProto::Error EmbeddedProto::WireFormatter::DeserializeFixed(EmbeddedProto::ReadBufferInterface&, TYPE&) [with TYPE = long long unsigned int]	64	static
+../Middlewares/Third_Party/EmbeddedProto/src/WireFormatter.h:548:20:static EmbeddedProto::Error EmbeddedProto::WireFormatter::DeserializeVarint(EmbeddedProto::ReadBufferInterface&, UINT_TYPE&) [with UINT_TYPE = long long unsigned int]	80	static

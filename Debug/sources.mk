@@ -3,22 +3,24 @@
 # Toolchain: GNU Tools for STM32 (13.3.rel1)
 ################################################################################
 
-ELF_SRCS := 
-OBJ_SRCS := 
-S_SRCS := 
-C_SRCS := 
-S_UPPER_SRCS := 
-O_SRCS := 
-CYCLO_FILES := 
-SIZE_OUTPUT := 
-OBJDUMP_LIST := 
-SU_FILES := 
-EXECUTABLES := 
-OBJS := 
-MAP_FILES := 
-S_DEPS := 
-S_UPPER_DEPS := 
-C_DEPS := 
+ELF_SRCS :=
+OBJ_SRCS :=
+S_SRCS :=
+C_SRCS :=
+CPP_SRCS :=
+S_UPPER_SRCS :=
+O_SRCS :=
+CYCLO_FILES :=
+SIZE_OUTPUT :=
+OBJDUMP_LIST :=
+SU_FILES :=
+EXECUTABLES :=
+OBJS :=
+MAP_FILES :=
+S_DEPS :=
+S_UPPER_DEPS :=
+C_DEPS :=
+CPP_DEPS :=
 
 # Every subdirectory with source files must be described here
 SUBDIRS := \
@@ -28,7 +30,9 @@ Drivers/BSP/STM32G4xx_Nucleo \
 Drivers/STM32G4xx_HAL_Driver/Src \
 fw/app \
 fw/comm \
+fw/comm-stack \
 fw/motors/motor_control \
 fw/motors/motor_map \
+Middlewares/Third_Party/EmbeddedProto/src \
 Middlewares/Third_Party/FreeRTOS-Kernel \
 

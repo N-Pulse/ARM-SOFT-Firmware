@@ -194,18 +194,7 @@ void SysTick_Handler(void)
 }
 
 /* USER CODE BEGIN 1 */
-extern UART_HandleTypeDef hcom_uart[COMn];
-extern void handle_rx_byte_external(uint8_t b);
-
-void LPUART1_IRQHandler(void)
-{
-    USART_TypeDef *u = LPUART1;
-    if (u->ISR & (USART_ISR_ORE | USART_ISR_FE | USART_ISR_NE)) {
-        u->ICR = USART_ICR_ORECF | USART_ICR_FECF | USART_ICR_NECF;
-    }
-    if (u->ISR & USART_ISR_RXNE_RXFNE) {
-        uint8_t b = (uint8_t)u->RDR;
-        handle_rx_byte_external(b);
-    }
-}
+/* LPUART1 RX is now driven by Comms_Task (HAL_UART_Receive polling), so no
+ * IRQ handler is needed. Bytes are pulled from the UART by ReceiveMessage()
+ * inside the comm-stack. */
 /* USER CODE END 1 */

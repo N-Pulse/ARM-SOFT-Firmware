@@ -1,10 +1,22 @@
 #include "comm.h"
 #include "intent_router.h"
 #include "rx.h"
+#include "main.h"
 #include "FreeRTOS.h"
 #include "task.h"
 #include "queue.h"
 #include "timers.h"
+
+extern UART_HandleTypeDef hcom_uart[COMn];
+
+/* Debug beacon: emit a 5-byte frame [0xAA][0x01][id][0x00][crc] after we
+ * successfully queue an intent. Lets the host confirm decoding worked,
+ * without depending on the motor pipeline. */
+static void emit_debug_beacon(uint8_t id, uint8_t crc)
+{
+    uint8_t b[] = { 0xAAU, 0x01U, id, 0x00U, crc };
+    HAL_UART_Transmit(&hcom_uart[COM1], b, sizeof(b), 50U);
+}
 
 #define COMMS_QUEUE_LENGTH    8U
 #define COMMS_WATCHDOG_MS     2000U  /* lost-link → ACTION_UNKNOWN */
@@ -63,7 +75,7 @@ static void Comms_Task(void *argument)
     for (;;)
     {
         uint8_t rx_len = 0;
-        if (ReceiveMessage(s_rx_buffer, rx_len))
+        if (ReceiveMessage(s_rx_buffer, &rx_len))
         {
             rx_result_t result = HandleDeviceMessage(s_rx_buffer, rx_len);
 
@@ -71,12 +83,16 @@ static void Comms_Task(void *argument)
             {
                 intent_t intent = { .id = (intent_id_t)result.data.action_id };
                 (void)xQueueSendToBack(s_intent_queue, &intent, 0);
+                /* Confirm to host that decoding + queueing worked (0xC1 = INTENT_QUEUED). */
+                emit_debug_beacon(0xC1U, 0xEEU);
                 /* (re)start watchdog: if no new traffic for COMMS_WATCHDOG_MS,
                  * an ACTION_UNKNOWN safety intent will be enqueued. */
                 xTimerReset(s_heartbeat_timer, 0);
             }
             else if (result.type == RX_TYPE_HELLO)
             {
+                /* Confirm Hello received (0xC2 = HELLO_RECEIVED). */
+                emit_debug_beacon(0xC2U, 0x3AU);
                 /* TODO: respond with a Config message (tx.cpp::SendClassificationData). */
             }
         }

@@ -1,0 +1,12 @@
+C:/Program Files (x86)/Arm GNU Toolchain arm-none-eabi/14.3 rel1/arm-none-eabi/include/c++/14.3.1/limits:1274:7:static constexpr long unsigned int std::numeric_limits<long unsigned int>::max()	4	static
+../Middlewares/Third_Party/EmbeddedProto/src/MessageSizeCalculator.h:57:12:virtual void EmbeddedProto::MessageSizeCalculator::clear()	16	static
+../Middlewares/Third_Party/EmbeddedProto/src/MessageSizeCalculator.h:63:16:virtual uint32_t EmbeddedProto::MessageSizeCalculator::get_size() const	16	static
+../Middlewares/Third_Party/EmbeddedProto/src/MessageSizeCalculator.h:69:16:virtual uint32_t EmbeddedProto::MessageSizeCalculator::get_max_size() const	16	static
+../Middlewares/Third_Party/EmbeddedProto/src/MessageSizeCalculator.h:75:16:virtual uint32_t EmbeddedProto::MessageSizeCalculator::get_available_size() const	16	static
+../Middlewares/Third_Party/EmbeddedProto/src/MessageSizeCalculator.h:81:12:virtual bool EmbeddedProto::MessageSizeCalculator::push(uint8_t)	16	static
+../Middlewares/Third_Party/EmbeddedProto/src/MessageSizeCalculator.h:90:12:virtual bool EmbeddedProto::MessageSizeCalculator::push(const uint8_t*, uint32_t)	24	static
+../Middlewares/Third_Party/EmbeddedProto/src/WriteBufferInterface.h:51:15:EmbeddedProto::WriteBufferInterface::~WriteBufferInterface()	16	static
+../Middlewares/Third_Party/EmbeddedProto/src/WriteBufferInterface.h:51:15:virtual EmbeddedProto::WriteBufferInterface::~WriteBufferInterface()	16	static
+../Middlewares/Third_Party/EmbeddedProto/src/MessageSizeCalculator.h:54:7:EmbeddedProto::MessageSizeCalculator::~MessageSizeCalculator()	16	static
+../Middlewares/Third_Party/EmbeddedProto/src/MessageSizeCalculator.h:54:7:virtual EmbeddedProto::MessageSizeCalculator::~MessageSizeCalculator()	16	static
+../Middlewares/Third_Party/EmbeddedProto/src/Fields.cpp:36:12:uint32_t EmbeddedProto::Field::serialized_size() const	32	static

@@ -1,0 +1,13 @@
+../Middlewares/Third_Party/EmbeddedProto/src/ReadBufferInterface.h:47:7:constexpr EmbeddedProto::ReadBufferInterface::ReadBufferInterface()	16	static
+../Middlewares/Third_Party/EmbeddedProto/src/ReadBufferInterface.h:48:15:EmbeddedProto::ReadBufferInterface::~ReadBufferInterface()	16	static
+../Middlewares/Third_Party/EmbeddedProto/src/ReadBufferInterface.h:48:15:virtual EmbeddedProto::ReadBufferInterface::~ReadBufferInterface()	16	static
+../Middlewares/Third_Party/EmbeddedProto/src/ReadBufferSection.cpp:39:3:EmbeddedProto::ReadBufferSection::ReadBufferSection(EmbeddedProto::ReadBufferInterface&, uint32_t)	32	static
+../Middlewares/Third_Party/EmbeddedProto/src/ReadBufferSection.cpp:47:12:virtual uint32_t EmbeddedProto::ReadBufferSection::get_size() const	16	static
+../Middlewares/Third_Party/EmbeddedProto/src/ReadBufferSection.cpp:52:12:virtual uint32_t EmbeddedProto::ReadBufferSection::get_max_size() const	16	static
+../Middlewares/Third_Party/EmbeddedProto/src/ReadBufferSection.cpp:57:8:virtual bool EmbeddedProto::ReadBufferSection::peek(uint8_t&) const	24	static
+../Middlewares/Third_Party/EmbeddedProto/src/ReadBufferSection.cpp:67:8:virtual bool EmbeddedProto::ReadBufferSection::advance()	24	static
+../Middlewares/Third_Party/EmbeddedProto/src/ReadBufferSection.cpp:78:8:virtual bool EmbeddedProto::ReadBufferSection::advance(uint32_t)	24	static
+../Middlewares/Third_Party/EmbeddedProto/src/ReadBufferSection.cpp:90:8:virtual bool EmbeddedProto::ReadBufferSection::pop(uint8_t&)	24	static
+C:/Program Files (x86)/Arm GNU Toolchain arm-none-eabi/14.3 rel1/arm-none-eabi/include/c++/14.3.1/bits/stl_algobase.h:233:5:constexpr const _Tp& std::min(const _Tp&, const _Tp&) [with _Tp = long unsigned int]	16	static
+../Middlewares/Third_Party/EmbeddedProto/src/ReadBufferSection.h:63:7:EmbeddedProto::ReadBufferSection::~ReadBufferSection()	16	static
+../Middlewares/Third_Party/EmbeddedProto/src/ReadBufferSection.h:63:7:virtual EmbeddedProto::ReadBufferSection::~ReadBufferSection()	16	static
