@@ -2,6 +2,7 @@
 #include "motor_control.h"
 #include "comm.h"
 #include "intent_router.h"
+#include "finger_test.h"
 #include "main.h"
 
 extern UART_HandleTypeDef hcom_uart[COMn];
@@ -21,6 +22,8 @@ void App_Init(void)
     APP_BEACON(0xFCU, 0x14U);
     Motor_InitAll();
     APP_BEACON(0xFBU, 0xEDU);
+    Finger_Test_Init();
+    APP_BEACON(0xFAU, 0x77U);   /* FA = single-finger L298N test bench up */
     Comms_Init();
 }
 

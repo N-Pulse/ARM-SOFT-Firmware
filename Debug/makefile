@@ -11,6 +11,7 @@ RM := rm -rf
 -include sources.mk
 -include fw/motors/motor_map/subdir.mk
 -include fw/motors/motor_control/subdir.mk
+-include fw/motors/finger_test/subdir.mk
 -include fw/comm/subdir.mk
 -include fw/comm-stack/subdir.mk
 -include fw/app/subdir.mk

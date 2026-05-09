@@ -1,2 +1,2 @@
-../fw/app/intent_router.c:6:13:apply_full_pose	24	static
-../fw/app/intent_router.c:15:6:IntentRouter_Handle	16	static
+../fw/app/intent_router.c:10:13:apply_full_pose	24	static
+../fw/app/intent_router.c:19:6:IntentRouter_Handle	16	static
