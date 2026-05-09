@@ -1,0 +1,12 @@
+diff --git a/src/WriteBufferFixedSize.h b/src/WriteBufferFixedSize.h
+index 6e0fc83..ad84180 100644
+--- a/src/WriteBufferFixedSize.h
++++ b/src/WriteBufferFixedSize.h
+@@ -33,6 +33,7 @@
+ 
+ #include "WriteBufferInterface.h"
+ #include <array>
++#include <cstring>  /* memcpy — missing in upstream */
+ 
+ namespace EmbeddedProto 
+ {
