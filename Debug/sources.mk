@@ -33,7 +33,7 @@ fw/comm \
 fw/comm-stack \
 fw/motors/motor_control \
 fw/motors/motor_map \
-fw/motors/finger_test \
+fw/motors/motor_l298n \
 Middlewares/Third_Party/EmbeddedProto/src \
 Middlewares/Third_Party/FreeRTOS-Kernel \
 

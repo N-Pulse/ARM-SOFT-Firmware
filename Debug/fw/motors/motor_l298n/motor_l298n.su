@@ -1,0 +1,14 @@
+../fw/motors/motor_l298n/motor_l298n.c:13:13:l298n_beacon	24	static
+../fw/motors/motor_l298n/motor_l298n.c:68:27:htim_for	16	static
+../fw/motors/motor_l298n/motor_l298n.c:75:13:enable_gpio_clock	32	static
+../fw/motors/motor_l298n/motor_l298n.c:83:13:init_timer_base	16	static
+../fw/motors/motor_l298n/motor_l298n.c:95:13:init_pwm_channel	48	static
+../fw/motors/motor_l298n/motor_l298n.c:110:13:set_duty	16	static
+../fw/motors/motor_l298n/motor_l298n.c:117:13:stop_callback	24	static
+../fw/motors/motor_l298n/motor_l298n.c:124:13:arm_stop_timer	24	static
+../fw/motors/motor_l298n/motor_l298n.c:134:6:Motor_L298N_Init	64	static
+../fw/motors/motor_l298n/motor_l298n.c:205:13:drive_forward_for	24	static
+../fw/motors/motor_l298n/motor_l298n.c:214:13:drive_backward_for	24	static
+../fw/motors/motor_l298n/motor_l298n.c:223:6:Motor_L298N_MoveToAngle	32	static
+../fw/motors/motor_l298n/motor_l298n.c:255:6:Motor_L298N_Stop	32	static
+../fw/motors/motor_l298n/motor_l298n.c:267:6:Motor_L298N_StopAll	16	static

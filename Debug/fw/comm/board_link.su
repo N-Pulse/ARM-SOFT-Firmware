@@ -1,0 +1,13 @@
+../fw/comm/board_link.c:32:13:is_master_motor	16	static
+../fw/comm/board_link.c:37:6:BoardLink_IsLocalMotor	16	static
+../fw/comm/board_link.c:43:14:BoardLink_Role	4	static
+../fw/comm/board_link.c:48:13:link_strap_init	40	static
+../fw/comm/board_link.c:66:13:link_uart_init	40	static
+../fw/comm/board_link.c:102:6:BoardLink_Init	8	static
+../fw/comm/board_link.c:112:16:rad_to_q15	24	static
+../fw/comm/board_link.c:124:6:BoardLink_SendMotorCmd	24	static
+../fw/comm/board_link.c:145:13:rxring_pop	16	static
+../fw/comm/board_link.c:154:14:q15_to_rad	24	static
+../fw/comm/board_link.c:160:13:dispatch_motor_cmd	16	static
+../fw/comm/board_link.c:168:13:BoardLink_RxTask	32	static
+../fw/comm/board_link.c:201:6:BoardLink_TaskCreate	24	static

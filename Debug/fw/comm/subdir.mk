@@ -5,13 +5,16 @@
 
 # Add inputs and outputs from these tool invocations to the build variables 
 C_SRCS += \
-../fw/comm/comm.c 
+../fw/comm/comm.c \
+../fw/comm/board_link.c
 
 OBJS += \
-./fw/comm/comm.o 
+./fw/comm/comm.o \
+./fw/comm/board_link.o
 
 C_DEPS += \
-./fw/comm/comm.d 
+./fw/comm/comm.d \
+./fw/comm/board_link.d
 
 
 # Each subdirectory must supply rules for building sources it contributes
@@ -21,7 +24,7 @@ fw/comm/%.o fw/comm/%.su fw/comm/%.cyclo: ../fw/comm/%.c fw/comm/subdir.mk
 clean: clean-fw-2f-comm
 
 clean-fw-2f-comm:
-	-$(RM) ./fw/comm/comm.cyclo ./fw/comm/comm.d ./fw/comm/comm.o ./fw/comm/comm.su
+	-$(RM) ./fw/comm/comm.cyclo ./fw/comm/comm.d ./fw/comm/comm.o ./fw/comm/comm.su ./fw/comm/board_link.cyclo ./fw/comm/board_link.d ./fw/comm/board_link.o ./fw/comm/board_link.su
 
 .PHONY: clean-fw-2f-comm
 

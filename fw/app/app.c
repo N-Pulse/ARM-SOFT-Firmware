@@ -2,7 +2,7 @@
 #include "motor_control.h"
 #include "comm.h"
 #include "intent_router.h"
-#include "finger_test.h"
+#include "board_link.h"
 #include "main.h"
 
 extern UART_HandleTypeDef hcom_uart[COMn];
@@ -20,11 +20,13 @@ extern UART_HandleTypeDef hcom_uart[COMn];
 void App_Init(void)
 {
     APP_BEACON(0xFCU, 0x14U);
-    Motor_InitAll();
+    BoardLink_Init();   /* read strap pin -> role; bring up USART3 */
+    /* Beacon role: F8 = master, F9 = slave. */
+    APP_BEACON((BoardLink_Role() == BOARD_ROLE_MASTER) ? 0xF8U : 0xF9U, 0x4DU);
+    Motor_InitAll();    /* includes Motor_L298N_Init for locally-owned motors */
     APP_BEACON(0xFBU, 0xEDU);
-    Finger_Test_Init();
-    APP_BEACON(0xFAU, 0x77U);   /* FA = single-finger L298N test bench up */
     Comms_Init();
+    BoardLink_TaskCreate();     /* spawns RX task only on slave */
 }
 
 /**

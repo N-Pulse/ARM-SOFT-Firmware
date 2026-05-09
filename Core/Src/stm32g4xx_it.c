@@ -217,4 +217,28 @@ void LPUART1_IRQHandler(void)
         }
     }
 }
+
+/* RX ring buffer for USART3 — board-to-board link drained by BoardLink_RxTask
+ * on the slave side. Same pattern as LPUART1. */
+#define USART3_RXRING_SIZE  256U
+volatile uint8_t  g_usart3_rxring[USART3_RXRING_SIZE];
+volatile uint16_t g_usart3_rxring_head = 0;
+volatile uint16_t g_usart3_rxring_tail = 0;
+
+void USART3_IRQHandler(void)
+{
+    USART_TypeDef *u = USART3;
+    if (u->ISR & (USART_ISR_ORE | USART_ISR_FE | USART_ISR_NE)) {
+        u->ICR = USART_ICR_ORECF | USART_ICR_FECF | USART_ICR_NECF;
+    }
+    while (u->ISR & USART_ISR_RXNE_RXFNE) {
+        uint8_t b = (uint8_t)u->RDR;
+        uint16_t next = (uint16_t)((g_usart3_rxring_head + 1U)
+                                   % USART3_RXRING_SIZE);
+        if (next != g_usart3_rxring_tail) {
+            g_usart3_rxring[g_usart3_rxring_head] = b;
+            g_usart3_rxring_head = next;
+        }
+    }
+}
 /* USER CODE END 1 */
