@@ -65,51 +65,96 @@ void enqueue_intent_from_proto(intent_id_t id)
     }
 }
 
-/* Comms_Task: pulls bytes from UART via the comm-stack, decodes proto,
- * pushes intents to the FreeRTOS queue. */
+/* Ring buffer filled by LPUART1_IRQHandler in stm32g4xx_it.c. */
+extern volatile uint8_t  g_rxring[];
+extern volatile uint16_t g_rxring_head;
+extern volatile uint16_t g_rxring_tail;
+#define RXRING_SIZE  256U
+
+static bool raw_uart_read_byte(uint8_t *out_b)
+{
+    if (g_rxring_head == g_rxring_tail) return false;  /* empty */
+    *out_b = g_rxring[g_rxring_tail];
+    g_rxring_tail = (uint16_t)((g_rxring_tail + 1U) % RXRING_SIZE);
+    return true;
+}
+
+/* Comms_Task: pulls bytes from UART, decodes proto, pushes intents to queue. */
 static void Comms_Task(void *argument)
 {
     (void)argument;
     static uint8_t s_rx_buffer[RX_BUFFER_SIZE];
 
+    /* CA = task is alive (one-shot). */
+    emit_debug_beacon(0xCAU, 0x60U);
+
     for (;;)
     {
-        uint8_t rx_len = 0;
-        if (ReceiveMessage(s_rx_buffer, &rx_len))
-        {
-            rx_result_t result = HandleDeviceMessage(s_rx_buffer, rx_len);
+        uint8_t b = 0;
 
-            if (result.type == RX_TYPE_ACTION)
-            {
-                intent_t intent = { .id = (intent_id_t)result.data.action_id };
-                (void)xQueueSendToBack(s_intent_queue, &intent, 0);
-                /* Confirm to host that decoding + queueing worked (0xC1 = INTENT_QUEUED). */
-                emit_debug_beacon(0xC1U, 0xEEU);
-                /* (re)start watchdog: if no new traffic for COMMS_WATCHDOG_MS,
-                 * an ACTION_UNKNOWN safety intent will be enqueued. */
-                xTimerReset(s_heartbeat_timer, 0);
-            }
-            else if (result.type == RX_TYPE_HELLO)
-            {
-                /* Confirm Hello received (0xC2 = HELLO_RECEIVED). */
-                emit_debug_beacon(0xC2U, 0x3AU);
-                /* TODO: respond with a Config message (tx.cpp::SendClassificationData). */
+        /* Wait for sync byte 0xAA (no TX inside this loop — would overrun RX). */
+        if (!raw_uart_read_byte(&b)) {
+            vTaskDelay(pdMS_TO_TICKS(2));
+            continue;
+        }
+        if (b != 0xAAU) continue;  /* not the sync, drop and look again */
+
+        /* Got sync — read length + payload in tight loop, NO TX in-between
+         * (TX would consume bandwidth and let the FIFO overrun on bursts). */
+        uint8_t rx_len = 0;
+        TickType_t deadline = xTaskGetTickCount() + pdMS_TO_TICKS(100);
+        while (!raw_uart_read_byte(&rx_len)) {
+            if (xTaskGetTickCount() >= deadline) goto resync;
+        }
+        if (rx_len == 0U || rx_len > RX_BUFFER_SIZE) continue;
+
+        uint8_t got = 0;
+        deadline = xTaskGetTickCount() + pdMS_TO_TICKS(100);
+        while (got < rx_len) {
+            if (raw_uart_read_byte(&s_rx_buffer[got])) {
+                got++;
+            } else if (xTaskGetTickCount() >= deadline) {
+                goto resync;
             }
         }
-        else
-        {
-            vTaskDelay(pdMS_TO_TICKS(2));  /* yield when nothing pending */
+
+        /* Frame complete — only NOW do we emit a beacon (TX is slow, would
+         * overrun a back-to-back incoming burst). */
+        emit_debug_beacon(0xC0U, 0xA2U);  /* C0 = full frame captured */
+
+        rx_result_t result = HandleDeviceMessage(s_rx_buffer, rx_len);
+
+        if (result.type == RX_TYPE_NONE) {
+            emit_debug_beacon(0xC3U, 0x76U);   /* C3 = parse returned NONE */
         }
+        else if (result.type == RX_TYPE_ACTION) {
+            intent_t intent = { .id = (intent_id_t)result.data.action_id };
+            (void)xQueueSendToBack(s_intent_queue, &intent, 0);
+            emit_debug_beacon(0xC1U, 0xEEU);   /* C1 = intent queued */
+            /* Watchdog disabled — was firing ACTION_UNKNOWN after 2s of silence
+             * which then puts SafetyTask into ALL_STOP spam.  Re-enable later
+             * when the EMG side actually streams periodic intents. */
+            /* xTimerReset(s_heartbeat_timer, 0); */
+        }
+        else if (result.type == RX_TYPE_HELLO) {
+            emit_debug_beacon(0xC2U, 0x3AU);   /* C2 = hello decoded */
+        }
+        continue;
+
+    resync:
+        /* Timeout mid-frame: log and look for the next sync byte. */
+        emit_debug_beacon(0xCFU, 0x01U);   /* CF = packetizer timeout */
     }
 }
 
 void Comms_TaskCreate(void)
 {
+    /* Priority above ControlTask (3) so RX byte polling isn't starved. */
     BaseType_t status = xTaskCreate(Comms_Task,
                                     "comms",
                                     512,
                                     NULL,
-                                    tskIDLE_PRIORITY + 2,
+                                    tskIDLE_PRIORITY + 4,
                                     NULL);
     configASSERT(status == pdPASS);
 }

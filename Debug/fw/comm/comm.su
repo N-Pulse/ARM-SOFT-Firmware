@@ -3,5 +3,6 @@
 ../fw/comm/comm.c:37:6:Comms_Init	24	static
 ../fw/comm/comm.c:50:6:Comms_GetNextIntent	16	static
 ../fw/comm/comm.c:59:6:enqueue_intent_from_proto	24	static
-../fw/comm/comm.c:70:13:Comms_Task	48	static
-../fw/comm/comm.c:106:6:Comms_TaskCreate	24	static
+../fw/comm/comm.c:74:13:raw_uart_read_byte	16	static
+../fw/comm/comm.c:83:13:Comms_Task	40	static
+../fw/comm/comm.c:150:6:Comms_TaskCreate	24	static

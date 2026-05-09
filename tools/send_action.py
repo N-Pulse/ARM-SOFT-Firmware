@@ -120,6 +120,19 @@ def main() -> int:
 
     try:
         with serial.Serial(args.port, args.baud, timeout=0.05) as ser:
+            # Drain anything stale already on the line (boot beacons, leftover
+            # bytes from previous runs) so the response we capture below is
+            # only what the chip emitted IN REPLY to our message.
+            pre_drain = bytearray()
+            t_end = time.time() + 1.0
+            while time.time() < t_end:
+                b = ser.read(64)
+                if b:
+                    pre_drain.extend(b)
+                    t_end = time.time() + 0.3   # extend window if more bytes flowing
+            if pre_drain:
+                print(f"[..] drained {len(pre_drain)} stale bytes:  {hex_dump(pre_drain)}")
+
             ser.write(frame)
             ser.flush()
             print(f"     sent OK")

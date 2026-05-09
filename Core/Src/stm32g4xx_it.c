@@ -194,7 +194,27 @@ void SysTick_Handler(void)
 }
 
 /* USER CODE BEGIN 1 */
-/* LPUART1 RX is now driven by Comms_Task (HAL_UART_Receive polling), so no
- * IRQ handler is needed. Bytes are pulled from the UART by ReceiveMessage()
- * inside the comm-stack. */
+/* RX ring buffer fed by LPUART1_IRQHandler, drained by Comms_Task.
+ * 256 bytes is enough for a few back-to-back frames at 115200 baud. */
+#define COMMS_RXRING_SIZE  256U
+volatile uint8_t  g_rxring[COMMS_RXRING_SIZE];
+volatile uint16_t g_rxring_head = 0;  /* written by ISR */
+volatile uint16_t g_rxring_tail = 0;  /* read by task */
+
+void LPUART1_IRQHandler(void)
+{
+    USART_TypeDef *u = LPUART1;
+    /* Clear sticky error flags so the IRQ can keep firing. */
+    if (u->ISR & (USART_ISR_ORE | USART_ISR_FE | USART_ISR_NE)) {
+        u->ICR = USART_ICR_ORECF | USART_ICR_FECF | USART_ICR_NECF;
+    }
+    while (u->ISR & USART_ISR_RXNE_RXFNE) {
+        uint8_t b = (uint8_t)u->RDR;
+        uint16_t next = (uint16_t)((g_rxring_head + 1U) % COMMS_RXRING_SIZE);
+        if (next != g_rxring_tail) {  /* drop on overflow rather than corrupt */
+            g_rxring[g_rxring_head] = b;
+            g_rxring_head = next;
+        }
+    }
+}
 /* USER CODE END 1 */

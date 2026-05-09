@@ -209,13 +209,12 @@ static void ensure_uart_ready(void)
     if ((s_uart_handle == NULL) && (hcom_uart[COM1].Instance != NULL))
     {
         s_uart_handle = &hcom_uart[COM1];
-        HAL_NVIC_SetPriority(LPUART1_IRQn, 6, 0);
-        HAL_NVIC_EnableIRQ(LPUART1_IRQn);
-        /* Re-enable RX (was disabled in main() during boot to keep TX clean). */
+        /* RX is now owned by Comms_Task (HAL_UART_Receive polling) — DO NOT call
+         * HAL_UART_Receive_IT here, it would set huart->RxState = BUSY_RX and
+         * make the polling read return HAL_BUSY forever. */
         s_uart_handle->Instance->CR1 |= USART_CR1_RE;
         __HAL_UART_CLEAR_FLAG(s_uart_handle, UART_CLEAR_OREF | UART_CLEAR_NEF | UART_CLEAR_FEF);
         s_uart_handle->ErrorCode = HAL_UART_ERROR_NONE;
-        start_rx_interrupt();
         transmit_frame(0xFE, NULL, 0U);
     }
 }

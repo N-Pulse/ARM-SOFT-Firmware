@@ -364,9 +364,15 @@ void StartDefaultTask(void *argument)
   /* Create user tasks (Control, Safety, Telemetry, Comms). */
   CreateTasks();
 
-  /* Arm LPUART1 RX IRQ for incoming SELECT_MODE frames. */
+  /* RX is driven by LPUART1_IRQHandler (in stm32g4xx_it.c) which fills a
+   * ring buffer drained by Comms_Task. Enable RX FIFO (8 bytes) + RXNE
+   * interrupt + NVIC line, so byte arrival wakes the IRQ immediately and
+   * we never overrun even on back-to-back bursts. */
   __HAL_UART_CLEAR_FLAG(&hcom_uart[COM1], UART_CLEAR_OREF | UART_CLEAR_NEF | UART_CLEAR_FEF);
-  hcom_uart[COM1].Instance->CR1 |= USART_CR1_RXNEIE_RXFNEIE;
+  hcom_uart[COM1].Instance->CR1 &= ~USART_CR1_UE;             /* UE off to change FIFOEN */
+  hcom_uart[COM1].Instance->CR1 |= USART_CR1_FIFOEN;
+  hcom_uart[COM1].Instance->CR1 |= USART_CR1_RXNEIE_RXFNEIE;  /* RX interrupt on byte */
+  hcom_uart[COM1].Instance->CR1 |= USART_CR1_UE;              /* UE back on */
   HAL_NVIC_SetPriority(LPUART1_IRQn, 6, 0);
   HAL_NVIC_EnableIRQ(LPUART1_IRQn);
 
