@@ -4,9 +4,12 @@
 
 #define DEG2RAD(x) ((x) * 0.0174532925f)
 
+/* Reset position = main ouverte + poignet droit → tous les angles à 0°.
+ * Chaque moteur est à sa contrainte mécanique au boot, et on appelle ça 0°.
+ * Les autres poses sont définies par rapport à ce zéro. */
 static const float s_pose_table[MOTOR_POSE_COUNT][MOTOR_COUNT] = {
     [MOTOR_POSE_OPEN] = {
-        DEG2RAD(5.0f),  DEG2RAD(0.0f),  DEG2RAD(0.0f),  DEG2RAD(0.0f),
+        DEG2RAD(0.0f),  DEG2RAD(0.0f),  DEG2RAD(0.0f),  DEG2RAD(0.0f),
         DEG2RAD(0.0f),  DEG2RAD(0.0f),  DEG2RAD(0.0f),  DEG2RAD(0.0f),
     },
     [MOTOR_POSE_CLOSED] = {

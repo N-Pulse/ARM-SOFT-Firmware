@@ -30,7 +30,8 @@ void          BoardLink_Init(void);
 board_role_t  BoardLink_Role(void);
 
 /* True if this board is the one physically wired to the given motor.
- * Master owns wrist X/Y; slave owns the 5 fingers + palm. */
+ * Master (motherboard) owns WRIST_X, THUMB, LITTLE.
+ * Slave  (daughterboard) owns INDEX, MIDDLE, RING, WRIST_Y, PALM. */
 bool          BoardLink_IsLocalMotor(motor_id_t id);
 
 /* Master-only: encode + transmit a motor command frame to the slave.

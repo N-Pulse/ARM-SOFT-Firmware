@@ -28,10 +28,13 @@ extern volatile uint16_t g_usart3_rxring_tail;
 static UART_HandleTypeDef s_huart3;
 static board_role_t       s_role = BOARD_ROLE_MASTER;
 
-/* Wrist X/Y live on the motherboard; the rest on the daughterboard. */
+/* Motherboard owns 3 motors (master): WRIST_X, THUMB, LITTLE.
+ * Daughterboard owns the other 5 (slave): INDEX, MIDDLE, RING, WRIST_Y, PALM. */
 static bool is_master_motor(motor_id_t id)
 {
-    return (id == MOTOR_WRIST_X) || (id == MOTOR_WRIST_Y);
+    return (id == MOTOR_WRIST_X) ||
+           (id == MOTOR_THUMB)   ||
+           (id == MOTOR_LITTLE);
 }
 
 bool BoardLink_IsLocalMotor(motor_id_t id)
