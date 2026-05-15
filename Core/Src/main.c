@@ -236,28 +236,89 @@ static void MX_GPIO_Init(void)
 
 #ifdef WRIST_ENCODER_TEST
 /* ---------------------------------------------------------------------------
- * Banc de test poignet — autonome (pas de dépendance à fw/bsp/encoder).
- * Lit directement TIM2 (WRIST_X, PA0/PA1, AF1) et TIM8 (WRIST_Y, PC6/PC7, AF4)
- * en mode encodeur quadrature TI12. Stream sur le VCP USB via printf (COM1).
+ * Banc de test encodeurs — autonome (pas de dépendance à fw/bsp/encoder).
  *
- * Datasheet Moon DCU10025P12 : 12 PPR ×4 quadrature = 48 cnt/tour moteur,
- * réducteur 61:1 → 2928 cnt/tour arbre sortie.
+ * Le MÊME binaire tourne sur les 2 cartes. Chaque carte initialise et stream
+ * UNIQUEMENT ses encodeurs locaux (BoardLink_IsLocalMotor), nommés correctement,
+ * sur SON propre VCP USB :
+ *   - Master  : WRIST_X, WRIST_Y, LITTLE   (3 encodeurs)
+ *   - Slave   : INDEX, MIDDLE, RING, THUMB, PALM   (5 encodeurs)
+ * → pour voir les 8, ouvre le script sur le COM du master ET sur celui du slave.
+ *
+ * Timer-sharing : un timer sert 1 moteur master ET 1 moteur slave, jamais en
+ * même temps (rôle décidé au boot par le strap PC0). Voir encoder_bsp.h.
+ *
+ * Moon DCU10025P12 : 12 PPR ×4 = 48 cnt/tour moteur, gearbox 61:1
+ * → 2928 cnt/tour arbre sortie.
  * --------------------------------------------------------------------------- */
 #define WT_CNT_PER_OUTPUT_REV  2928L
 
-static TIM_HandleTypeDef s_wt_htim2;   /* WRIST_X (32-bit) */
-static TIM_HandleTypeDef s_wt_htim8;   /* WRIST_Y (16-bit) */
+typedef struct {
+  const char   *name;
+  TIM_TypeDef  *tim;
+  bool          is32;
+  GPIO_TypeDef *p1; uint16_t pin1; uint8_t af1;
+  GPIO_TypeDef *p2; uint16_t pin2; uint8_t af2;
+} wt_enc_t;
 
-static void wt_encoder_init(TIM_HandleTypeDef *htim, TIM_TypeDef *inst,
-                            uint32_t period)
+/* Indexé par motor_id (THUMB..PALM). Identique à fw/bsp/encoder/encoder_bsp.c. */
+static const wt_enc_t s_wt[MOTOR_COUNT] = {
+  [MOTOR_THUMB]   = { "THUMB",   TIM15, false, GPIOB, GPIO_PIN_14, 1, GPIOB, GPIO_PIN_15, 1 },
+  [MOTOR_INDEX]   = { "INDEX",   TIM2,  true,  GPIOA, GPIO_PIN_0,  1, GPIOA, GPIO_PIN_1,  1 },
+  [MOTOR_MIDDLE]  = { "MIDDLE",  TIM3,  false, GPIOA, GPIO_PIN_6,  2, GPIOA, GPIO_PIN_7,  2 },
+  [MOTOR_RING]    = { "RING",    TIM8,  false, GPIOC, GPIO_PIN_6,  4, GPIOC, GPIO_PIN_7,  4 },
+  [MOTOR_LITTLE]  = { "LITTLE",  TIM3,  false, GPIOA, GPIO_PIN_6,  2, GPIOA, GPIO_PIN_7,  2 },
+  [MOTOR_WRIST_X] = { "WRIST_X", TIM2,  true,  GPIOA, GPIO_PIN_0,  1, GPIOA, GPIO_PIN_1,  1 },
+  [MOTOR_WRIST_Y] = { "WRIST_Y", TIM8,  false, GPIOC, GPIO_PIN_6,  4, GPIOC, GPIO_PIN_7,  4 },
+  [MOTOR_PALM]    = { "PALM",    TIM20, false, GPIOB, GPIO_PIN_2,  3, GPIOC, GPIO_PIN_2,  6 },
+};
+
+static TIM_HandleTypeDef s_h2, s_h3, s_h8, s_h15, s_h20;
+
+static TIM_HandleTypeDef *wt_h(TIM_TypeDef *t)
 {
+  if (t == TIM2)  return &s_h2;
+  if (t == TIM3)  return &s_h3;
+  if (t == TIM8)  return &s_h8;
+  if (t == TIM15) return &s_h15;
+  if (t == TIM20) return &s_h20;
+  return NULL;
+}
+
+static void wt_clk(GPIO_TypeDef *p, TIM_TypeDef *t)
+{
+  if      (p == GPIOA) __HAL_RCC_GPIOA_CLK_ENABLE();
+  else if (p == GPIOB) __HAL_RCC_GPIOB_CLK_ENABLE();
+  else if (p == GPIOC) __HAL_RCC_GPIOC_CLK_ENABLE();
+  if      (t == TIM2)  __HAL_RCC_TIM2_CLK_ENABLE();
+  else if (t == TIM3)  __HAL_RCC_TIM3_CLK_ENABLE();
+  else if (t == TIM8)  __HAL_RCC_TIM8_CLK_ENABLE();
+  else if (t == TIM15) __HAL_RCC_TIM15_CLK_ENABLE();
+  else if (t == TIM20) __HAL_RCC_TIM20_CLK_ENABLE();
+}
+
+static void wt_init_one(const wt_enc_t *e)
+{
+  TIM_HandleTypeDef *h = wt_h(e->tim);
+  if (h == NULL || h->Instance != NULL) return;  /* déjà init (timer partagé) */
+
+  wt_clk(e->p1, e->tim);
+  wt_clk(e->p2, e->tim);
+
+  GPIO_InitTypeDef g = {0};
+  g.Mode  = GPIO_MODE_AF_PP;
+  g.Pull  = GPIO_PULLUP;
+  g.Speed = GPIO_SPEED_FREQ_HIGH;
+  g.Pin = e->pin1; g.Alternate = e->af1; HAL_GPIO_Init(e->p1, &g);
+  g.Pin = e->pin2; g.Alternate = e->af2; HAL_GPIO_Init(e->p2, &g);
+
   TIM_Encoder_InitTypeDef enc = {0};
-  htim->Instance           = inst;
-  htim->Init.Prescaler     = 0;
-  htim->Init.CounterMode   = TIM_COUNTERMODE_UP;
-  htim->Init.Period        = period;
-  htim->Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
-  htim->Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+  h->Instance           = e->tim;
+  h->Init.Prescaler     = 0;
+  h->Init.CounterMode   = TIM_COUNTERMODE_UP;
+  h->Init.Period        = e->is32 ? 0xFFFFFFFFUL : 0xFFFFUL;
+  h->Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+  h->Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
   enc.EncoderMode  = TIM_ENCODERMODE_TI12;
   enc.IC1Polarity  = TIM_ICPOLARITY_RISING;
   enc.IC1Selection = TIM_ICSELECTION_DIRECTTI;
@@ -267,65 +328,44 @@ static void wt_encoder_init(TIM_HandleTypeDef *htim, TIM_TypeDef *inst,
   enc.IC2Selection = TIM_ICSELECTION_DIRECTTI;
   enc.IC2Prescaler = TIM_ICPSC_DIV1;
   enc.IC2Filter    = 4;
-  HAL_TIM_Encoder_Init(htim, &enc);
-  HAL_TIM_Encoder_Start(htim, TIM_CHANNEL_ALL);
-  __HAL_TIM_SET_COUNTER(htim, 0);
+  HAL_TIM_Encoder_Init(h, &enc);
+  HAL_TIM_Encoder_Start(h, TIM_CHANNEL_ALL);
+  __HAL_TIM_SET_COUNTER(h, 0);
 }
 
 static void WristTest_Task(void *argument)
 {
   (void)argument;
 
-  /* GPIO : PA0/PA1 → TIM2 AF1 (WRIST_X) ; PC6/PC7 → TIM8 AF4 (WRIST_Y) */
-  __HAL_RCC_GPIOA_CLK_ENABLE();
-  __HAL_RCC_GPIOC_CLK_ENABLE();
-  __HAL_RCC_TIM2_CLK_ENABLE();
-  __HAL_RCC_TIM8_CLK_ENABLE();
-
-  GPIO_InitTypeDef g = {0};
-  g.Mode  = GPIO_MODE_AF_PP;
-  g.Pull  = GPIO_PULLUP;
-  g.Speed = GPIO_SPEED_FREQ_HIGH;
-
-  g.Pin = GPIO_PIN_0 | GPIO_PIN_1;  g.Alternate = GPIO_AF1_TIM2;
-  HAL_GPIO_Init(GPIOA, &g);
-  g.Pin = GPIO_PIN_6 | GPIO_PIN_7;  g.Alternate = GPIO_AF4_TIM8;
-  HAL_GPIO_Init(GPIOC, &g);
-
-  wt_encoder_init(&s_wt_htim2, TIM2, 0xFFFFFFFFUL);  /* 32-bit */
-  wt_encoder_init(&s_wt_htim8, TIM8, 0xFFFFUL);      /* 16-bit */
+  /* Init des encodeurs LOCAUX de cette carte uniquement. */
+  for (int i = 0; i < MOTOR_COUNT; i++)
+  {
+    if (BoardLink_IsLocalMotor((motor_id_t)i))
+      wt_init_one(&s_wt[i]);
+  }
 
   for (;;)
   {
-    int32_t cx = (int32_t)__HAL_TIM_GET_COUNTER(&s_wt_htim2);
-    int32_t cy = (int32_t)(int16_t)__HAL_TIM_GET_COUNTER(&s_wt_htim8);
+    for (int i = 0; i < MOTOR_COUNT; i++)
+    {
+      if (!BoardLink_IsLocalMotor((motor_id_t)i)) continue;
+      const wt_enc_t *e = &s_wt[i];
+      TIM_HandleTypeDef *h = wt_h(e->tim);
+      if (h == NULL) continue;
 
-    long xmdeg = (long)((int64_t)cx * 360000 / WT_CNT_PER_OUTPUT_REV);
-    long ymdeg = (long)((int64_t)cy * 360000 / WT_CNT_PER_OUTPUT_REV);
+      uint32_t raw = __HAL_TIM_GET_COUNTER(h);
+      int32_t cnt  = e->is32 ? (int32_t)raw : (int32_t)(int16_t)raw;
+      long mdeg    = (long)((int64_t)cnt * 360000 / WT_CNT_PER_OUTPUT_REV);
 
-    /* Niveau LOGIQUE BRUT des 4 voies (lisible même en mode timer : l'IDR
-     * reflète toujours l'état réel du pin). Tourne l'arbre encodeur LENTEMENT
-     * à la main et regarde si Xa/Xb/Ya/Yb togglent 0↔1.
-     *   - togglent → câblage OK, problème = couplage mécanique au moteur
-     *   - figés    → encodeur non alimenté / pas câblé / mauvais pin */
-    int xa = (int)((GPIOA->IDR >> 0) & 1U);  /* PA0 = WRIST_X A */
-    int xb = (int)((GPIOA->IDR >> 1) & 1U);  /* PA1 = WRIST_X B */
-    int ya = (int)((GPIOC->IDR >> 6) & 1U);  /* PC6 = WRIST_Y A */
-    int yb = (int)((GPIOC->IDR >> 7) & 1U);  /* PC7 = WRIST_Y B */
-
-    printf("ENC WRIST local=%d X_cnt=%ld X_mdeg=%ld Y_cnt=%ld Y_mdeg=%ld "
-           "| Xa=%d Xb=%d Ya=%d Yb=%d\r\n",
-           BoardLink_IsLocalMotor(MOTOR_WRIST_X) ? 1 : 0,
-           (long)cx, xmdeg, (long)cy, ymdeg,
-           xa, xb, ya, yb);
-
-    vTaskDelay(pdMS_TO_TICKS(100));
+      printf("ENC %s cnt=%ld mdeg=%ld\r\n", e->name, (long)cnt, mdeg);
+    }
+    vTaskDelay(pdMS_TO_TICKS(200));
   }
 }
 
 static void WristTest_TaskCreate(void)
 {
-  (void)xTaskCreate(WristTest_Task, "wtest", 256, NULL,
+  (void)xTaskCreate(WristTest_Task, "enctest", 384, NULL,
                     tskIDLE_PRIORITY + 1, NULL);
 }
 #endif /* WRIST_ENCODER_TEST */
