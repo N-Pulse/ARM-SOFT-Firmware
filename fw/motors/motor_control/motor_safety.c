@@ -20,8 +20,8 @@ static const float s_pos_min[MOTOR_COUNT] = {
     DEGREES_TO_RAD(0.0f),   /* Middle */
     DEGREES_TO_RAD(0.0f),   /* Ring */
     DEGREES_TO_RAD(0.0f),   /* Little */
-    DEGREES_TO_RAD(-90.0f), /* Wrist X  — autorise MODE_WRIST_L (-1.57 rad) */
-    DEGREES_TO_RAD(-30.0f), /* Wrist Y */
+    DEGREES_TO_RAD(-90.0f), /* Wrist X  — poignet couplé, autorise ±1.57 rad */
+    DEGREES_TO_RAD(-90.0f), /* Wrist Y  — MÊME plage que X (différentiel couplé) */
     DEGREES_TO_RAD(-5.0f),  /* Palm */
 };
 
@@ -31,8 +31,8 @@ static const float s_pos_max[MOTOR_COUNT] = {
     DEGREES_TO_RAD(90.0f),
     DEGREES_TO_RAD(90.0f),
     DEGREES_TO_RAD(90.0f),
-    DEGREES_TO_RAD(90.0f),  /* Wrist X — autorise MODE_WRIST_R (+1.57 rad) */
-    DEGREES_TO_RAD(30.0f),
+    DEGREES_TO_RAD(90.0f),  /* Wrist X — poignet couplé, autorise +1.57 rad */
+    DEGREES_TO_RAD(90.0f),  /* Wrist Y — MÊME plage que X (différentiel couplé) */
     DEGREES_TO_RAD(15.0f),
 };
 

@@ -13,13 +13,16 @@
  *   - 12 PPR par canal × décodage 4× = 48 counts par tour arbre moteur
  *   - Sur l'arbre de sortie : 48 × 61 = 2928 counts par tour
  *
- * Câblage (6 fils par encodeur) :
- *   - VCC, GND               : alim 5 V
- *   - A, B (+ A̅, B̅ optionnels) : signaux quadrature → TIM CH1 / CH2 du STM32
+ * Câblage (4 fils par encodeur) :
+ *   - VCC, GND : alim 5 V
+ *   - A, B     : signaux quadrature → TIM CH1 / CH2 du STM32
  *
  * Architecture — même binaire, deux rôles (strap PC0) :
- *   - Master  (motherboard, PC0 = pull-up HIGH)  : WRIST_X, THUMB, LITTLE
- *   - Slave   (daughterboard, PC0 = GND)         : INDEX, MIDDLE, RING, WRIST_Y, PALM
+ *   - Master  (motherboard, PC0 = pull-up HIGH)  : WRIST_X, WRIST_Y, LITTLE
+ *   - Slave   (daughterboard, PC0 = GND)         : INDEX, MIDDLE, RING, THUMB, PALM
+ *
+ *   WRIST_X + WRIST_Y sont groupés sur la motherboard : poignet différentiel
+ *   couplé, commandé en synchro par drive_wrist() (intent_router.c).
  *
  *   Astuce clé : on partage le même timer entre deux moteurs de boards
  *   différentes. Comme un seul des deux est local par carte, il n'y a jamais
@@ -30,13 +33,13 @@
  *   ┌─────────┬──────────┬────────┬───────────┬───────────┬─────┐
  *   │ Moteur  │ Carte    │ Timer  │ CH1 pin   │ CH2 pin   │ AF  │
  *   ├─────────┼──────────┼────────┼───────────┼───────────┼─────┤
- *   │ THUMB   │ Master   │ TIM2   │ PA0       │ PA1       │ AF1 │
+ *   │ WRIST_X │ Master   │ TIM2   │ PA0       │ PA1       │ AF1 │
  *   │ INDEX   │ Slave    │ TIM2   │ PA0       │ PA1       │ AF1 │
  *   │ LITTLE  │ Master   │ TIM3   │ PA6       │ PA7       │ AF2 │
  *   │ MIDDLE  │ Slave    │ TIM3   │ PA6       │ PA7       │ AF2 │
- *   │ WRIST_X │ Master   │ TIM8   │ PC6       │ PC7       │ AF4 │
+ *   │ WRIST_Y │ Master   │ TIM8   │ PC6       │ PC7       │ AF4 │
  *   │ RING    │ Slave    │ TIM8   │ PC6       │ PC7       │ AF4 │
- *   │ WRIST_Y │ Slave    │ TIM15  │ PB14      │ PB15      │ AF1 │
+ *   │ THUMB   │ Slave    │ TIM15  │ PB14      │ PB15      │ AF1 │
  *   │ PALM    │ Slave    │ TIM20  │ PB2 (AF3) │ PC2 (AF6) │  -  │
  *   └─────────┴──────────┴────────┴───────────┴───────────┴─────┘
  *

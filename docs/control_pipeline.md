@@ -36,8 +36,8 @@ fw/app/intent_router.c
   MODE_OPEN    → MotorMap_GetPose(OPEN)   × 8 moteurs
   MODE_CLOSE   → MotorMap_GetPose(CLOSED) × 8 moteurs
   MODE_PINCH   → MotorMap_GetPose(PINCH)  × 8 moteurs
-  MODE_WRIST_R → Motor_SetTarget(WRIST_X, +1.57 rad)
-  MODE_WRIST_L → Motor_SetTarget(WRIST_X, -1.57 rad)
+  MODE_WRIST_R → drive_wrist(+1.57, 0)  → WRIST_X & WRIST_Y même sens
+  MODE_WRIST_L → drive_wrist(-1.57, 0)  → WRIST_X & WRIST_Y même sens
   default      → Motor_StopAll()
       │
       ▼
@@ -145,22 +145,22 @@ Table statique `s_pose_table[pose][motor_id]`, angles en radians :
 
 Le **même binaire** tourne sur les deux cartes. Le strap pin `PC0` (pull-up interne, GND = slave) décide du rôle au boot. `BoardLink_IsLocalMotor(id)` filtre quels moteurs cette carte pilote physiquement.
 
-**Astuce timer-sharing** : comme un seul des deux rôles est actif à la fois, le même timer encodeur peut être partagé entre un moteur master et un moteur slave. TIM2 est utilisé pour THUMB (master) ET pour INDEX (slave) — au runtime seul l'un des deux est initialisé. Ça libère TIM1 + TIM4 pour rester en PWM.
+**Poignet différentiel** : WRIST_X + WRIST_Y sont 2 moteurs couplés (même sens = rotation, sens opposé = flexion). Ils DOIVENT être sur la même carte → tous les deux sur la **motherboard**, commandés en synchro par `drive_wrist()` (intent_router.c). THUMB part en compensation sur la daughterboard pour garder la répartition 3/5.
+
+**Astuce timer-sharing** : comme un seul des deux rôles est actif à la fois, le même timer encodeur est partagé entre un moteur master et un moteur slave. TIM2 sert pour WRIST_X (master) ET INDEX (slave) — au runtime seul l'un des deux est initialisé. Ça libère TIM1 + TIM4 pour rester en PWM.
 
 ### Mapping complet des pins (LQFP64)
 
 | Moteur | Carte | Encoder (timer + pins) | PWM | IN1 / IN2 (L298N) |
 |--------|-------|------------------------|-----|-------------------|
-| THUMB | Master | TIM2 — PA0 + PA1 (AF1) | TIM1 CH1 — PA8 | PB5 / PB4 |
-| INDEX | Slave | TIM2 — PA0 + PA1 (AF1) | TIM1 CH2 — PA9 | PC10 / PC11 |
+| WRIST_X | Master | TIM2 — PA0 + PA1 (AF1) | TIM4 CH2 — PB7 | PC4 / PC5 |
+| WRIST_Y | Master | TIM8 — PC6 + PC7 (AF4) | TIM4 CH3 — PB8 | PB0 / PB1 |
 | LITTLE | Master | TIM3 — PA6 + PA7 (AF2) | TIM4 CH1 — PB6 | PC8 / PC9 |
+| INDEX | Slave | TIM2 — PA0 + PA1 (AF1) | TIM1 CH2 — PA9 | PC10 / PC11 |
 | MIDDLE | Slave | TIM3 — PA6 + PA7 (AF2) | TIM1 CH3 — PA10 | PC12 / PA15 |
-| WRIST_X | Master | TIM8 — PC6 + PC7 (AF4) | TIM4 CH2 — PB7 | PC4 / PC5 |
 | RING | Slave | TIM8 — PC6 + PC7 (AF4) | TIM1 CH4 — PA11 | PB12 / PB13 |
-| WRIST_Y | Slave | TIM15 — PB14 + PB15 (AF1) | TIM4 CH3 — PB8 | **PB0 / PB1** |
-| PALM | Slave | TIM20 — PB2 (AF3) + PC2 (AF6) | TIM4 CH4 — PB9 | **PD2** / PC3 |
-
-Pins **en gras** = changés par rapport au mapping initial pour résoudre les conflits (PC6/PC7 réservés à TIM8, PC2 réservé à TIM20).
+| THUMB | Slave | TIM15 — PB14 + PB15 (AF1) | TIM1 CH1 — PA8 | PB5 / PB4 |
+| PALM | Slave | TIM20 — PB2 (AF3) + PC2 (AF6) | TIM4 CH4 — PB9 | PD2 / PC3 |
 
 ### Autres affectations
 - `PC0` : strap pin (pull-up master / GND slave) — décide du rôle au boot
@@ -180,7 +180,7 @@ D'après le datasheet Moon Industries :
 - Encodeur magnétique incrémental **12-line, 2 canaux quadrature**
 - 12 PPR par canal × 4 (quadrature) = **48 counts/tour moteur**
 - × 61 (réducteur) = **2928 counts/tour arbre sortie** → `RAD_PER_COUNT = 2π / 2928`
-- 6 fils : VCC, GND + A, B (signaux quadrature, A̅/B̅ optionnels)
+- 4 fils : VCC, GND + A, B (quadrature simple, pas d'index ni de différentiel)
 
 ### Position de reset
 Tous les moteurs à **0 rad** au boot = main ouverte + poignet droit. Chaque moteur est à sa **butée mécanique** (= 0°). L'opérateur doit positionner la main AVANT mise sous tension. Les compteurs encodeurs sont remis à 0 dans `Encoder_BSP_Init()`.

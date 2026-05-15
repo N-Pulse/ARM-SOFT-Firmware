@@ -26,6 +26,16 @@
 #include "timers.h"
 #include "motor_safety.h"
 #include "comm.h"
+#include "board_link.h"
+
+/* ============================================================
+ *  BANC DE TEST POIGNET + ENCODEUR
+ *  Commenter la ligne suivante = build normal.
+ *  Décommentée = stream la position des 2 encodeurs du poignet
+ *  (WRIST_X=TIM2, WRIST_Y=TIM8) sur le VCP USB, en // de la
+ *  pipeline normale (proto → intent → L298N).
+ * ============================================================ */
+#define WRIST_ENCODER_TEST
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -223,6 +233,103 @@ static void MX_GPIO_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
+
+#ifdef WRIST_ENCODER_TEST
+/* ---------------------------------------------------------------------------
+ * Banc de test poignet — autonome (pas de dépendance à fw/bsp/encoder).
+ * Lit directement TIM2 (WRIST_X, PA0/PA1, AF1) et TIM8 (WRIST_Y, PC6/PC7, AF4)
+ * en mode encodeur quadrature TI12. Stream sur le VCP USB via printf (COM1).
+ *
+ * Datasheet Moon DCU10025P12 : 12 PPR ×4 quadrature = 48 cnt/tour moteur,
+ * réducteur 61:1 → 2928 cnt/tour arbre sortie.
+ * --------------------------------------------------------------------------- */
+#define WT_CNT_PER_OUTPUT_REV  2928L
+
+static TIM_HandleTypeDef s_wt_htim2;   /* WRIST_X (32-bit) */
+static TIM_HandleTypeDef s_wt_htim8;   /* WRIST_Y (16-bit) */
+
+static void wt_encoder_init(TIM_HandleTypeDef *htim, TIM_TypeDef *inst,
+                            uint32_t period)
+{
+  TIM_Encoder_InitTypeDef enc = {0};
+  htim->Instance           = inst;
+  htim->Init.Prescaler     = 0;
+  htim->Init.CounterMode   = TIM_COUNTERMODE_UP;
+  htim->Init.Period        = period;
+  htim->Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+  htim->Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+  enc.EncoderMode  = TIM_ENCODERMODE_TI12;
+  enc.IC1Polarity  = TIM_ICPOLARITY_RISING;
+  enc.IC1Selection = TIM_ICSELECTION_DIRECTTI;
+  enc.IC1Prescaler = TIM_ICPSC_DIV1;
+  enc.IC1Filter    = 4;
+  enc.IC2Polarity  = TIM_ICPOLARITY_RISING;
+  enc.IC2Selection = TIM_ICSELECTION_DIRECTTI;
+  enc.IC2Prescaler = TIM_ICPSC_DIV1;
+  enc.IC2Filter    = 4;
+  HAL_TIM_Encoder_Init(htim, &enc);
+  HAL_TIM_Encoder_Start(htim, TIM_CHANNEL_ALL);
+  __HAL_TIM_SET_COUNTER(htim, 0);
+}
+
+static void WristTest_Task(void *argument)
+{
+  (void)argument;
+
+  /* GPIO : PA0/PA1 → TIM2 AF1 (WRIST_X) ; PC6/PC7 → TIM8 AF4 (WRIST_Y) */
+  __HAL_RCC_GPIOA_CLK_ENABLE();
+  __HAL_RCC_GPIOC_CLK_ENABLE();
+  __HAL_RCC_TIM2_CLK_ENABLE();
+  __HAL_RCC_TIM8_CLK_ENABLE();
+
+  GPIO_InitTypeDef g = {0};
+  g.Mode  = GPIO_MODE_AF_PP;
+  g.Pull  = GPIO_PULLUP;
+  g.Speed = GPIO_SPEED_FREQ_HIGH;
+
+  g.Pin = GPIO_PIN_0 | GPIO_PIN_1;  g.Alternate = GPIO_AF1_TIM2;
+  HAL_GPIO_Init(GPIOA, &g);
+  g.Pin = GPIO_PIN_6 | GPIO_PIN_7;  g.Alternate = GPIO_AF4_TIM8;
+  HAL_GPIO_Init(GPIOC, &g);
+
+  wt_encoder_init(&s_wt_htim2, TIM2, 0xFFFFFFFFUL);  /* 32-bit */
+  wt_encoder_init(&s_wt_htim8, TIM8, 0xFFFFUL);      /* 16-bit */
+
+  for (;;)
+  {
+    int32_t cx = (int32_t)__HAL_TIM_GET_COUNTER(&s_wt_htim2);
+    int32_t cy = (int32_t)(int16_t)__HAL_TIM_GET_COUNTER(&s_wt_htim8);
+
+    long xmdeg = (long)((int64_t)cx * 360000 / WT_CNT_PER_OUTPUT_REV);
+    long ymdeg = (long)((int64_t)cy * 360000 / WT_CNT_PER_OUTPUT_REV);
+
+    /* Niveau LOGIQUE BRUT des 4 voies (lisible même en mode timer : l'IDR
+     * reflète toujours l'état réel du pin). Tourne l'arbre encodeur LENTEMENT
+     * à la main et regarde si Xa/Xb/Ya/Yb togglent 0↔1.
+     *   - togglent → câblage OK, problème = couplage mécanique au moteur
+     *   - figés    → encodeur non alimenté / pas câblé / mauvais pin */
+    int xa = (int)((GPIOA->IDR >> 0) & 1U);  /* PA0 = WRIST_X A */
+    int xb = (int)((GPIOA->IDR >> 1) & 1U);  /* PA1 = WRIST_X B */
+    int ya = (int)((GPIOC->IDR >> 6) & 1U);  /* PC6 = WRIST_Y A */
+    int yb = (int)((GPIOC->IDR >> 7) & 1U);  /* PC7 = WRIST_Y B */
+
+    printf("ENC WRIST local=%d X_cnt=%ld X_mdeg=%ld Y_cnt=%ld Y_mdeg=%ld "
+           "| Xa=%d Xb=%d Ya=%d Yb=%d\r\n",
+           BoardLink_IsLocalMotor(MOTOR_WRIST_X) ? 1 : 0,
+           (long)cx, xmdeg, (long)cy, ymdeg,
+           xa, xb, ya, yb);
+
+    vTaskDelay(pdMS_TO_TICKS(100));
+  }
+}
+
+static void WristTest_TaskCreate(void)
+{
+  (void)xTaskCreate(WristTest_Task, "wtest", 256, NULL,
+                    tskIDLE_PRIORITY + 1, NULL);
+}
+#endif /* WRIST_ENCODER_TEST */
+
 static void CreateTasks(void)
 {
   BaseType_t status = pdPASS;
@@ -237,6 +344,10 @@ static void CreateTasks(void)
   configASSERT(status == pdPASS);
 
   Comms_TaskCreate();
+
+#ifdef WRIST_ENCODER_TEST
+  WristTest_TaskCreate();
+#endif
 
   sLedTimer = xTimerCreate("led",
                            pdMS_TO_TICKS(500),
