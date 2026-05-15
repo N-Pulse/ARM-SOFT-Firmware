@@ -1,6 +1,79 @@
 ﻿# N-Pulse STM32G474 Firmware
 
-Firmware embarqué pour la prothèse de main N-Pulse, développé pour la carte STM32G474RET6 (Nucleo-G474RE).
+Firmware embarqué pour la prothèse de main N-Pulse (STM32G474RET6 / Nucleo-G474RE).
+Main 8 moteurs (doigts + paume + **poignet différentiel** 2 moteurs couplés),
+**2 cartes** (motherboard + daughterboard) qui exécutent le **même binaire** —
+le rôle master/slave est décidé par le strap `PC0` (flottant = master,
+GND = slave).
+
+---
+
+## 🚀 Démarrage rapide (à jour — lire ceci en premier)
+
+> ✅ **Plus aucun submodule** : `comm-stack` et `EmbeddedProto` sont
+> versionnés directement ici. Un `git clone` simple suffit pour compiler.
+
+### Prérequis (une fois)
+
+| Outil | Pour |
+|-------|------|
+| **ARM GCC** (`arm-none-eabi-gcc`) | compiler |
+| **STM32CubeProgrammer** | flasher (`flash.ps1`) |
+| **Python 3** + `pip install pyserial protobuf` | scripts host |
+| 2 Nucleo-G474 + moteurs/encodeurs | câblage : [docs/wiring.md](docs/wiring.md) |
+
+Les chemins outils sont codés en dur (Windows) dans `build.ps1`/`flash.ps1`.
+
+### Cloner, compiler, flasher
+
+```powershell
+git clone https://github.com/N-Pulse/ARM-SOFT-Firmware
+cd ARM-SOFT-Firmware
+pip install pyserial protobuf
+.\build.ps1     # -> Debug\N-PULSE FIRMWARE.elf
+.\flash.ps1     # flashe TOUTES les Nucleo branchees (meme binaire)
+```
+
+### Choisir un mode — toggle en haut de `Core/Src/main.c`
+
+```c
+/* #define WRIST_ENCODER_TEST */   // lecture seule des encodeurs locaux
+/* #define MOTOR_CALIB_MODE   */   // calibration closed-loop par moteur
+```
+
+| Mode | Toggle (main.c) | Script host |
+|------|-----------------|-------------|
+| **Pipeline normale** (proto + sécurité anti-butée) | les 2 commentés | `python tools\send_action.py --port COM6 --action close --listen 5` |
+| **Calibration** (auto-home, course/moteur) | `MOTOR_CALIB_MODE` | `python fw\comm-stack\PyUART\motor_calib.py --com COMx` |
+| **Test encodeurs** (lecture) | `WRIST_ENCODER_TEST` | `python fw\comm-stack\PyUART\wrist_test.py --com COMx` |
+
+Après tout changement de toggle : `.\build.ps1` puis `.\flash.ps1`.
+
+`COM6` doit être le VCP de la **motherboard** (master) ; elle forwarde aux
+moteurs de la daughterboard via USART3.
+
+### Sécurité anti-butée (toujours active en pipeline normale)
+
+Si un moteur force contre une butée (l'encodeur n'avance plus), il est
+**coupé en ~180 ms** → protège les câbles. Conséquence : tout moteur dont
+l'encodeur n'est pas câblé sera coupé rapidement (volontaire).
+
+### Guides détaillés
+
+- **[docs/CALIBRATION.md](docs/CALIBRATION.md)** — calibration pas à pas (reproductible)
+- **[docs/wiring.md](docs/wiring.md)** — pinout / câblage moteurs & encodeurs
+- **[docs/control_pipeline.md](docs/control_pipeline.md)** — architecture pipeline
+
+> ⚠️ Le closed-loop complet n'existe pour l'instant qu'en **mode
+> calibration**. La pipeline normale a la sécurité anti-butée (anti-casse)
+> mais pas encore l'arrêt pile à l'angle calibré (étape suivante).
+
+---
+
+> ℹ️ **Les sections ci-dessous sont la doc d'architecture détaillée et
+> sont partiellement historiques** (antérieures au poignet différentiel,
+> à la calibration closed-loop et au retrait des submodules). Se référer
+> au *Démarrage rapide* ci-dessus et aux guides `docs/` pour l'état réel.
 
 ## 🎯 Vue d'ensemble du projet
 
