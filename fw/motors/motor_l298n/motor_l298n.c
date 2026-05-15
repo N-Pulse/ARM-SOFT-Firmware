@@ -27,6 +27,12 @@ static void l298n_beacon(uint8_t id, uint8_t crc)
 #define L298N_DURATION_CAP_MS     5000U
 #define L298N_MIN_MOVE_DEG        1.0f
 
+/* Sens de câblage global du H-bridge vs sens d'angle attendu.
+ *   1  = normal
+ *  -1  = tous les moteurs inversés (close ouvre / open ferme) → on inverse.
+ * Tous les moteurs sont câblés pareil, donc une seule inversion globale. */
+#define L298N_DIR_SIGN            (-1)
+
 typedef struct {
     TIM_TypeDef *  tim;
     uint32_t       tim_channel;
@@ -64,6 +70,16 @@ static TIM_HandleTypeDef s_htim4;
  * cached commanded angle for open-loop direction/duration calculation. */
 static TimerHandle_t s_stop_timer[MOTOR_COUNT];
 static float        s_current_rad[MOTOR_COUNT];
+
+/* Sens de drive courant par moteur : +1 / -1 / 0 (arrêté).
+ * Lu par la sécurité anti-butée (MotorGuard, main.c) pour détecter un calage. */
+static volatile int8_t s_drv[MOTOR_COUNT];
+
+int Motor_L298N_DrivingDir(motor_id_t id)
+{
+    if (id >= MOTOR_COUNT) return 0;
+    return (int)s_drv[id];
+}
 
 /* ------------------------------------------------------------------------ */
 
@@ -210,6 +226,7 @@ static void drive_forward_for(motor_id_t id, uint8_t speed_pct, uint32_t ms)
     HAL_GPIO_WritePin(m->in1_port, m->in1_pin, GPIO_PIN_SET);
     HAL_GPIO_WritePin(m->in2_port, m->in2_pin, GPIO_PIN_RESET);
     set_duty(id, ((uint32_t)speed_pct * (PWM_ARR + 1U)) / 100U);
+    s_drv[id] = +1;
     arm_stop_timer(id, ms);
 }
 
@@ -219,6 +236,7 @@ static void drive_backward_for(motor_id_t id, uint8_t speed_pct, uint32_t ms)
     HAL_GPIO_WritePin(m->in1_port, m->in1_pin, GPIO_PIN_RESET);
     HAL_GPIO_WritePin(m->in2_port, m->in2_pin, GPIO_PIN_SET);
     set_duty(id, ((uint32_t)speed_pct * (PWM_ARR + 1U)) / 100U);
+    s_drv[id] = -1;
     arm_stop_timer(id, ms);
 }
 
@@ -242,7 +260,8 @@ void Motor_L298N_MoveToAngle(motor_id_t id, float target_rad, uint8_t speed_pct)
     if (duration == 0U) duration = 1U;
     if (duration > L298N_DURATION_CAP_MS) duration = L298N_DURATION_CAP_MS;
 
-    if (delta_rad > 0.0f) {
+    float dir = delta_rad * (float)L298N_DIR_SIGN;   /* inversion globale câblage */
+    if (dir > 0.0f) {
         drive_forward_for(id, speed_pct, duration);
         l298n_beacon(0xF4U, (uint8_t)id);
     } else {
@@ -264,6 +283,7 @@ void Motor_L298N_Stop(motor_id_t id)
     const l298n_motor_t *m = &s_motors[id];
     HAL_GPIO_WritePin(m->in1_port, m->in1_pin, GPIO_PIN_RESET);
     HAL_GPIO_WritePin(m->in2_port, m->in2_pin, GPIO_PIN_RESET);
+    s_drv[id] = 0;
 }
 
 void Motor_L298N_StopAll(void)
@@ -271,4 +291,31 @@ void Motor_L298N_StopAll(void)
     for (int i = 0; i < MOTOR_COUNT; i++) {
         Motor_L298N_Stop((motor_id_t)i);
     }
+}
+
+void Motor_L298N_SetRaw(motor_id_t id, int dir, uint8_t speed_pct)
+{
+    if (id >= MOTOR_COUNT) return;
+    if (s_stop_timer[id] == NULL) return;          /* pas local sur cette carte */
+
+    (void)xTimerStop(s_stop_timer[id], 0);         /* pas d'auto-stop en closed-loop */
+    const l298n_motor_t *m = &s_motors[id];
+
+    if (dir > 0) {
+        HAL_GPIO_WritePin(m->in1_port, m->in1_pin, GPIO_PIN_SET);
+        HAL_GPIO_WritePin(m->in2_port, m->in2_pin, GPIO_PIN_RESET);
+        s_drv[id] = +1;
+    } else if (dir < 0) {
+        HAL_GPIO_WritePin(m->in1_port, m->in1_pin, GPIO_PIN_RESET);
+        HAL_GPIO_WritePin(m->in2_port, m->in2_pin, GPIO_PIN_SET);
+        s_drv[id] = -1;
+    } else {
+        HAL_GPIO_WritePin(m->in1_port, m->in1_pin, GPIO_PIN_RESET);
+        HAL_GPIO_WritePin(m->in2_port, m->in2_pin, GPIO_PIN_RESET);
+        set_duty(id, 0);
+        s_drv[id] = 0;
+        return;
+    }
+    if (speed_pct > 100U) speed_pct = 100U;
+    set_duty(id, ((uint32_t)speed_pct * (PWM_ARR + 1U)) / 100U);
 }

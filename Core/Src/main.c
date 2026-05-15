@@ -29,13 +29,18 @@
 #include "board_link.h"
 
 /* ============================================================
- *  BANC DE TEST POIGNET + ENCODEUR
- *  Commenter la ligne suivante = build normal.
- *  Décommentée = stream la position des 2 encodeurs du poignet
- *  (WRIST_X=TIM2, WRIST_Y=TIM8) sur le VCP USB, en // de la
- *  pipeline normale (proto → intent → L298N).
+ *  MODES DE BRING-UP (décommenter UN seul, ou aucun = build normal)
+ *
+ *  WRIST_ENCODER_TEST : stream les encodeurs locaux (lecture seule),
+ *      la pipeline proto normale tourne en //.
+ *
+ *  MOTOR_CALIB_MODE   : asservissement closed-loop par moteur via
+ *      commandes ASCII sur le VCP (PAS la pipeline proto). Sert à
+ *      trouver/définir les bons angles de chaque moteur.
+ *      → utiliser le script tools motor_calib.py
  * ============================================================ */
-#define WRIST_ENCODER_TEST
+/* #define WRIST_ENCODER_TEST */
+#define MOTOR_CALIB_MODE
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -234,9 +239,9 @@ static void MX_GPIO_Init(void)
 
 /* USER CODE BEGIN 4 */
 
-#ifdef WRIST_ENCODER_TEST
 /* ---------------------------------------------------------------------------
- * Banc de test encodeurs — autonome (pas de dépendance à fw/bsp/encoder).
+ * Infra encodeurs — TOUJOURS compilée (test, calibration, ET sécurité
+ * anti-butée de la pipeline normale). Autonome (pas fw/bsp).
  *
  * Le MÊME binaire tourne sur les 2 cartes. Chaque carte initialise et stream
  * UNIQUEMENT ses encodeurs locaux (BoardLink_IsLocalMotor), nommés correctement,
@@ -251,6 +256,12 @@ static void MX_GPIO_Init(void)
  * Moon DCU10025P12 : 12 PPR ×4 = 48 cnt/tour moteur, gearbox 61:1
  * → 2928 cnt/tour arbre sortie.
  * --------------------------------------------------------------------------- */
+
+/* prototypes directs (Core/Src/subdir.mk n'inclut pas fw/motors/motor_l298n) */
+void Motor_L298N_SetRaw(motor_id_t id, int dir, uint8_t speed_pct);
+void Motor_L298N_Stop(motor_id_t id);
+int  Motor_L298N_DrivingDir(motor_id_t id);
+
 #define WT_CNT_PER_OUTPUT_REV  2928L
 
 typedef struct {
@@ -333,6 +344,76 @@ static void wt_init_one(const wt_enc_t *e)
   __HAL_TIM_SET_COUNTER(h, 0);
 }
 
+#ifndef MOTOR_CALIB_MODE
+static int32_t wt_read_cnt(int i)
+{
+  const wt_enc_t *e = &s_wt[i];
+  TIM_HandleTypeDef *h = wt_h(e->tim);
+  if (h == NULL) return 0;
+  uint32_t r = __HAL_TIM_GET_COUNTER(h);
+  return e->is32 ? (int32_t)r : (int32_t)(int16_t)r;
+}
+
+/* ===========================================================================
+ *  SÉCURITÉ ANTI-BUTÉE — TOUJOURS ACTIVE (pipeline normale + tests).
+ *
+ *  Surveille chaque moteur local : s'il est alimenté (L298N drive != 0) mais
+ *  que son encodeur n'avance plus pendant GUARD_STALL_MS → il force contre une
+ *  butée → on COUPE immédiatement (Motor_L298N_Stop). Indépendant de la
+ *  commande : protège quel que soit le script (send_action.py, wrist_test.py…)
+ *  ou la pipeline proto. Empêche la sur-course et la casse des câbles.
+ *
+ *  (En mode calibration ce garde est désactivé : le homing/seek POUSSE
+ *   volontairement dans la butée pour la détecter.)
+ * ======================================================================== */
+#define GUARD_EPS_CNT     6     /* ~0.7° : en dessous = "n'avance plus" */
+#define GUARD_TICK_MS     20
+#define GUARD_STALL_MS    180   /* calé plus longtemps que ça → coupe */
+#define GUARD_STALL_TICKS (GUARD_STALL_MS / GUARD_TICK_MS)
+
+extern UART_HandleTypeDef hcom_uart[COMn];
+
+static void MotorGuard_Task(void *argument)
+{
+  (void)argument;
+  int32_t  ref[MOTOR_COUNT]   = {0};
+  uint16_t still[MOTOR_COUNT] = {0};
+
+  for (int i = 0; i < MOTOR_COUNT; i++)
+    if (BoardLink_IsLocalMotor((motor_id_t)i)) wt_init_one(&s_wt[i]);
+
+  for (;;)
+  {
+    for (int i = 0; i < MOTOR_COUNT; i++)
+    {
+      if (!BoardLink_IsLocalMotor((motor_id_t)i)) continue;
+
+      if (Motor_L298N_DrivingDir((motor_id_t)i) == 0) {
+        ref[i] = wt_read_cnt(i); still[i] = 0;     /* à l'arrêt : rien à surveiller */
+        continue;
+      }
+      int32_t c  = wt_read_cnt(i);
+      int32_t dd = c - ref[i]; if (dd < 0) dd = -dd;
+      if (dd >= GUARD_EPS_CNT) { ref[i] = c; still[i] = 0; }   /* ça avance, OK */
+      else if (++still[i] >= GUARD_STALL_TICKS) {
+        Motor_L298N_Stop((motor_id_t)i);            /* CALÉ EN BUTÉE → COUPE */
+        still[i] = 0;
+        uint8_t bk[] = { 0xAAU, 0x01U, 0xB0U | (uint8_t)i, 0x00U, 0x7EU };
+        HAL_UART_Transmit(&hcom_uart[COM1], bk, sizeof(bk), 20U);  /* B0|id = guard cut */
+      }
+    }
+    vTaskDelay(pdMS_TO_TICKS(GUARD_TICK_MS));
+  }
+}
+
+static void MotorGuard_TaskCreate(void)
+{
+  (void)xTaskCreate(MotorGuard_Task, "guard", 384, NULL,
+                    tskIDLE_PRIORITY + 3, NULL);   /* prio haute : sécurité */
+}
+#endif /* !MOTOR_CALIB_MODE */
+
+#ifdef WRIST_ENCODER_TEST
 static void WristTest_Task(void *argument)
 {
   (void)argument;
@@ -370,6 +451,342 @@ static void WristTest_TaskCreate(void)
 }
 #endif /* WRIST_ENCODER_TEST */
 
+#ifdef MOTOR_CALIB_MODE
+/* ---------------------------------------------------------------------------
+ * Calibration closed-loop par moteur (bang-bang + deadband).
+ * Lit des commandes ASCII sur le VCP (g_rxring rempli par LPUART1_IRQHandler ;
+ * en mode calib on NE démarre PAS Comms_Task, donc on possède le ring).
+ * Pilote le L298N via Motor_L298N_SetRaw + feedback encodeur.
+ * Chaque carte ne calibre QUE ses moteurs locaux (BoardLink_IsLocalMotor).
+ * --------------------------------------------------------------------------- */
+extern volatile uint8_t  g_rxring[];
+extern volatile uint16_t g_rxring_head;
+extern volatile uint16_t g_rxring_tail;
+#define CB_RXRING_SIZE   256U
+
+#define CB_SPEED         45U     /* % PWM par défaut (réglable par moteur via 'v') */
+#define CB_DEADBAND_CNT  6       /* ~0.7° (2928 cnt/tour) — serré pour atteindre les fins de course */
+#define CB_JOG_DEG       3
+#define CB_STUCK_TICKS   80      /* ×10ms : pas d'amélioration → stop (mauvais sens?) */
+#define CB_TICK_MS       10
+#define CB_STATUS_EVERY  40      /* ×10ms = 400ms */
+
+static int32_t  cb_target[MOTOR_COUNT];
+static bool     cb_active[MOTOR_COUNT];
+static int8_t   cb_dir[MOTOR_COUNT];       /* sens de câblage : +1 / -1 */
+static int32_t  cb_bestaerr[MOTOR_COUNT];
+static uint16_t cb_stuck[MOTOR_COUNT];
+static int16_t  cb_close_deg[MOTOR_COUNT] = {
+  [MOTOR_THUMB]=42,[MOTOR_INDEX]=42,[MOTOR_MIDDLE]=42,[MOTOR_RING]=40,
+  [MOTOR_LITTLE]=37,[MOTOR_WRIST_X]=7,[MOTOR_WRIST_Y]=7,[MOTOR_PALM]=5,
+};
+/* PWM par moteur (%). PALM tire des câbles → plus de couple pour passer le
+ * point dur à mi-course. Réglable à chaud : commande  v<pct>  (ex: v75). */
+static uint8_t  cb_speed[MOTOR_COUNT] = {
+  [MOTOR_THUMB]=45,[MOTOR_INDEX]=45,[MOTOR_MIDDLE]=45,[MOTOR_RING]=45,
+  [MOTOR_LITTLE]=45,[MOTOR_WRIST_X]=45,[MOTOR_WRIST_Y]=45,[MOTOR_PALM]=75,
+};
+static int cb_sel = -1;
+
+/* --- auto-homing par calage mécanique --- */
+#define CB_HOME_EPS      8       /* ~1° : progrès mini pour dire "ça bouge" */
+#define CB_HOME_STALL    60      /* ×10ms = 600ms sans progrès = vraie butée
+                                    (tolère les points durs type cables PALM) */
+#define CB_HOME_TIMEOUT  1000    /* ×10ms : sécurité (encodeur mort) */
+static uint8_t  cb_hphase[MOTOR_COUNT];   /* 0 idle, 1 butée A, 2 butée B, 3 seek (o/c) */
+static int32_t  cb_hstart[MOTOR_COUNT];
+static int32_t  cb_href[MOTOR_COUNT];
+static uint16_t cb_hstill[MOTOR_COUNT];
+static uint16_t cb_ht[MOTOR_COUNT];
+static int32_t  cb_endA[MOTOR_COUNT];
+static int32_t  cb_open_cnt[MOTOR_COUNT];
+static int32_t  cb_close_cnt[MOTOR_COUNT];
+static int8_t   cb_open_raw[MOTOR_COUNT];  /* sens raw L298N pour aller à la butée OPEN  */
+static int8_t   cb_close_raw[MOTOR_COUNT]; /* sens raw L298N pour aller à la butée CLOSE */
+static int8_t   cb_seek_raw[MOTOR_COUNT];  /* sens courant pendant un seek o/c */
+static bool     cb_homed[MOTOR_COUNT];
+
+static int32_t cb_labs(int32_t v) { return v < 0 ? -v : v; }
+
+static int32_t cb_deg2cnt(int deg)
+{ return (int32_t)(((int64_t)deg * WT_CNT_PER_OUTPUT_REV) / 360); }
+
+static int32_t cb_cnt(int i)
+{
+  const wt_enc_t *e = &s_wt[i];
+  TIM_HandleTypeDef *h = wt_h(e->tim);
+  if (h == NULL) return 0;
+  uint32_t r = __HAL_TIM_GET_COUNTER(h);
+  return e->is32 ? (int32_t)r : (int32_t)(int16_t)r;
+}
+
+static void cb_arm(int i, int32_t target)
+{
+  if (i < 0 || i >= MOTOR_COUNT || !BoardLink_IsLocalMotor((motor_id_t)i)) return;
+  cb_target[i]    = target;
+  cb_active[i]    = true;
+  cb_bestaerr[i]  = 0x7FFFFFFF;
+  cb_stuck[i]     = 0;
+}
+
+static void cb_goto_deg(int i, int deg)        { cb_arm(i, cb_deg2cnt(deg)); }
+static void cb_jog(int i, int ddeg)            { cb_arm(i, cb_cnt(i) + cb_deg2cnt(ddeg)); }
+
+static void cb_stop(int i)
+{
+  if (i < 0 || i >= MOTOR_COUNT) return;
+  cb_active[i]  = false;
+  cb_hphase[i]  = 0;
+  Motor_L298N_SetRaw((motor_id_t)i, 0, 0);
+}
+
+static void cb_home_start(int i)
+{
+  if (i < 0 || i >= MOTOR_COUNT || !BoardLink_IsLocalMotor((motor_id_t)i)) return;
+  cb_active[i] = false;
+  cb_hphase[i] = 1;                 /* phase 1 : pousse en raw +1 vers une butée */
+  cb_hstart[i] = cb_cnt(i);
+  cb_href[i]   = cb_hstart[i];
+  cb_hstill[i] = 0;
+  cb_ht[i]     = 0;
+  printf("CAL %s HOMING... (calage des 2 butees)\r\n", s_wt[i].name);
+}
+
+/* seek = pousse dans un sens jusqu'à caler sur la butée (idem H, 1 direction).
+ * Reproduit EXACTEMENT la course de H, sans deadband ni recul. */
+static void cb_seek_start(int i, int raw)
+{
+  if (i < 0 || i >= MOTOR_COUNT || !BoardLink_IsLocalMotor((motor_id_t)i)) return;
+  cb_active[i]   = false;
+  cb_hphase[i]   = 3;
+  cb_seek_raw[i] = (int8_t)raw;
+  cb_href[i]     = cb_cnt(i);
+  cb_hstill[i]   = 0;
+  cb_ht[i]       = 0;
+}
+
+static bool cb_pop(uint8_t *b)
+{
+  if (g_rxring_head == g_rxring_tail) return false;
+  *b = g_rxring[g_rxring_tail];
+  g_rxring_tail = (uint16_t)((g_rxring_tail + 1U) % CB_RXRING_SIZE);
+  return true;
+}
+
+/* atoi minimal sur la fin de ligne (gère le '-'). */
+static int cb_atoi(const char *s)
+{
+  int sign = 1, v = 0;
+  while (*s == ' ') s++;
+  if (*s == '-') { sign = -1; s++; }
+  while (*s >= '0' && *s <= '9') { v = v * 10 + (*s - '0'); s++; }
+  return sign * v;
+}
+
+static void cb_list(void)
+{
+  for (int i = 0; i < MOTOR_COUNT; i++)
+  {
+    if (!BoardLink_IsLocalMotor((motor_id_t)i)) continue;
+    int32_t c  = cb_cnt(i);
+    long cdeg  = (long)((int64_t)c * 3600 / WT_CNT_PER_OUTPUT_REV); /* 1/10 ° */
+    printf("CAL [%d] %-8s cnt=%ld deg=%ld.%ld close=%d dir=%d %s%s\r\n",
+           i, s_wt[i].name, (long)c, cdeg/10, (cdeg<0?-cdeg:cdeg)%10,
+           cb_close_deg[i], cb_dir[i],
+           cb_active[i] ? "RUN" : "idle",
+           (i == cb_sel) ? " <-sel" : "");
+  }
+}
+
+static void cb_handle_line(char *ln)
+{
+  while (*ln == ' ') ln++;
+  char cmd = *ln;
+  int  arg = cb_atoi(ln + 1);
+
+  if (cmd >= '0' && cmd <= '7') {
+    int i = cmd - '0';
+    if (BoardLink_IsLocalMotor((motor_id_t)i)) { cb_sel = i; printf("CAL sel=%s\r\n", s_wt[i].name); }
+    else printf("CAL %d non local\r\n", i);
+    return;
+  }
+  switch (cmd) {
+    case '?': cb_list(); break;
+    case 'H': cb_home_start(cb_sel); break;
+    case 'A': for (int i=0;i<MOTOR_COUNT;i++) if(BoardLink_IsLocalMotor((motor_id_t)i)) cb_home_start(i); break;
+    case 'x':
+      if (cb_sel>=0 && cb_homed[cb_sel]) {
+        int32_t tc=cb_open_cnt[cb_sel]; cb_open_cnt[cb_sel]=cb_close_cnt[cb_sel]; cb_close_cnt[cb_sel]=tc;
+        int8_t  tr=cb_open_raw[cb_sel]; cb_open_raw[cb_sel]=cb_close_raw[cb_sel]; cb_close_raw[cb_sel]=tr;
+        printf("CAL %s open/close SWAP\r\n", s_wt[cb_sel].name);
+      } break;
+    case 'o':
+      if (cb_sel>=0 && cb_homed[cb_sel]) { cb_seek_start(cb_sel, cb_open_raw[cb_sel]);  printf("CAL %s -> OPEN (seek butee)\r\n", s_wt[cb_sel].name); }
+      else { cb_goto_deg(cb_sel, 0); printf("CAL %s -> 0deg (pas home, fais H)\r\n", cb_sel>=0?s_wt[cb_sel].name:"?"); }
+      break;
+    case 'c':
+      if (cb_sel>=0 && cb_homed[cb_sel]) { cb_seek_start(cb_sel, cb_close_raw[cb_sel]); printf("CAL %s -> CLOSE (seek butee)\r\n", s_wt[cb_sel].name); }
+      else { cb_goto_deg(cb_sel, cb_close_deg[cb_sel]); printf("CAL %s -> %ddeg (pas home, fais H)\r\n", cb_sel>=0?s_wt[cb_sel].name:"?", cb_sel>=0?cb_close_deg[cb_sel]:0); }
+      break;
+    case '+': cb_jog(cb_sel, +CB_JOG_DEG);            break;
+    case '-': cb_jog(cb_sel, -CB_JOG_DEG);            break;
+    case 'g': cb_goto_deg(cb_sel, arg);               printf("CAL %s -> %d deg\r\n", cb_sel>=0?s_wt[cb_sel].name:"?", arg); break;
+    case 'k': if (cb_sel>=0){ cb_close_deg[cb_sel]=(int16_t)arg; printf("CAL %s close=%d\r\n", s_wt[cb_sel].name, arg);} break;
+    case 'v':
+      if (cb_sel>=0) {
+        if (arg < 20) arg = 20; if (arg > 100) arg = 100;
+        cb_speed[cb_sel] = (uint8_t)arg;
+        printf("CAL %s speed=%d%%\r\n", s_wt[cb_sel].name, arg);
+      } break;
+    case 's': cb_stop(cb_sel);                        break;
+    case 'S': for (int i=0;i<MOTOR_COUNT;i++) cb_stop(i); printf("CAL ALL STOP\r\n"); break;
+    case 'z':
+      if (cb_sel>=0){ TIM_HandleTypeDef*h=wt_h(s_wt[cb_sel].tim);
+        if(h){__HAL_TIM_SET_COUNTER(h,0);} cb_active[cb_sel]=false; cb_target[cb_sel]=0;
+        printf("CAL %s ZERO\r\n", s_wt[cb_sel].name);} break;
+    case 'i':
+      { int x = (ln[1]>='0'&&ln[1]<='7') ? arg : cb_sel;
+        if (x>=0 && x<MOTOR_COUNT){ cb_dir[x]=(int8_t)-cb_dir[x]; printf("CAL %s dir=%d\r\n", s_wt[x].name, cb_dir[x]); } }
+      break;
+    case 'd':
+      for (int i=0;i<MOTOR_COUNT;i++){ if(!BoardLink_IsLocalMotor((motor_id_t)i))continue;
+        if (cb_homed[i]) {
+          long sp=(long)((int64_t)cb_labs(cb_close_cnt[i]-cb_open_cnt[i])*3600/WT_CNT_PER_OUTPUT_REV);
+          printf("DUMP %-8s course=%ld.%ld deg (open=%ld close=%ld cnt)\r\n",
+                 s_wt[i].name, sp/10,(sp<0?-sp:sp)%10,
+                 (long)cb_open_cnt[i],(long)cb_close_cnt[i]);
+        } else {
+          printf("DUMP %-8s pas calibre (fais H)\r\n", s_wt[i].name);
+        } }
+      break;
+    /* poignet couplé (WRIST_X=5, WRIST_Y=6) — rotation = même sens, flexion = opposé */
+    case 'r': cb_jog(MOTOR_WRIST_X,+CB_JOG_DEG); cb_jog(MOTOR_WRIST_Y,+CB_JOG_DEG); printf("CAL wrist ROT R\r\n"); break;
+    case 'l': cb_jog(MOTOR_WRIST_X,-CB_JOG_DEG); cb_jog(MOTOR_WRIST_Y,-CB_JOG_DEG); printf("CAL wrist ROT L\r\n"); break;
+    case 'f': cb_jog(MOTOR_WRIST_X,+CB_JOG_DEG); cb_jog(MOTOR_WRIST_Y,-CB_JOG_DEG); printf("CAL wrist FLEX+\r\n"); break;
+    case 'F': cb_jog(MOTOR_WRIST_X,-CB_JOG_DEG); cb_jog(MOTOR_WRIST_Y,+CB_JOG_DEG); printf("CAL wrist FLEX-\r\n"); break;
+    default: break;
+  }
+}
+
+static void Calib_Task(void *argument)
+{
+  (void)argument;
+  char ln[32]; uint8_t li = 0;
+
+  for (int i = 0; i < MOTOR_COUNT; i++) {
+    cb_dir[i] = 1; cb_active[i] = false;
+    if (BoardLink_IsLocalMotor((motor_id_t)i)) {
+      wt_init_one(&s_wt[i]);
+      if (cb_sel < 0) cb_sel = i;
+    }
+  }
+  printf("\r\n=== CALIB MODE ===\r\n");
+  printf("  ?  liste | 0-7 select | H auto-home sel | A auto-home tous\r\n");
+  printf("  o open | c close | x si open/close inverse | d dump | S stop\r\n");
+  printf("  v<pct> force/vitesse du moteur (ex: v75 si cale a mi-course)\r\n");
+  printf("  workflow: select -> H (le moteur cale les 2 butees seul) -> o/c\r\n");
+  cb_list();
+
+  for (;;)
+  {
+    /* --- commandes --- */
+    uint8_t b;
+    while (cb_pop(&b)) {
+      if (b == '\n' || b == '\r') { ln[li] = 0; if (li) cb_handle_line(ln); li = 0; }
+      else if (li < sizeof(ln) - 1) ln[li++] = (char)b;
+    }
+
+    /* --- boucle d'asservissement (bang-bang + deadband) --- */
+    for (int i = 0; i < MOTOR_COUNT; i++)
+    {
+      if (!BoardLink_IsLocalMotor((motor_id_t)i)) continue;
+
+      /* --- homing (phase 1/2) ou seek o/c (phase 3) : pousse jusqu'à caler --- */
+      if (cb_hphase[i]) {
+        int raw = (cb_hphase[i] == 1) ? +1
+                : (cb_hphase[i] == 2) ? -1
+                : cb_seek_raw[i];
+        Motor_L298N_SetRaw((motor_id_t)i, raw, cb_speed[i]);
+        int32_t hc = cb_cnt(i);
+        cb_ht[i]++;
+        if (cb_labs(hc - cb_href[i]) >= CB_HOME_EPS) { cb_href[i] = hc; cb_hstill[i] = 0; }
+        else cb_hstill[i]++;
+
+        if (cb_hstill[i] > CB_HOME_STALL || cb_ht[i] > CB_HOME_TIMEOUT) {
+          Motor_L298N_SetRaw((motor_id_t)i, 0, 0);
+          if (cb_hphase[i] == 1) {
+            cb_endA[i] = hc;
+            cb_dir[i]  = (cb_endA[i] >= cb_hstart[i]) ? +1 : -1;  /* raw+1 → +cnt ? */
+            cb_hphase[i] = 2;                     /* phase 2 : autre butée (raw -1) */
+            cb_hstart[i] = hc; cb_href[i] = hc; cb_hstill[i] = 0; cb_ht[i] = 0;
+            printf("CAL %s butee1 cnt=%ld -> phase2\r\n", s_wt[i].name, (long)hc);
+          } else if (cb_hphase[i] == 2) {
+            int32_t a = cb_endA[i], bnd = hc;
+            int32_t lo = (a < bnd) ? a : bnd;
+            int32_t hi = (a < bnd) ? bnd : a;
+            /* PAS de recul : open/close = vraies butées (o/c referont le calage). */
+            cb_open_cnt[i]  = lo;
+            cb_close_cnt[i] = hi;
+            cb_open_raw[i]  = (int8_t)-cb_dir[i]; /* vers lo = sens qui baisse le cnt */
+            cb_close_raw[i] = (int8_t)+cb_dir[i]; /* vers hi = sens qui monte le cnt  */
+            cb_homed[i]     = true;
+            cb_hphase[i]    = 0;
+            long sp = (long)((int64_t)(hi - lo) * 3600 / WT_CNT_PER_OUTPUT_REV);
+            printf("CAL %s HOMED course=%ld.%ld deg  (o=open c=close ; si inverse: x)\r\n",
+                   s_wt[i].name, sp/10, (sp<0?-sp:sp)%10);
+          } else {
+            /* phase 3 : seek o/c terminé sur butée — exactement comme H */
+            cb_hphase[i] = 0;
+            if (cb_seek_raw[i] == cb_open_raw[i]) {
+              /* on est sur la butée OUVERTE → re-référence : open = 0.
+               * Élimine la dérive : 'c' affichera la vraie course depuis 0. */
+              TIM_HandleTypeDef *h = wt_h(s_wt[i].tim);
+              if (h) __HAL_TIM_SET_COUNTER(h, 0);
+              printf("CAL %s OPEN (butee, re-zero -> 0.0 deg)\r\n", s_wt[i].name);
+            } else {
+              long cd = (long)((int64_t)hc * 3600 / WT_CNT_PER_OUTPUT_REV);
+              printf("CAL %s CLOSE (butee) course=%ld.%ld deg\r\n",
+                     s_wt[i].name, cd/10, (cd<0?-cd:cd)%10);
+            }
+          }
+        }
+        continue;                                /* en homing/seek : pas de bang-bang */
+      }
+
+      if (!cb_active[i]) continue;
+      int32_t cnt  = cb_cnt(i);
+      int32_t err  = cb_target[i] - cnt;
+      int32_t aerr = err < 0 ? -err : err;
+
+      if (aerr <= CB_DEADBAND_CNT) {
+        cb_stop(i);
+        long cd = (long)((int64_t)cnt * 3600 / WT_CNT_PER_OUTPUT_REV);
+        printf("CAL %s REACHED cnt=%ld (%ld.%ld deg)\r\n",
+               s_wt[i].name, (long)cnt, cd/10, (cd<0?-cd:cd)%10);
+        continue;
+      }
+      int drive = ((err > 0) ? 1 : -1) * cb_dir[i];
+      Motor_L298N_SetRaw((motor_id_t)i, drive, cb_speed[i]);
+
+      if (aerr < cb_bestaerr[i]) { cb_bestaerr[i] = aerr; cb_stuck[i] = 0; }
+      else if (++cb_stuck[i] > CB_STUCK_TICKS) {
+        cb_stop(i);
+        printf("CAL %s BLOQUE/ MAUVAIS SENS — tape i%d puis relance\r\n",
+               s_wt[i].name, i);
+      }
+    }
+
+    vTaskDelay(pdMS_TO_TICKS(CB_TICK_MS));
+  }
+}
+
+static void Calib_TaskCreate(void)
+{
+  (void)xTaskCreate(Calib_Task, "calib", 512, NULL,
+                    tskIDLE_PRIORITY + 2, NULL);
+}
+#endif /* MOTOR_CALIB_MODE */
+
 static void CreateTasks(void)
 {
   BaseType_t status = pdPASS;
@@ -383,10 +800,16 @@ static void CreateTasks(void)
   status = xTaskCreate(TelemetryTask, "tele", 256, NULL, tskIDLE_PRIORITY + 1, &sTelemetryTaskHandle);
   configASSERT(status == pdPASS);
 
+#ifdef MOTOR_CALIB_MODE
+  /* Mode calibration : la tâche calib possède le VCP (g_rxring),
+   * on ne démarre PAS la pile proto. */
+  Calib_TaskCreate();
+#else
   Comms_TaskCreate();
-
+  MotorGuard_TaskCreate();   /* SÉCURITÉ anti-butée — toujours active */
 #ifdef WRIST_ENCODER_TEST
   WristTest_TaskCreate();
+#endif
 #endif
 
   sLedTimer = xTimerCreate("led",

@@ -34,4 +34,13 @@ void Motor_L298N_Stop(motor_id_t id);
 /* Cut every locally-owned motor. */
 void Motor_L298N_StopAll(void);
 
+/* Closed-loop raw drive (continu, sans auto-stop timer) :
+ *   dir > 0 → forward, dir < 0 → backward, dir == 0 → stop.
+ * La boucle d'asservissement appelante décide quand arrêter. */
+void Motor_L298N_SetRaw(motor_id_t id, int dir, uint8_t speed_pct);
+
+/* Sens de drive courant du moteur : +1 / -1 / 0 (arrêté).
+ * Utilisé par la sécurité anti-butée (coupe si calé). */
+int  Motor_L298N_DrivingDir(motor_id_t id);
+
 #endif /* MOTOR_L298N_H */
