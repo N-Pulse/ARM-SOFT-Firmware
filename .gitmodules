@@ -1,6 +1,3 @@
-[submodule "fw/comm-stack"]
-	path = fw/comm-stack
-	url = git@github.com:N-Pulse/CommStack.git
 [submodule "Middlewares/Third_Party/EmbeddedProto"]
 	path = Middlewares/Third_Party/EmbeddedProto
 	url = https://github.com/Embedded-AMS/EmbeddedProto.git

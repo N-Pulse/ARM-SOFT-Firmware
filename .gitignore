@@ -8,3 +8,8 @@
 *.log
 *.d
 .DS_Store
+
+# venv Python embarqué dans comm-stack (ne pas committer)
+fw/comm-stack/PyUART/venv_py/
+__pycache__/
+*.pyc

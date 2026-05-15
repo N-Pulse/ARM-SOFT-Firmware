@@ -1,0 +1,80 @@
+syntax = "proto3";
+
+
+/********************
+ *  Device Messages
+ ********************/
+
+message DeviceMessage {
+  oneof message {
+    Hello hello = 1;
+    Data data = 2;
+  }
+}
+
+// Device --> Prosthesis (ping prosthesis to receive configuration instructions)
+message Hello {
+  uint32 device_id = 1;
+  uint32 proto_ver = 2;
+  uint32 supported_modes = 3;
+}
+
+message Data {
+  oneof message {
+    ClassificationData instruction = 1;
+  }
+}
+
+message ClassificationData {
+  enum Action {
+    OPEN_HAND = 0;
+    CLOSE_HAND = 1;
+    PINCH = 2;
+    ROTATE_WRIST_R = 3;
+    ROTATE_WRIST_L = 4;
+  }
+  Action action = 1;
+}
+
+/********************
+ *  Prosthesis Messages
+ ********************/
+
+message ProsthesisMessage {
+  oneof message {
+    Config config = 1;
+    Error error = 2;
+  }
+}
+
+// Prosthesis --> Device (send selected configuration)
+message Config {
+  uint32 selected_mode = 1;
+  ModeParams params = 2;
+}
+
+message ModeParams {
+  oneof mode_specific {
+    ClassificationParams classification = 1;
+    LogisticRegressionParams regression = 2;
+  }
+}
+
+message ClassificationParams {
+  uint32 data_rate_hz = 1;
+  repeated uint32 allowed_movements = 2;
+  optional float threshold = 3;
+}
+
+message LogisticRegressionParams {
+  uint32 data_rate_hz = 1;
+}
+
+/********************
+ *  Info Messages
+ ********************/
+
+message Error {
+  uint32 reason = 1;
+}
+
