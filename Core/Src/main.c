@@ -508,7 +508,9 @@ extern volatile uint16_t g_rxring_tail;
 #define CB_SPEED         45U     /* % PWM par défaut (réglable par moteur via 'v') */
 #define CB_DEADBAND_CNT  6       /* ~0.7° (2928 cnt/tour) — serré pour atteindre les fins de course */
 #define CB_JOG_DEG       3
-#define CB_STUCK_TICKS   80      /* ×10ms : pas d'amélioration → stop (mauvais sens?) */
+#define CB_STUCK_TICKS   200     /* ×10ms = 2s : pas d'amélioration → stop. Avant 80
+                                    (800ms) mais trop court pour casser la stiction
+                                    après une fermeture serrée. */
 #define CB_TICK_MS       10
 #define CB_STATUS_EVERY  40      /* ×10ms = 400ms */
 
@@ -521,11 +523,13 @@ static int16_t  cb_close_deg[MOTOR_COUNT] = {
   [MOTOR_THUMB]=42,[MOTOR_INDEX]=42,[MOTOR_MIDDLE]=42,
   [MOTOR_RING]=40,[MOTOR_LITTLE]=37,[MOTOR_PALM]=5,
 };
-/* PWM par moteur (%). PALM tire des câbles → plus de couple pour passer le
- * point dur à mi-course. Réglable à chaud : commande  v<pct>  (ex: v75). */
+/* PWM par moteur (%). Defaults remontes a 75 pour avoir assez de couple
+ * pour casser la stiction quand on inverse (typique apres une fermeture
+ * serree : le moteur a besoin d'un coup de jus initial pour repartir en
+ * arriere). PALM a 85 (cables plus durs). Reglable a chaud avec v<pct>. */
 static uint8_t  cb_speed[MOTOR_COUNT] = {
-  [MOTOR_THUMB]=45,[MOTOR_INDEX]=45,[MOTOR_MIDDLE]=45,
-  [MOTOR_RING]=45,[MOTOR_LITTLE]=45,[MOTOR_PALM]=75,
+  [MOTOR_THUMB]=75,[MOTOR_INDEX]=75,[MOTOR_MIDDLE]=75,
+  [MOTOR_RING]=75,[MOTOR_LITTLE]=75,[MOTOR_PALM]=85,
 };
 static int cb_sel = -1;
 
@@ -598,18 +602,33 @@ static void cb_watch_enc(void)
 }
 
 /* Applique une pose canonique (OPEN/CLOSED/PINCH/NEUTRAL) sur tous les
- * moteurs LOCAUX de cette carte, en closed-loop. Equivalent calib de
- * apply_full_pose() de l'IntentRouter — meme table motor_map. */
+ * moteurs LOCAUX de cette carte.
+ *
+ * Pour OPEN_HAND et CLOSE_HAND : si le moteur est home, on utilise le
+ * SEEK-TO-BUTEE (meme mecanisme que les commandes o/c individuelles).
+ * Ca pousse a la butee physique reelle au lieu d'un angle pile -> plus
+ * robuste, casse la stiction qui peut bloquer un retour apres ferm.
+ *
+ * Pour PINCH / NEUTRAL : closed-loop bang-bang vers l'angle defini dans
+ * motor_map (le seek n'a pas de sens, ces poses sont des positions
+ * intermediaires pas des butees). */
 static void cb_apply_pose(motor_pose_id_t pose, const char *label)
 {
   for (int i = 0; i < MOTOR_COUNT; i++) {
     if (!BoardLink_IsLocalMotor((motor_id_t)i)) continue;
-    float    target_rad = MotorMap_GetPose(pose, (motor_id_t)i);
-    /* rad -> counts : counts = rad * (cnt_par_tour / 2*pi) */
-    int32_t  target_cnt = (int32_t)(target_rad * (WT_CNT_PER_OUTPUT_REV / 6.28318530f));
-    cb_arm(i, target_cnt);
+
+    if (pose == MOTOR_POSE_OPEN && cb_homed[i]) {
+      cb_seek_start(i, cb_open_raw[i]);
+    } else if (pose == MOTOR_POSE_CLOSED && cb_homed[i]) {
+      cb_seek_start(i, cb_close_raw[i]);
+    } else {
+      float    target_rad = MotorMap_GetPose(pose, (motor_id_t)i);
+      /* rad -> counts : counts = rad * (cnt_par_tour / 2*pi) */
+      int32_t  target_cnt = (int32_t)(target_rad * (WT_CNT_PER_OUTPUT_REV / 6.28318530f));
+      cb_arm(i, target_cnt);
+    }
   }
-  printf("CAL INTENT %s -> closed-loop sur les locaux\r\n", label);
+  printf("CAL INTENT %s -> seek butee si homed, bang-bang sinon\r\n", label);
 }
 
 static void cb_stop(int i)
