@@ -21,8 +21,8 @@
  *   - A, B     : signaux quadrature → TIM CH1 / CH2 du STM32
  *
  * Architecture — même binaire, deux rôles (strap PC0) :
- *   - Master  (motherboard, PC0 = pull-up HIGH)  : LITTLE
- *   - Slave   (daughterboard, PC0 = GND)         : THUMB, INDEX, MIDDLE, RING, PALM
+ *   - Master  (motherboard, PC0 = pull-up HIGH)  : LITTLE, RING
+ *   - Slave   (daughterboard, PC0 = GND)         : THUMB, INDEX, MIDDLE, PALM
  *
  *   Astuce clé : on partage le même timer entre deux moteurs de boards
  *   différentes. Comme un seul des deux est local par carte, il n'y a jamais
@@ -36,10 +36,12 @@
  *   │ INDEX   │ Slave    │ TIM2   │ PA0       │ PA1       │ AF1 │
  *   │ LITTLE  │ Master   │ TIM3   │ PA6       │ PA7       │ AF2 │
  *   │ MIDDLE  │ Slave    │ TIM3   │ PA6       │ PA7       │ AF2 │
- *   │ RING    │ Slave    │ TIM8   │ PC6       │ PC7       │ AF4 │
- *   │ THUMB   │ Slave    │ TIM15  │ PB14      │ PB15      │ AF1 │
+ *   │ RING    │ Master   │ TIM8   │ PC6       │ PC7       │ AF4 │
+ *   │ THUMB   │ Slave    │ TIM15* │ PB14      │ PB15      │ AF1 │
  *   │ PALM    │ Slave    │ TIM20  │ PB2 (AF3) │ PC2 (AF6) │  -  │
  *   └─────────┴──────────┴────────┴───────────┴───────────┴─────┘
+ *   *TIM15 ne supporte PAS le mode encodeur sur G4 -> decodage software
+ *    via EXTI rising+falling (voir Thumb_SwEnc_* dans main.c).
  *
  *   TIM2 est 32-bit (pas de débordement à craindre). Les autres sont 16-bit
  *   — le code fait l'extension de signe.

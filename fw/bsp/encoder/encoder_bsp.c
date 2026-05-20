@@ -25,11 +25,12 @@ typedef struct {
     GPIO_TypeDef   *ch2_port;  uint16_t ch2_pin;  uint8_t ch2_af;
 } enc_cfg_t;
 
-/* Build "presentation" (main seule). Timer-sharing master/slave :
+/* Build "presentation" (main seule). RING deplace sur master (L298N slave HS).
+ * Timer-sharing master/slave :
  *   TIM2  : INDEX  (slave)
  *   TIM3  : LITTLE (master)  | MIDDLE (slave)
- *   TIM8  : RING   (slave)
- *   TIM15 : THUMB  (slave)
+ *   TIM8  : RING   (master)
+ *   TIM15 : THUMB  (slave)  -- decodage software (TIM15 sans encoder mode)
  *   TIM20 : PALM   (slave) */
 static const enc_cfg_t s_enc_cfg[MOTOR_COUNT] = {
     [MOTOR_THUMB]   = { TIM15, false, GPIOB, GPIO_PIN_14, GPIO_AF1_TIM15,

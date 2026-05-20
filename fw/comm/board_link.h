@@ -31,8 +31,8 @@ board_role_t  BoardLink_Role(void);
 
 /* True if this board is the one physically wired to the given motor.
  * Build "presentation" (main seule) :
- *   Master (motherboard)    : LITTLE
- *   Slave  (daughterboard)  : THUMB, INDEX, MIDDLE, RING, PALM */
+ *   Master (motherboard)    : LITTLE, RING
+ *   Slave  (daughterboard)  : THUMB, INDEX, MIDDLE, PALM */
 bool          BoardLink_IsLocalMotor(motor_id_t id);
 
 /* Master-only: encode + transmit a motor command frame to the slave.

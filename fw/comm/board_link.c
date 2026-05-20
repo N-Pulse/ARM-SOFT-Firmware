@@ -29,11 +29,16 @@ static UART_HandleTypeDef s_huart3;
 static board_role_t       s_role = BOARD_ROLE_MASTER;
 
 /* Build "presentation" (main seule) :
- *   Master (motherboard) owns LITTLE
- *   Slave  (daughterboard) owns THUMB, INDEX, MIDDLE, RING, PALM */
+ *   Master (motherboard)    owns LITTLE, RING
+ *   Slave  (daughterboard)  owns THUMB, INDEX, MIDDLE, PALM
+ *
+ * RING a ete deplace du slave vers le master parce que le L298N RING
+ * cote slave est defectueux (sortie IN1 tiree a 4V au lieu de 3.3V).
+ * Sur le master, RING reprend les pins du WRIST_Y de la branche
+ * simulation_pipeline (libres depuis le retrait du poignet). */
 static bool is_master_motor(motor_id_t id)
 {
-    return (id == MOTOR_LITTLE);
+    return (id == MOTOR_LITTLE) || (id == MOTOR_RING);
 }
 
 bool BoardLink_IsLocalMotor(motor_id_t id)

@@ -258,8 +258,8 @@ static void MX_GPIO_Init(void)
  * Build "presentation" : MAIN seule. Le MÊME binaire tourne sur les 2 cartes ;
  * chaque carte initialise/stream UNIQUEMENT ses encodeurs locaux
  * (BoardLink_IsLocalMotor), nommés correctement, sur SON propre VCP USB :
- *   - Master  : LITTLE                              (1 encodeur)
- *   - Slave   : THUMB, INDEX, MIDDLE, RING, PALM    (5 encodeurs)
+ *   - Master  : LITTLE, RING                  (2 encodeurs)
+ *   - Slave   : THUMB, INDEX, MIDDLE, PALM    (4 encodeurs)
  *
  * Timer-sharing : un timer sert 1 moteur master ET 1 moteur slave, jamais en
  * même temps (rôle décidé au boot par le strap PC0). Voir encoder_bsp.h.
