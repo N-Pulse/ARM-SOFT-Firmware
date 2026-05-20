@@ -11,9 +11,9 @@ Le **même binaire** tourne sur les deux cartes. Le strap pin `PC0` décide du r
 | Moteur | L298N OUT1 + OUT2 | PWM (ENA) | IN1 | IN2 | Encoder A (TIM CH1) | Encoder B (TIM CH2) |
 |--------|-------------------|-----------|-----|-----|---------------------|---------------------|
 | **LITTLE** | → M+, M− moteur LITTLE | PB6 (TIM4_CH1, AF2) | PC8 | PC9 | PA6 (TIM3, AF2) | PA7 (TIM3, AF2) |
-| **RING** | → M+, M− moteur RING | PB8 (TIM4_CH3, AF2) | PB0 | PB1 | PC6 (TIM8, AF4) | PC7 (TIM8, AF4) |
+| **RING** | → M+, M− moteur RING | PA8 (TIM1_CH1, AF6) | PC4 | PC5 | PC6 (TIM8, AF4) | PC7 (TIM8, AF4) |
 
-> ℹ️ **RING a été déplacé du slave vers le master** (le L298N côté slave présentait un défaut : sortie IN1 à 4V au lieu de 3.3V). Le mapping reprend les pins de l'ancien WRIST_Y de `simulation_pipeline`, libres depuis le retrait du poignet.
+> ℹ️ **RING a été déplacé du slave vers le master** (canal driver slave HS), puis remappé sur TIM1_CH1/PA8 + PC4/PC5 (anciennes pins WRIST_X de `simulation_pipeline`) pour utiliser un timer distinct de LITTLE.
 
 ## 2. Daughterboard (Slave) — 4 moteurs locaux
 
@@ -86,19 +86,19 @@ Slave = daughterboard (THUMB, INDEX, MIDDLE, PALM).
 | PA3 | Host RX | — | USART2_RX |
 | PA6 | LITTLE Enc A | MIDDLE Enc A | TIM3 CH1 |
 | PA7 | LITTLE Enc B | MIDDLE Enc B | TIM3 CH2 |
-| PA8 | — | THUMB PWM | TIM1 CH1 |
+| PA8 | **RING PWM** | THUMB PWM | TIM1 CH1 |
 | PA9 | — | INDEX PWM | TIM1 CH2 |
 | PA10 | — | MIDDLE PWM | TIM1 CH3 |
 | PA11 | — | — *(libre, ex-RING)* | — |
 | PA13 / PA14 | SWD | SWD | Debug |
 | PA15 | — | MIDDLE IN2 | GPIO |
-| PB0 | **RING IN1** | — | GPIO |
-| PB1 | **RING IN2** | — | GPIO |
+| PB0 | — *(libre, ex-RING IN1)* | — | — |
+| PB1 | — *(libre, ex-RING IN2)* | — | — |
 | PB2 | — | PALM Enc A | TIM20 CH1 |
 | PB4 | — | THUMB IN2 | GPIO |
 | PB5 | — | THUMB IN1 | GPIO |
 | PB6 | LITTLE PWM | — | TIM4 CH1 |
-| PB8 | **RING PWM** | — | TIM4 CH3 |
+| PB8 | — *(libre, ex-RING PWM)* | — | — |
 | PB9 | — | PALM PWM | TIM4 CH4 |
 | PB10 | USART3 TX (link) | USART3 TX (link) | Inter-cartes |
 | PB11 | USART3 RX (link) | USART3 RX (link) | Inter-cartes |
@@ -109,6 +109,8 @@ Slave = daughterboard (THUMB, INDEX, MIDDLE, PALM).
 | PC0 | Flottant (pull-up) | GND | Strap rôle |
 | PC2 | — | PALM Enc B | TIM20 CH2 |
 | PC3 | — | PALM IN2 | GPIO |
+| PC4 | **RING IN1** | — | GPIO |
+| PC5 | **RING IN2** | — | GPIO |
 | PC6 | **RING Enc A** | — | TIM8 CH1 |
 | PC7 | **RING Enc B** | — | TIM8 CH2 |
 | PC8 | LITTLE IN1 | — | GPIO |
