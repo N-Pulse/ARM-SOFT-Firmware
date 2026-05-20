@@ -45,4 +45,13 @@ void          BoardLink_SendMotorCmd(motor_id_t id,
  * dispatches motor commands locally. No-op when called on master. */
 void          BoardLink_TaskCreate(void);
 
+/* ---------------- Raw ASCII tunnel (used by MOTOR_CALIB_MODE) ----------------
+ * En mode calibration le protocole framé n'est PAS utilisé (Comms_Task n'est
+ * pas démarré). On expose alors USART3 comme un tuyau série brut entre les 2
+ * cartes : le master forwarde chaque caractère tapé au slave, et le slave
+ * renvoie ses printf au master via _write redirigé. Résultat : 1 seul terminal
+ * (celui du master) suffit pour piloter les 6 moteurs des 2 cartes. */
+void BoardLink_RawSendByte(uint8_t b);
+bool BoardLink_RawRecvByte(uint8_t *out);
+
 #endif /* BOARD_LINK_H */

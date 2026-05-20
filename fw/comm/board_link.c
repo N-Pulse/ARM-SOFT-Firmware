@@ -211,3 +211,18 @@ void BoardLink_TaskCreate(void)
                                     NULL);
     configASSERT(status == pdPASS);
 }
+
+/* ---------- Raw ASCII tunnel (calib mode) ------------------------------ */
+
+void BoardLink_RawSendByte(uint8_t b)
+{
+    /* Timeout très court : à 115200 baud un octet = ~87 us. Si la ligne
+     * est saine, jamais bloquant. Sinon on perd l'octet — acceptable pour
+     * une console de calibration. */
+    HAL_UART_Transmit(&s_huart3, &b, 1U, 5U);
+}
+
+bool BoardLink_RawRecvByte(uint8_t *out)
+{
+    return rxring_pop(out);
+}

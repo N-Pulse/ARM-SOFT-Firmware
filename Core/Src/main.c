@@ -564,8 +564,17 @@ static void cb_handle_line(char *ln)
 
   if (cmd >= '0' && cmd <= '5') {
     int i = cmd - '0';
-    if (BoardLink_IsLocalMotor((motor_id_t)i)) { cb_sel = i; printf("CAL sel=%s\r\n", s_wt[i].name); }
-    else printf("CAL %d non local\r\n", i);
+    if (BoardLink_IsLocalMotor((motor_id_t)i)) {
+      cb_sel = i;
+      printf("CAL sel=%s\r\n", s_wt[i].name);
+    } else {
+      /* L'utilisateur sélectionne un moteur de l'AUTRE carte → on
+       * désélectionne ici pour que H/o/c/+/-/g/v/s ne tapent pas
+       * accidentellement sur un moteur local. La carte qui possède
+       * le moteur ciblé le sélectionne de son côté (commande forwardée
+       * via le tunnel USART3). */
+      cb_sel = -1;
+    }
     return;
   }
   switch (cmd) {
@@ -621,10 +630,38 @@ static void cb_handle_line(char *ln)
   }
 }
 
+/* ---------------------------------------------------------------------------
+ * Tunnel ASCII master ↔ slave (calib mode uniquement)
+ *
+ * Le mode calib n'utilise PAS le protocole framé sur USART3 (Comms_Task
+ * pas démarré) → on s'en sert comme d'un simple tuyau série :
+ *   - master : chaque caractère tapé est forwardé au slave ;
+ *              les bytes reçus du slave (printf redirigés) sont relayés
+ *              au VCP du master.
+ *   - slave  : les bytes reçus du master sont injectés dans le parseur
+ *              de Calib_Task (même chemin que le VCP local) ; tous ses
+ *              printf passent par _write override → USART3 → master.
+ *
+ * Résultat côté utilisateur : un seul terminal (celui du master)
+ * pilote les 6 moteurs des 2 cartes. */
+#ifdef MOTOR_CALIB_MODE
+int _write(int file, char *ptr, int len)
+{
+  (void)file;
+  if (BoardLink_Role() == BOARD_ROLE_SLAVE) {
+    for (int i = 0; i < len; i++) BoardLink_RawSendByte((uint8_t)ptr[i]);
+  } else {
+    HAL_UART_Transmit(&hcom_uart[COM1], (uint8_t *)ptr, (uint16_t)len, 100U);
+  }
+  return len;
+}
+#endif
+
 static void Calib_Task(void *argument)
 {
   (void)argument;
   char ln[32]; uint8_t li = 0;
+  const bool is_master = (BoardLink_Role() == BOARD_ROLE_MASTER);
 
   for (int i = 0; i < MOTOR_COUNT; i++) {
     cb_dir[i] = 1; cb_active[i] = false;
@@ -633,20 +670,42 @@ static void Calib_Task(void *argument)
       if (cb_sel < 0) cb_sel = i;
     }
   }
-  printf("\r\n=== CALIB MODE (presentation: main seule) ===\r\n");
-  printf("  ?  liste | 0-5 select | H auto-home sel | A auto-home tous\r\n");
-  printf("  o open | c close | x si open/close inverse | d dump | S stop\r\n");
-  printf("  v<pct> force/vitesse du moteur (ex: v75 si cale a mi-course)\r\n");
-  printf("  workflow: select -> H (le moteur cale les 2 butees seul) -> o/c\r\n");
-  cb_list();
+  /* Seul le master imprime la bannière sur le VCP de l'utilisateur.
+   * (Le slave imprimerait via le tunnel USART3 → message en double.) */
+  if (is_master) {
+    printf("\r\n=== CALIB MODE (presentation: main seule, 1 terminal) ===\r\n");
+    printf("  ?  liste les 6 moteurs (locaux + distants via USART3)\r\n");
+    printf("  0-5 select | H auto-home sel | A auto-home tous | S stop tous\r\n");
+    printf("  o open | c close | x si open/close inverse | d dump\r\n");
+    printf("  v<pct> force/vitesse du moteur (ex: v75 si cale a mi-course)\r\n");
+    printf("  workflow: select -> H (le moteur cale les 2 butees seul) -> o/c\r\n");
+  }
+  cb_list();   /* master imprime ses locaux, slave les siens via le tunnel */
 
   for (;;)
   {
-    /* --- commandes --- */
+    /* --- commandes : VCP local (utilisateur sur le master) --- */
     uint8_t b;
     while (cb_pop(&b)) {
+      /* Master : forwarde chaque caractère au slave pour que les 2 cartes
+       * voient la même ligne (la sélection cb_sel reste cohérente). */
+      if (is_master) BoardLink_RawSendByte(b);
       if (b == '\n' || b == '\r') { ln[li] = 0; if (li) cb_handle_line(ln); li = 0; }
       else if (li < sizeof(ln) - 1) ln[li++] = (char)b;
+    }
+
+    /* --- commandes/affichage : USART3 (tunnel inter-cartes) --- */
+    uint8_t bb;
+    while (BoardLink_RawRecvByte(&bb)) {
+      if (is_master) {
+        /* Bytes reçus = printf du slave → on les relaye sur le VCP utilisateur. */
+        HAL_UART_Transmit(&hcom_uart[COM1], &bb, 1U, 5U);
+      } else {
+        /* Bytes reçus = ligne tapée par l'utilisateur côté master → on
+         * la passe au parseur exactement comme si elle venait du VCP. */
+        if (bb == '\n' || bb == '\r') { ln[li] = 0; if (li) cb_handle_line(ln); li = 0; }
+        else if (li < sizeof(ln) - 1) ln[li++] = (char)bb;
+      }
     }
 
     /* --- boucle d'asservissement par moteur (bang-bang + deadband) --- */

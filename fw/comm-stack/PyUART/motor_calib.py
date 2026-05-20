@@ -5,14 +5,18 @@ Calibration closed-loop par moteur (firmware en MOTOR_CALIB_MODE).
 Build "presentation" : MAIN seule (6 moteurs). Voir branche
 `simulation_pipeline` pour la version avec poignet.
 
-Terminal série brut sur le VCP d'UNE carte : tu choisis un moteur et tu
-l'asservis à un angle pour trouver/définir les bonnes butées.
+⚡ Tunnel master ↔ slave : le firmware en mode calib établit un pont
+série sur USART3, donc UN SEUL terminal (celui du master) suffit pour
+piloter les 6 moteurs des 2 cartes. Le master forwarde tout ce que tu
+tapes au slave, et les printf du slave reviennent dans ce même
+terminal. Plus besoin d'ouvrir 2 COM.
+
+Répartition des moteurs (pour info — le tunnel masque le détail) :
 - master  : LITTLE
 - slave   : THUMB, INDEX, MIDDLE, RING, PALM
-(une instance du script par carte / par COM)
 
 Usage :
-    python motor_calib.py --com COM6
+    python motor_calib.py --com COM6     # COM6 = VCP du master
 
 Workflow recommandé (automatique) :
     1) ?            voir les moteurs locaux + leur index
