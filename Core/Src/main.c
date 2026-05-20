@@ -758,6 +758,28 @@ static void cb_handle_line(char *ln)
     case 'N': cb_apply_pose(MOTOR_POSE_NEUTRAL, "NEUTRAL");     break;
     /* --- DIAG : snapshot encodeurs (count + niveaux bruts A/B) --- */
     case 'W': cb_watch_enc(); break;
+    /* --- DIAG : drive RAW indefini (multimetre sur OUT1/OUT2 du L298N) ---
+     *   T+   = drive +1 jusqu'a 's'  (IN1=HIGH IN2=LOW PWM=cb_speed)
+     *   T-   = drive -1 jusqu'a 's'  (IN1=LOW  IN2=HIGH)
+     *   Ts   = stop (equivalent a 's')
+     * Pas de bang-bang, pas de stuck-timeout. Le moteur tourne tant qu'on
+     * tape pas 's' (ou Ts ou S). Permet de mesurer tranquillement les
+     * tensions sur le driver sans que l'anti-butee coupe au bout de 800ms. */
+    case 'T': {
+      if (cb_sel < 0) { printf("CAL T : selectionne un moteur d'abord\r\n"); break; }
+      char sub = ln[1];
+      int8_t dir = (sub == '+') ? +1 : (sub == '-') ? -1 : 0;
+      if (dir == 0) {
+        cb_stop(cb_sel);
+        printf("CAL %s T stop\r\n", s_wt[cb_sel].name);
+      } else {
+        cb_active[cb_sel]  = false;
+        cb_hphase[cb_sel]  = 0;
+        Motor_L298N_SetRaw((motor_id_t)cb_sel, dir, cb_speed[cb_sel]);
+        printf("CAL %s T drive raw %+d speed=%d%% (s pour stop)\r\n",
+               s_wt[cb_sel].name, dir, cb_speed[cb_sel]);
+      }
+    } break;
     default: break;
   }
 }
@@ -812,6 +834,7 @@ static void Calib_Task(void *argument)
     printf("  v<pct> force/vitesse du moteur (ex: v75 si cale a mi-course)\r\n");
     printf("  INTENTS toute la main : O=open  C=close  P=pinch  N=neutral\r\n");
     printf("  W = snapshot encodeurs (cnt + niveaux bruts A/B) -- diag cablage\r\n");
+    printf("  T+/T-/Ts = drive RAW indefini sel (multimetre L298N OUT1/OUT2)\r\n");
     printf("  workflow: select -> H (le moteur cale les 2 butees seul) -> o/c\r\n");
   }
   cb_list();   /* master imprime ses locaux, slave les siens via le tunnel */
