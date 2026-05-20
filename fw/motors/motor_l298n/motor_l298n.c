@@ -148,6 +148,10 @@ static void arm_stop_timer(motor_id_t id, uint32_t duration_ms)
                              pdMS_TO_TICKS(10));
 }
 
+/* Forward decls — definies plus bas, utilisees par Motor_L298N_Init. */
+static void pwm_pin_to_af(motor_id_t id);
+static void pwm_pin_to_gpio_low(motor_id_t id);
+
 /* ------------------------------------------------------------------------ */
 
 void Motor_L298N_Init(void)
@@ -204,6 +208,14 @@ void Motor_L298N_Init(void)
 
         init_pwm_channel(htim_for(m->tim), m->tim_channel);
 
+        /* Apres init du canal PWM (CCR=0, CCxE=1) on bascule la pin en
+         * GPIO output LOW PUR. Le canal continue a tourner cote timer
+         * (compare en idle) mais la pin n'est plus routee via le mux AF,
+         * donc aucune activite residuelle de compare ne sort sur la pin.
+         * Quand une commande arrive (drive_fwd / drive_bwd / SetRaw)
+         * on remet la pin en mode AF. */
+        pwm_pin_to_gpio_low((motor_id_t)i);
+
         s_stop_timer[i] = xTimerCreate("L298NStop",
                                        1,                /* placeholder */
                                        pdFALSE,
@@ -219,6 +231,39 @@ void Motor_L298N_Init(void)
     }
 }
 
+/* ------------------------------------------------------------------------
+ * Helpers : bascule la pin PWM entre mode AF (canal PWM actif) et mode
+ * GPIO output LOW pur (canal PWM coupe au niveau de la pin). Au repos,
+ * on bascule en GPIO LOW pour ELIMINER toute activite du canal compare
+ * qui peut produire un signal residuel detectable par le L298N meme avec
+ * duty=0% (observe en pratique sur certains setups). Quand on commande,
+ * on rebascule en AF avant d'applique la duty.
+ * Le timer/counter reste tjs en marche, seul le routage de la pin change. */
+static void pwm_pin_to_af(motor_id_t id)
+{
+    const l298n_motor_t *m = &s_motors[id];
+    GPIO_InitTypeDef g = {0};
+    g.Mode      = GPIO_MODE_AF_PP;
+    g.Pull      = GPIO_NOPULL;
+    g.Speed     = GPIO_SPEED_FREQ_HIGH;
+    g.Alternate = m->pwm_af;
+    g.Pin       = m->pwm_pin;
+    HAL_GPIO_Init(m->pwm_port, &g);
+}
+
+static void pwm_pin_to_gpio_low(motor_id_t id)
+{
+    const l298n_motor_t *m = &s_motors[id];
+    GPIO_InitTypeDef g = {0};
+    g.Mode      = GPIO_MODE_OUTPUT_PP;
+    g.Pull      = GPIO_NOPULL;
+    g.Speed     = GPIO_SPEED_FREQ_LOW;
+    g.Alternate = 0;
+    g.Pin       = m->pwm_pin;
+    HAL_GPIO_Init(m->pwm_port, &g);
+    HAL_GPIO_WritePin(m->pwm_port, m->pwm_pin, GPIO_PIN_RESET);
+}
+
 /* ------------------------------------------------------------------------ */
 
 static void drive_forward_for(motor_id_t id, uint8_t speed_pct, uint32_t ms)
@@ -226,6 +271,7 @@ static void drive_forward_for(motor_id_t id, uint8_t speed_pct, uint32_t ms)
     const l298n_motor_t *m = &s_motors[id];
     HAL_GPIO_WritePin(m->in1_port, m->in1_pin, GPIO_PIN_SET);
     HAL_GPIO_WritePin(m->in2_port, m->in2_pin, GPIO_PIN_RESET);
+    pwm_pin_to_af(id);
     set_duty(id, ((uint32_t)speed_pct * (PWM_ARR + 1U)) / 100U);
     s_drv[id] = +1;
     arm_stop_timer(id, ms);
@@ -236,6 +282,7 @@ static void drive_backward_for(motor_id_t id, uint8_t speed_pct, uint32_t ms)
     const l298n_motor_t *m = &s_motors[id];
     HAL_GPIO_WritePin(m->in1_port, m->in1_pin, GPIO_PIN_RESET);
     HAL_GPIO_WritePin(m->in2_port, m->in2_pin, GPIO_PIN_SET);
+    pwm_pin_to_af(id);
     set_duty(id, ((uint32_t)speed_pct * (PWM_ARR + 1U)) / 100U);
     s_drv[id] = -1;
     arm_stop_timer(id, ms);
@@ -284,6 +331,7 @@ void Motor_L298N_Stop(motor_id_t id)
     const l298n_motor_t *m = &s_motors[id];
     HAL_GPIO_WritePin(m->in1_port, m->in1_pin, GPIO_PIN_RESET);
     HAL_GPIO_WritePin(m->in2_port, m->in2_pin, GPIO_PIN_RESET);
+    pwm_pin_to_gpio_low(id);   /* sort la pin de l'AF/PWM -> GPIO LOW pur au repos */
     s_drv[id] = 0;
 }
 
@@ -305,15 +353,18 @@ void Motor_L298N_SetRaw(motor_id_t id, int dir, uint8_t speed_pct)
     if (dir > 0) {
         HAL_GPIO_WritePin(m->in1_port, m->in1_pin, GPIO_PIN_SET);
         HAL_GPIO_WritePin(m->in2_port, m->in2_pin, GPIO_PIN_RESET);
+        pwm_pin_to_af(id);
         s_drv[id] = +1;
     } else if (dir < 0) {
         HAL_GPIO_WritePin(m->in1_port, m->in1_pin, GPIO_PIN_RESET);
         HAL_GPIO_WritePin(m->in2_port, m->in2_pin, GPIO_PIN_SET);
+        pwm_pin_to_af(id);
         s_drv[id] = -1;
     } else {
         HAL_GPIO_WritePin(m->in1_port, m->in1_pin, GPIO_PIN_RESET);
         HAL_GPIO_WritePin(m->in2_port, m->in2_pin, GPIO_PIN_RESET);
         set_duty(id, 0);
+        pwm_pin_to_gpio_low(id);       /* sort de l'AF/PWM -> GPIO LOW pur au repos */
         s_drv[id] = 0;
         return;
     }
