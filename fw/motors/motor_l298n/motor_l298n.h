@@ -43,4 +43,8 @@ void Motor_L298N_SetRaw(motor_id_t id, int dir, uint8_t speed_pct);
  * Utilisé par la sécurité anti-butée (coupe si calé). */
 int  Motor_L298N_DrivingDir(motor_id_t id);
 
+/* Frein dynamique : court-circuite le moteur (tenue statique contre la
+ * gravité, ex: poids de la main sur le poignet). Pas de roue libre. */
+void Motor_L298N_Brake(motor_id_t id);
+
 #endif /* MOTOR_L298N_H */

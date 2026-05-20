@@ -261,6 +261,7 @@ static void MX_GPIO_Init(void)
 void Motor_L298N_SetRaw(motor_id_t id, int dir, uint8_t speed_pct);
 void Motor_L298N_Stop(motor_id_t id);
 int  Motor_L298N_DrivingDir(motor_id_t id);
+void Motor_L298N_Brake(motor_id_t id);
 
 #define WT_CNT_PER_OUTPUT_REV  2928L
 
@@ -532,6 +533,45 @@ static void cb_arm(int i, int32_t target)
 static void cb_goto_deg(int i, int deg)        { cb_arm(i, cb_deg2cnt(deg)); }
 static void cb_jog(int i, int ddeg)            { cb_arm(i, cb_cnt(i) + cb_deg2cnt(ddeg)); }
 
+/* Contrôle POIGNET couplé.
+ *  mode 0 = idle
+ *       1 = impulse ROTATION  (open-loop, durée fixe, PAS de butée — infini)
+ *       2 = FLEXION seek       (closed-loop : pousse jusqu'au calage encodeur,
+ *                               coupe les 2 → protège les câbles) */
+static uint8_t  cb_wmode;
+static int8_t   cb_wrx, cb_wry;       /* sens raw L298N X / Y du mouvement */
+static uint16_t cb_wticks;            /* impulse : ticks restants */
+static int32_t  cb_wrefX, cb_wrefY;   /* flex : derniers comptes (calage) */
+static uint16_t cb_wstill;            /* flex : ticks sans progrès */
+static int      cb_wimp_ms = 400;     /* durée d'une impulsion rotation (ms) */
+
+/* État poignet : positions X/Y, rotation/flexion déduites, ET niveaux
+ * BRUTS des voies encodeur (diag "lit 0" : si Xa/Xb/Ya/Yb ne togglent pas
+ * quand ça tourne → voie A ou B pas câblée, comme sur les doigts). */
+static void cb_wrist_print(void)
+{
+  long xd = (long)((int64_t)cb_cnt(MOTOR_WRIST_X) * 3600 / WT_CNT_PER_OUTPUT_REV);
+  long yd = (long)((int64_t)cb_cnt(MOTOR_WRIST_Y) * 3600 / WT_CNT_PER_OUTPUT_REV);
+  long rot = (xd + yd) / 2;
+  long flx = (xd - yd) / 2;
+  int xa=(int)((GPIOA->IDR>>0)&1U), xb=(int)((GPIOA->IDR>>1)&1U);  /* WRIST_X TIM2 PA0/PA1 */
+  int ya=(int)((GPIOC->IDR>>6)&1U), yb=(int)((GPIOC->IDR>>7)&1U);  /* WRIST_Y TIM8 PC6/PC7 */
+  printf("WRIST X=%ld.%ld Y=%ld.%ld | rot=%ld.%ld flex=%ld.%ld | Xa=%d Xb=%d Ya=%d Yb=%d\r\n",
+         xd/10,(xd<0?-xd:xd)%10, yd/10,(yd<0?-yd:yd)%10,
+         rot/10,(rot<0?-rot:rot)%10, flx/10,(flx<0?-flx:flx)%10,
+         xa,xb,ya,yb);
+}
+
+/* Poignet au repos = FREIN dynamique (pas roue libre) : tient la position
+ * contre le poids de la main (sinon ça retombe en flexion). */
+static void cb_wrist_stop(void)
+{
+  cb_wmode = 0;
+  Motor_L298N_Brake(MOTOR_WRIST_X);
+  Motor_L298N_Brake(MOTOR_WRIST_Y);
+  cb_active[MOTOR_WRIST_X] = cb_active[MOTOR_WRIST_Y] = false;
+}
+
 static void cb_stop(int i)
 {
   if (i < 0 || i >= MOTOR_COUNT) return;
@@ -596,6 +636,13 @@ static void cb_list(void)
            cb_active[i] ? "RUN" : "idle",
            (i == cb_sel) ? " <-sel" : "");
   }
+  /* Le POIGNET se pilote en UNITÉ — pas de select, commandes directes. */
+  if (BoardLink_IsLocalMotor(MOTOR_WRIST_X) &&
+      BoardLink_IsLocalMotor(MOTOR_WRIST_Y)) {
+    printf("CAL [W] POIGNET (X+Y, PAS de select) : "
+           "r/l=ROT impulse(%dms)  f/F=FLEX seek  w<ms>=duree  W=etat  s=stop\r\n",
+           cb_wimp_ms);
+  }
 }
 
 static void cb_handle_line(char *ln)
@@ -638,8 +685,8 @@ static void cb_handle_line(char *ln)
         cb_speed[cb_sel] = (uint8_t)arg;
         printf("CAL %s speed=%d%%\r\n", s_wt[cb_sel].name, arg);
       } break;
-    case 's': cb_stop(cb_sel);                        break;
-    case 'S': for (int i=0;i<MOTOR_COUNT;i++) cb_stop(i); printf("CAL ALL STOP\r\n"); break;
+    case 's': cb_wrist_stop(); cb_stop(cb_sel);       break;
+    case 'S': cb_wrist_stop(); for (int i=0;i<MOTOR_COUNT;i++) cb_stop(i); printf("CAL ALL STOP\r\n"); break;
     case 'z':
       if (cb_sel>=0){ TIM_HandleTypeDef*h=wt_h(s_wt[cb_sel].tim);
         if(h){__HAL_TIM_SET_COUNTER(h,0);} cb_active[cb_sel]=false; cb_target[cb_sel]=0;
@@ -660,10 +707,31 @@ static void cb_handle_line(char *ln)
         } }
       break;
     /* poignet couplé (WRIST_X=5, WRIST_Y=6) — rotation = même sens, flexion = opposé */
-    case 'r': cb_jog(MOTOR_WRIST_X,+CB_JOG_DEG); cb_jog(MOTOR_WRIST_Y,+CB_JOG_DEG); printf("CAL wrist ROT R\r\n"); break;
-    case 'l': cb_jog(MOTOR_WRIST_X,-CB_JOG_DEG); cb_jog(MOTOR_WRIST_Y,-CB_JOG_DEG); printf("CAL wrist ROT L\r\n"); break;
-    case 'f': cb_jog(MOTOR_WRIST_X,+CB_JOG_DEG); cb_jog(MOTOR_WRIST_Y,-CB_JOG_DEG); printf("CAL wrist FLEX+\r\n"); break;
-    case 'F': cb_jog(MOTOR_WRIST_X,-CB_JOG_DEG); cb_jog(MOTOR_WRIST_Y,+CB_JOG_DEG); printf("CAL wrist FLEX-\r\n"); break;
+    /* --- POIGNET COUPLÉ (les 2 moteurs ensemble, closed-loop) ---
+     * rotation = même sens (X+,Y+) | flexion = sens opposé (X+,Y−).
+     * Anti-butée couplé : si un des 2 cale, les 2 sont coupés. */
+    /* ROTATION = impulsion open-loop (infinie, pas de butée). */
+    case 'r': cb_active[MOTOR_WRIST_X]=cb_active[MOTOR_WRIST_Y]=false;
+              cb_wmode=1; cb_wrx=+1; cb_wry=+1;
+              cb_wticks=(uint16_t)(cb_wimp_ms/CB_TICK_MS);
+              printf("WRIST ROT R impulse %dms\r\n", cb_wimp_ms); break;
+    case 'l': cb_active[MOTOR_WRIST_X]=cb_active[MOTOR_WRIST_Y]=false;
+              cb_wmode=1; cb_wrx=-1; cb_wry=-1;
+              cb_wticks=(uint16_t)(cb_wimp_ms/CB_TICK_MS);
+              printf("WRIST ROT L impulse %dms\r\n", cb_wimp_ms); break;
+    /* FLEXION = pousse jusqu'au calage encodeur puis coupe les 2 (câbles). */
+    case 'f': cb_active[MOTOR_WRIST_X]=cb_active[MOTOR_WRIST_Y]=false;
+              cb_wmode=2; cb_wrx=+1; cb_wry=-1;
+              cb_wrefX=cb_cnt(MOTOR_WRIST_X); cb_wrefY=cb_cnt(MOTOR_WRIST_Y); cb_wstill=0;
+              printf("WRIST FLEX+ (seek butee)\r\n"); break;
+    case 'F': cb_active[MOTOR_WRIST_X]=cb_active[MOTOR_WRIST_Y]=false;
+              cb_wmode=2; cb_wrx=-1; cb_wry=+1;
+              cb_wrefX=cb_cnt(MOTOR_WRIST_X); cb_wrefY=cb_cnt(MOTOR_WRIST_Y); cb_wstill=0;
+              printf("WRIST FLEX- (seek butee)\r\n"); break;
+    case 'w':  /* durée d'une impulsion rotation en ms (ex: w800) */
+      if (arg >= 50 && arg <= 3000) { cb_wimp_ms = arg; printf("WRIST impulse=%dms\r\n", arg); }
+      break;
+    case 'W': cb_wrist_print(); break;   /* état poignet + niveaux bruts A/B */
     default: break;
   }
 }
@@ -680,10 +748,19 @@ static void Calib_Task(void *argument)
       if (cb_sel < 0) cb_sel = i;
     }
   }
+  /* Poignet : frein dès le boot pour qu'il ne retombe pas sous son poids
+   * avant la 1ère commande (master uniquement). */
+  if (BoardLink_IsLocalMotor(MOTOR_WRIST_X) &&
+      BoardLink_IsLocalMotor(MOTOR_WRIST_Y)) {
+    Motor_L298N_Brake(MOTOR_WRIST_X);
+    Motor_L298N_Brake(MOTOR_WRIST_Y);
+  }
   printf("\r\n=== CALIB MODE ===\r\n");
   printf("  ?  liste | 0-7 select | H auto-home sel | A auto-home tous\r\n");
   printf("  o open | c close | x si open/close inverse | d dump | S stop\r\n");
   printf("  v<pct> force/vitesse du moteur (ex: v75 si cale a mi-course)\r\n");
+  printf("  POIGNET (X+Y, PAS de select): r/l ROTATION impulse, f/F FLEXION\r\n");
+  printf("    w<ms> duree impulse rotation (ex: w800) | W etat+niveaux A/B | s stop\r\n");
   printf("  workflow: select -> H (le moteur cale les 2 butees seul) -> o/c\r\n");
   cb_list();
 
@@ -696,7 +773,29 @@ static void Calib_Task(void *argument)
       else if (li < sizeof(ln) - 1) ln[li++] = (char)b;
     }
 
-    /* --- boucle d'asservissement (bang-bang + deadband) --- */
+    /* --- POIGNET couplé (rotation impulse / flexion seek-calage) --- */
+    if (cb_wmode == 1) {                       /* ROTATION : impulse open-loop */
+      Motor_L298N_SetRaw(MOTOR_WRIST_X, cb_wrx, cb_speed[MOTOR_WRIST_X]);
+      Motor_L298N_SetRaw(MOTOR_WRIST_Y, cb_wry, cb_speed[MOTOR_WRIST_Y]);
+      if (cb_wticks == 0 || --cb_wticks == 0) {
+        cb_wrist_stop();
+        printf("WRIST rot done\r\n"); cb_wrist_print();
+      }
+    }
+    else if (cb_wmode == 2) {                  /* FLEXION : pousse jusqu'au calage */
+      Motor_L298N_SetRaw(MOTOR_WRIST_X, cb_wrx, cb_speed[MOTOR_WRIST_X]);
+      Motor_L298N_SetRaw(MOTOR_WRIST_Y, cb_wry, cb_speed[MOTOR_WRIST_Y]);
+      int32_t cx = cb_cnt(MOTOR_WRIST_X), cy = cb_cnt(MOTOR_WRIST_Y);
+      if (cb_labs(cx - cb_wrefX) >= CB_HOME_EPS ||
+          cb_labs(cy - cb_wrefY) >= CB_HOME_EPS) {
+        cb_wrefX = cx; cb_wrefY = cy; cb_wstill = 0;
+      } else if (++cb_wstill > CB_HOME_STALL) {
+        cb_wrist_stop();
+        printf("WRIST FLEX butee (calage) -> stop pair\r\n"); cb_wrist_print();
+      }
+    }
+
+    /* --- boucle d'asservissement par moteur (bang-bang + deadband) --- */
     for (int i = 0; i < MOTOR_COUNT; i++)
     {
       if (!BoardLink_IsLocalMotor((motor_id_t)i)) continue;
@@ -773,6 +872,10 @@ static void Calib_Task(void *argument)
         cb_stop(i);
         printf("CAL %s BLOQUE/ MAUVAIS SENS — tape i%d puis relance\r\n",
                s_wt[i].name, i);
+        /* Poignet couplé : si un des 2 cale, on coupe AUSSI l'autre
+         * (sinon le différentiel force le mécanisme → câbles). */
+        if (i == MOTOR_WRIST_X) { cb_stop(MOTOR_WRIST_Y); printf("WRIST pair stop (butee)\r\n"); }
+        else if (i == MOTOR_WRIST_Y) { cb_stop(MOTOR_WRIST_X); printf("WRIST pair stop (butee)\r\n"); }
       }
     }
 

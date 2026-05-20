@@ -319,3 +319,20 @@ void Motor_L298N_SetRaw(motor_id_t id, int dir, uint8_t speed_pct)
     if (speed_pct > 100U) speed_pct = 100U;
     set_duty(id, ((uint32_t)speed_pct * (PWM_ARR + 1U)) / 100U);
 }
+
+void Motor_L298N_Brake(motor_id_t id)
+{
+    if (id >= MOTOR_COUNT) return;
+    if (s_stop_timer[id] == NULL) return;          /* pas local sur cette carte */
+
+    (void)xTimerStop(s_stop_timer[id], 0);
+    const l298n_motor_t *m = &s_motors[id];
+    /* Frein dynamique L298N : IN1=IN2 (court-circuit moteur via le pont)
+     * + ENA actif (PWM plein). Le moteur ne peut plus tourner librement
+     * → la gravité ne fait plus retomber le poignet. Pas de rotation donc
+     * courant limité (≠ stall en drive) : tenue statique, peu de chauffe. */
+    HAL_GPIO_WritePin(m->in1_port, m->in1_pin, GPIO_PIN_RESET);
+    HAL_GPIO_WritePin(m->in2_port, m->in2_pin, GPIO_PIN_RESET);
+    set_duty(id, PWM_ARR);                          /* ENA haut → frein */
+    s_drv[id] = 0;                                  /* pas "en mouvement" (guard) */
+}
