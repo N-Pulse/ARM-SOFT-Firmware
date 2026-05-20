@@ -27,32 +27,32 @@
 #include "motor_safety.h"
 #include "comm.h"
 #include "board_link.h"
+#include "motor_map.h"   /* poses canoniques (OPEN/CLOSED/PINCH/NEUTRAL) */
 
 /* ============================================================
  *  PRESENTATION BUILD — MAIN seule (poignet retiré).
  *
- *  PIPELINE PROTO active (defaut) :
- *      Le master ecoute sur LPUART1 (VCP) le format
- *          [0xAA][len][DeviceMessage protobuf]
- *      decode l'action (OPEN_HAND=0, CLOSE_HAND=1, PINCH=2),
- *      route via IntentRouter -> Motor_SetTarget pour chaque doigt.
- *      Master pilote LITTLE, forwarde THUMB/INDEX/MIDDLE/RING/PALM
- *      au slave via USART3 (board_link).
- *      Lancer la commande "close" :
- *          python tools\send_action.py --port COM6 --action close
- *      Octets envoyes : AA 06 12 04 0A 02 08 01.
+ *  MOTOR_CALIB_MODE (defaut) :
+ *      Closed-loop par moteur via commandes ASCII sur le VCP.
+ *      Tunnel ASCII master <-> slave sur USART3 -> un seul terminal
+ *      (motor_calib.py sur le COM du master) pilote les 6 doigts.
+ *      Inclut aussi les INTENTS pre-definis (touches O/C/P/N) qui
+ *      reproduisent en closed-loop ce que la pipeline proto fait :
+ *          O = OPEN_HAND   (toute la main vers 0)
+ *          C = CLOSE_HAND  (poses CLOSED du motor_map)
+ *          P = PINCH       (poses PINCH du motor_map)
+ *          N = NEUTRAL     (poses NEUTRAL du motor_map)
+ *      → utile pour la demo sans avoir a brancher l'EMG.
  *
- *  MOTOR_CALIB_MODE (decommenter pour activer) :
- *      Asservissement closed-loop par moteur via commandes ASCII
- *      sur le VCP (PAS la pipeline proto). Master/slave reliees
- *      par un tunnel ASCII sur USART3 -> un seul terminal suffit.
- *      Sert a trouver/definir les bons angles de chaque doigt.
- *          python fw\comm-stack\PyUART\motor_calib.py --com COM6
+ *  Pipeline proto (commenter MOTOR_CALIB_MODE pour activer) :
+ *      Master ecoute sur LPUART1 [0xAA][len][DeviceMessage protobuf].
+ *          python tools\send_action.py --port COM6 --action close
+ *      Octets close : AA 06 12 04 0A 02 08 01.
  *
  *  Pour la version complete avec poignet, voir la branche
  *  `simulation_pipeline`.
  * ============================================================ */
-/* #define MOTOR_CALIB_MODE */
+#define MOTOR_CALIB_MODE
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -503,6 +503,21 @@ static void cb_arm(int i, int32_t target)
 static void cb_goto_deg(int i, int deg)        { cb_arm(i, cb_deg2cnt(deg)); }
 static void cb_jog(int i, int ddeg)            { cb_arm(i, cb_cnt(i) + cb_deg2cnt(ddeg)); }
 
+/* Applique une pose canonique (OPEN/CLOSED/PINCH/NEUTRAL) sur tous les
+ * moteurs LOCAUX de cette carte, en closed-loop. Equivalent calib de
+ * apply_full_pose() de l'IntentRouter — meme table motor_map. */
+static void cb_apply_pose(motor_pose_id_t pose, const char *label)
+{
+  for (int i = 0; i < MOTOR_COUNT; i++) {
+    if (!BoardLink_IsLocalMotor((motor_id_t)i)) continue;
+    float    target_rad = MotorMap_GetPose(pose, (motor_id_t)i);
+    /* rad -> counts : counts = rad * (cnt_par_tour / 2*pi) */
+    int32_t  target_cnt = (int32_t)(target_rad * (WT_CNT_PER_OUTPUT_REV / 6.28318530f));
+    cb_arm(i, target_cnt);
+  }
+  printf("CAL INTENT %s -> closed-loop sur les locaux\r\n", label);
+}
+
 static void cb_stop(int i)
 {
   if (i < 0 || i >= MOTOR_COUNT) return;
@@ -639,6 +654,11 @@ static void cb_handle_line(char *ln)
           printf("DUMP %-8s pas calibre (fais H)\r\n", s_wt[i].name);
         } }
       break;
+    /* --- INTENTS pre-definis (poses du motor_map, closed-loop sur les 6) --- */
+    case 'O': cb_apply_pose(MOTOR_POSE_OPEN,    "OPEN_HAND");   break;
+    case 'C': cb_apply_pose(MOTOR_POSE_CLOSED,  "CLOSE_HAND");  break;
+    case 'P': cb_apply_pose(MOTOR_POSE_PINCH,   "PINCH");       break;
+    case 'N': cb_apply_pose(MOTOR_POSE_NEUTRAL, "NEUTRAL");     break;
     default: break;
   }
 }
@@ -689,8 +709,9 @@ static void Calib_Task(void *argument)
     printf("\r\n=== CALIB MODE (presentation: main seule, 1 terminal) ===\r\n");
     printf("  ?  liste les 6 moteurs (locaux + distants via USART3)\r\n");
     printf("  0-5 select | H auto-home sel | A auto-home tous | S stop tous\r\n");
-    printf("  o open | c close | x si open/close inverse | d dump\r\n");
+    printf("  o open | c close (moteur selectionne) | x swap | d dump\r\n");
     printf("  v<pct> force/vitesse du moteur (ex: v75 si cale a mi-course)\r\n");
+    printf("  INTENTS toute la main : O=open  C=close  P=pinch  N=neutral\r\n");
     printf("  workflow: select -> H (le moteur cale les 2 butees seul) -> o/c\r\n");
   }
   cb_list();   /* master imprime ses locaux, slave les siens via le tunnel */

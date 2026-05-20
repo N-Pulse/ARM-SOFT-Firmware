@@ -33,7 +33,7 @@ Commandes (tape + Entrée) :
     0..5      sélectionne un moteur (par index, cf. ?)
     H         auto-home du moteur sélectionné (cale les 2 butées)
     A         auto-home de tous les moteurs locaux
-    o / c     OPEN / CLOSE (vers les butées mesurées par H)
+    o / c     OPEN / CLOSE du moteur sélectionné (vers butées mesurées par H)
     x         swap open/close du moteur (si inversé)
     + / -     jog ±3° (closed-loop, réglage fin)
     g<deg>    va à un angle absolu (ex: g30, g-15)
@@ -42,6 +42,11 @@ Commandes (tape + Entrée) :
     i / i<n>  inverse le sens de câblage (secours si "BLOQUE")
     v<pct>    règle la force/vitesse PWM du moteur (ex: v75)
     d         dump des courses mesurées
+    --- INTENTS toute la main (closed-loop sur les 6 moteurs) ---
+    O         OPEN_HAND   (équivalent à send_action.py --action open)
+    C         CLOSE_HAND  (équivalent à send_action.py --action close)
+    P         PINCH       (équivalent à send_action.py --action pinch)
+    N         NEUTRAL
     q         quitter le script
 """
 
