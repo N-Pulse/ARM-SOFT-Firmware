@@ -818,6 +818,7 @@ static void CreateTasks(void)
   Calib_TaskCreate();
 #else
   Comms_TaskCreate();
+  BoardLink_TaskCreate();    /* slave : drain USART3 framé proto (no-op sur master) */
   MotorGuard_TaskCreate();   /* SÉCURITÉ anti-butée — toujours active */
 #endif
 

@@ -26,7 +26,10 @@ void App_Init(void)
     Motor_InitAll();    /* includes Motor_L298N_Init for locally-owned motors */
     APP_BEACON(0xFBU, 0xEDU);
     Comms_Init();
-    BoardLink_TaskCreate();     /* spawns RX task only on slave */
+    /* NB : BoardLink_TaskCreate() (RX framé slave) est démarré dans
+     * main.c::CreateTasks() en mode pipeline proto uniquement. En mode
+     * MOTOR_CALIB_MODE, on a besoin de USART3 comme tunnel ASCII brut —
+     * pas de RX task framé qui drainerait le ring buffer en concurrence. */
 }
 
 /**
