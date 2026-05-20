@@ -169,7 +169,12 @@ void DebugMon_Handler(void)
 void EXTI15_10_IRQHandler(void)
 {
   /* USER CODE BEGIN EXTI15_10_IRQn 0 */
-
+  /* PB14 (line 14) + PB15 (line 15) : encodeur software THUMB sur slave.
+   * Le bouton USER (PC13, line 13) reste gere par BSP_PB_IRQHandler ci-dessous. */
+  extern void Thumb_SwEnc_IRQ(void);
+  if (EXTI->PR1 & ((1UL << 14) | (1UL << 15))) {
+    Thumb_SwEnc_IRQ();
+  }
   /* USER CODE END EXTI15_10_IRQn 0 */
   BSP_PB_IRQHandler(BUTTON_USER);
   /* USER CODE BEGIN EXTI15_10_IRQn 1 */

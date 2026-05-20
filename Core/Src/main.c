@@ -293,16 +293,79 @@ static const wt_enc_t s_wt[MOTOR_COUNT] = {
   [MOTOR_PALM]    = { "PALM",    TIM20, false, GPIOB, GPIO_PIN_2,  3, GPIOC, GPIO_PIN_2,  6 },
 };
 
-static TIM_HandleTypeDef s_h2, s_h3, s_h8, s_h15, s_h20;
+static TIM_HandleTypeDef s_h2, s_h3, s_h8, s_h20;
+/* TIM15 supprime de la liste : ce timer n'a PAS de mode encodeur sur G4
+ * (slave mode controller present mais sans Encoder Mode 1/2/3). Pour
+ * THUMB on utilise un decodeur quadrature software sur EXTI PB14/PB15
+ * (voir Thumb_SwEnc_* plus bas). */
 
 static TIM_HandleTypeDef *wt_h(TIM_TypeDef *t)
 {
   if (t == TIM2)  return &s_h2;
   if (t == TIM3)  return &s_h3;
   if (t == TIM8)  return &s_h8;
-  if (t == TIM15) return &s_h15;
   if (t == TIM20) return &s_h20;
   return NULL;
+}
+
+/* ---------------------------------------------------------------------------
+ * Encoder logiciel THUMB — TIM15 ne supporte PAS Encoder Mode sur G4.
+ * On configure PB14/PB15 en EXTI rising+falling, et a chaque transition on
+ * decode la quadrature (table 16 etats : prev_AB | curr_AB -> +1/-1/0).
+ * Le compteur s_thumb_cnt remplace __HAL_TIM_GET_COUNTER pour le motor THUMB.
+ * --------------------------------------------------------------------------- */
+static volatile int32_t s_thumb_cnt;
+static volatile uint8_t s_thumb_last_ab;
+
+static void thumb_swenc_init(void)
+{
+  __HAL_RCC_GPIOB_CLK_ENABLE();
+  __HAL_RCC_SYSCFG_CLK_ENABLE();
+
+  GPIO_InitTypeDef g = {0};
+  g.Mode  = GPIO_MODE_IT_RISING_FALLING;
+  g.Pull  = GPIO_PULLUP;
+  g.Speed = GPIO_SPEED_FREQ_HIGH;
+  g.Pin   = GPIO_PIN_14 | GPIO_PIN_15;
+  HAL_GPIO_Init(GPIOB, &g);
+
+  uint8_t a = (GPIOB->IDR & GPIO_PIN_14) ? 1U : 0U;
+  uint8_t b = (GPIOB->IDR & GPIO_PIN_15) ? 1U : 0U;
+  s_thumb_last_ab = (uint8_t)((a << 1) | b);
+  s_thumb_cnt     = 0;
+
+  /* EXTI lines 14 & 15 partagent EXTI15_10_IRQn avec le bouton user PC13. */
+  HAL_NVIC_SetPriority(EXTI15_10_IRQn, 5, 0);
+  HAL_NVIC_EnableIRQ(EXTI15_10_IRQn);
+}
+
+/* Appele depuis EXTI15_10_IRQHandler dans stm32g4xx_it.c quand PB14 ou
+ * PB15 fire. Decode quadrature 4x identique a TIM_ENCODERMODE_TI12. */
+void Thumb_SwEnc_IRQ(void)
+{
+  /* Edges peuvent venir de PB14 (A) ou PB15 (B). On clear les 2 pending
+   * bits et on relit l'etat actuel des 2 lignes. */
+  uint32_t pr = EXTI->PR1 & ((1UL << 14) | (1UL << 15));
+  if (!pr) return;
+  EXTI->PR1 = pr;
+
+  uint8_t a   = (GPIOB->IDR & GPIO_PIN_14) ? 1U : 0U;
+  uint8_t b   = (GPIOB->IDR & GPIO_PIN_15) ? 1U : 0U;
+  uint8_t ab  = (uint8_t)((a << 1) | b);
+  uint8_t key = (uint8_t)((s_thumb_last_ab << 2) | ab);
+  s_thumb_last_ab = ab;
+
+  /* Table 16 etats (Gray code) : prev<<2|curr -> direction
+   *   00->01,01->11,11->10,10->00 = +1
+   *   reciproque = -1
+   *   00->11 / 11->00 / 01->10 / 10->01 = bond impossible (perte d'edge) -> 0 */
+  static const int8_t quad_table[16] = {
+     0, +1, -1,  0,
+    -1,  0,  0, +1,
+    +1,  0,  0, -1,
+     0, -1, +1,  0
+  };
+  s_thumb_cnt += quad_table[key];
 }
 
 static void wt_clk(GPIO_TypeDef *p, TIM_TypeDef *t)
@@ -313,12 +376,19 @@ static void wt_clk(GPIO_TypeDef *p, TIM_TypeDef *t)
   if      (t == TIM2)  __HAL_RCC_TIM2_CLK_ENABLE();
   else if (t == TIM3)  __HAL_RCC_TIM3_CLK_ENABLE();
   else if (t == TIM8)  __HAL_RCC_TIM8_CLK_ENABLE();
-  else if (t == TIM15) __HAL_RCC_TIM15_CLK_ENABLE();
   else if (t == TIM20) __HAL_RCC_TIM20_CLK_ENABLE();
 }
 
 static void wt_init_one(const wt_enc_t *e)
 {
+  /* THUMB est sur TIM15 qui ne supporte PAS Encoder Mode -> on bascule sur
+   * le decodeur logiciel EXTI. Les pins PB14/PB15 sont alors initialisees
+   * en GPIO+EXTI au lieu de AF/encoder. */
+  if (e->tim == TIM15) {
+    thumb_swenc_init();
+    return;
+  }
+
   TIM_HandleTypeDef *h = wt_h(e->tim);
   if (h == NULL || h->Instance != NULL) return;  /* déjà init (timer partagé) */
 
@@ -485,6 +555,8 @@ static int32_t cb_deg2cnt(int deg)
 static int32_t cb_cnt(int i)
 {
   const wt_enc_t *e = &s_wt[i];
+  /* THUMB : compteur software (TIM15 ne fait pas d'encoder mode). */
+  if (e->tim == TIM15) return s_thumb_cnt;
   TIM_HandleTypeDef *h = wt_h(e->tim);
   if (h == NULL) return 0;
   uint32_t r = __HAL_TIM_GET_COUNTER(h);
@@ -658,9 +730,12 @@ static void cb_handle_line(char *ln)
     case 's': cb_stop(cb_sel);                        break;
     case 'S': for (int i=0;i<MOTOR_COUNT;i++) cb_stop(i); printf("CAL ALL STOP\r\n"); break;
     case 'z':
-      if (cb_sel>=0){ TIM_HandleTypeDef*h=wt_h(s_wt[cb_sel].tim);
-        if(h){__HAL_TIM_SET_COUNTER(h,0);} cb_active[cb_sel]=false; cb_target[cb_sel]=0;
-        printf("CAL %s ZERO\r\n", s_wt[cb_sel].name);} break;
+      if (cb_sel>=0){
+        if (s_wt[cb_sel].tim == TIM15) { s_thumb_cnt = 0; }
+        else { TIM_HandleTypeDef*h=wt_h(s_wt[cb_sel].tim); if(h){__HAL_TIM_SET_COUNTER(h,0);} }
+        cb_active[cb_sel]=false; cb_target[cb_sel]=0;
+        printf("CAL %s ZERO\r\n", s_wt[cb_sel].name);
+      } break;
     case 'i':
       { int x = (ln[1]>='0'&&ln[1]<='5') ? arg : cb_sel;
         if (x>=0 && x<MOTOR_COUNT){ cb_dir[x]=(int8_t)-cb_dir[x]; printf("CAL %s dir=%d\r\n", s_wt[x].name, cb_dir[x]); } }
@@ -811,8 +886,8 @@ static void Calib_Task(void *argument)
             if (cb_seek_raw[i] == cb_open_raw[i]) {
               /* on est sur la butée OUVERTE → re-référence : open = 0.
                * Élimine la dérive : 'c' affichera la vraie course depuis 0. */
-              TIM_HandleTypeDef *h = wt_h(s_wt[i].tim);
-              if (h) __HAL_TIM_SET_COUNTER(h, 0);
+              if (s_wt[i].tim == TIM15) { s_thumb_cnt = 0; }
+              else { TIM_HandleTypeDef *h = wt_h(s_wt[i].tim); if (h) __HAL_TIM_SET_COUNTER(h, 0); }
               printf("CAL %s OPEN (butee, re-zero -> 0.0 deg)\r\n", s_wt[i].name);
             } else {
               long cd = (long)((int64_t)hc * 3600 / WT_CNT_PER_OUTPUT_REV);
