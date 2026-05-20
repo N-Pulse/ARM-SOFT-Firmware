@@ -780,6 +780,34 @@ static void cb_handle_line(char *ln)
                s_wt[cb_sel].name, dir, cb_speed[cb_sel]);
       }
     } break;
+    /* --- DIAG : killswitch RING (master) : desactive canal PWM TIM4_CH3 et
+     * reconfigure PB8/PB0/PB1 en GPIO output LOW pur (pas d'AF, pas de timer).
+     * Permet de tester si c'est le canal PWM "en marche a 0%" qui fait
+     * trembler le L298N (certains modules y sont sensibles a cause de
+     * couplage capacitif sur VS au demarrage).
+     * Si apres X le moteur se tait -> PWM coupable -> il faut soit
+     * desactiver PWM au repos, soit changer de canal/timer. */
+    case 'X': {
+      if (BoardLink_IsLocalMotor(MOTOR_RING)) {
+        /* 1. Disable TIM4 CH3 output. */
+        TIM4->CCER &= ~TIM_CCER_CC3E;
+        /* 2. Reconfigure PB8 as plain GPIO output, force LOW. */
+        GPIO_InitTypeDef g = {0};
+        g.Mode  = GPIO_MODE_OUTPUT_PP;
+        g.Pull  = GPIO_NOPULL;
+        g.Speed = GPIO_SPEED_FREQ_LOW;
+        g.Pin   = GPIO_PIN_8;
+        HAL_GPIO_Init(GPIOB, &g);
+        HAL_GPIO_WritePin(GPIOB, GPIO_PIN_8, GPIO_PIN_RESET);
+        /* 3. Force IN1/IN2 LOW again (defensive). */
+        HAL_GPIO_WritePin(GPIOB, GPIO_PIN_0, GPIO_PIN_RESET);
+        HAL_GPIO_WritePin(GPIOB, GPIO_PIN_1, GPIO_PIN_RESET);
+        printf("CAL RING KILLSWITCH : PWM canal desactive, PB8/PB0/PB1 = GPIO output LOW pur\r\n");
+        printf("Si le moteur se tait maintenant -> c'etait le PWM\r\n");
+      } else {
+        printf("CAL X : RING non local sur cette carte\r\n");
+      }
+    } break;
     default: break;
   }
 }
@@ -835,6 +863,7 @@ static void Calib_Task(void *argument)
     printf("  INTENTS toute la main : O=open  C=close  P=pinch  N=neutral\r\n");
     printf("  W = snapshot encodeurs (cnt + niveaux bruts A/B) -- diag cablage\r\n");
     printf("  T+/T-/Ts = drive RAW indefini sel (multimetre L298N OUT1/OUT2)\r\n");
+    printf("  X = KILLSWITCH RING (PWM coupe, PB8/PB0/PB1 en GPIO LOW pur) -- diag tremble\r\n");
     printf("  workflow: select -> H (le moteur cale les 2 butees seul) -> o/c\r\n");
   }
   cb_list();   /* master imprime ses locaux, slave les siens via le tunnel */
