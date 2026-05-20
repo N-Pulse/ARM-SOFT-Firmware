@@ -31,15 +31,28 @@
 /* ============================================================
  *  PRESENTATION BUILD — MAIN seule (poignet retiré).
  *
- *  MOTOR_CALIB_MODE : asservissement closed-loop par moteur via
- *      commandes ASCII sur le VCP (PAS la pipeline proto). Sert à
- *      trouver/définir les bons angles de chaque doigt.
- *      → utiliser le script tools motor_calib.py
+ *  PIPELINE PROTO active (defaut) :
+ *      Le master ecoute sur LPUART1 (VCP) le format
+ *          [0xAA][len][DeviceMessage protobuf]
+ *      decode l'action (OPEN_HAND=0, CLOSE_HAND=1, PINCH=2),
+ *      route via IntentRouter -> Motor_SetTarget pour chaque doigt.
+ *      Master pilote LITTLE, forwarde THUMB/INDEX/MIDDLE/RING/PALM
+ *      au slave via USART3 (board_link).
+ *      Lancer la commande "close" :
+ *          python tools\send_action.py --port COM6 --action close
+ *      Octets envoyes : AA 06 12 04 0A 02 08 01.
  *
- *  Pour la version complète avec poignet, voir la branche
+ *  MOTOR_CALIB_MODE (decommenter pour activer) :
+ *      Asservissement closed-loop par moteur via commandes ASCII
+ *      sur le VCP (PAS la pipeline proto). Master/slave reliees
+ *      par un tunnel ASCII sur USART3 -> un seul terminal suffit.
+ *      Sert a trouver/definir les bons angles de chaque doigt.
+ *          python fw\comm-stack\PyUART\motor_calib.py --com COM6
+ *
+ *  Pour la version complete avec poignet, voir la branche
  *  `simulation_pipeline`.
  * ============================================================ */
-#define MOTOR_CALIB_MODE
+/* #define MOTOR_CALIB_MODE */
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
