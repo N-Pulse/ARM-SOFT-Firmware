@@ -4,9 +4,10 @@
 
 // ─── ADC / current sensing (TO FILL IN) ──────────────────────────────────────
 //
-// The STM32G474 has 5 ADCs (ADC1–ADC5). Recommended setup for 8 shunts:
+// The STM32G474 has 5 ADCs (ADC1–ADC5). Recommended setup for 6 shunts
+// (presentation build, hand only) :
 //   ADC1  channels 1–5  → MOTOR_THUMB … MOTOR_LITTLE   (PA0–PA4 or similar)
-//   ADC2  channels 1–3  → MOTOR_WRIST_X … MOTOR_PALM
+//   ADC2  channel  1    → MOTOR_PALM
 //
 // Steps in STM32CubeIDE:
 //   1. Open .ioc → Analog → ADC1 → enable scan mode, DMA continuous.

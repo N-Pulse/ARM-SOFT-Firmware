@@ -25,15 +25,12 @@ typedef struct {
     GPIO_TypeDef   *ch2_port;  uint16_t ch2_pin;  uint8_t ch2_af;
 } enc_cfg_t;
 
-/* THUMB ↔ WRIST_Y ont été inversés entre les cartes : le poignet (WRIST_X+Y)
- * est groupé sur la motherboard. Slots timer/pin réaffectés en conséquence.
- *
- * Timer-sharing (1 master + 1 slave max par timer, jamais actifs ensemble) :
- *   TIM2  : WRIST_X (master)  | INDEX  (slave)
- *   TIM3  : LITTLE  (master)  | MIDDLE (slave)
- *   TIM8  : WRIST_Y (master)  | RING   (slave)
- *   TIM15 : THUMB   (slave only)
- *   TIM20 : PALM    (slave only) */
+/* Build "presentation" (main seule). Timer-sharing master/slave :
+ *   TIM2  : INDEX  (slave)
+ *   TIM3  : LITTLE (master)  | MIDDLE (slave)
+ *   TIM8  : RING   (slave)
+ *   TIM15 : THUMB  (slave)
+ *   TIM20 : PALM   (slave) */
 static const enc_cfg_t s_enc_cfg[MOTOR_COUNT] = {
     [MOTOR_THUMB]   = { TIM15, false, GPIOB, GPIO_PIN_14, GPIO_AF1_TIM15,
                                        GPIOB, GPIO_PIN_15, GPIO_AF1_TIM15 },
@@ -45,10 +42,6 @@ static const enc_cfg_t s_enc_cfg[MOTOR_COUNT] = {
                                        GPIOC, GPIO_PIN_7,  GPIO_AF4_TIM8 },
     [MOTOR_LITTLE]  = { TIM3,  false, GPIOA, GPIO_PIN_6,  GPIO_AF2_TIM3,
                                        GPIOA, GPIO_PIN_7,  GPIO_AF2_TIM3 },
-    [MOTOR_WRIST_X] = { TIM2,  true,  GPIOA, GPIO_PIN_0,  GPIO_AF1_TIM2,
-                                       GPIOA, GPIO_PIN_1,  GPIO_AF1_TIM2 },
-    [MOTOR_WRIST_Y] = { TIM8,  false, GPIOC, GPIO_PIN_6,  GPIO_AF4_TIM8,
-                                       GPIOC, GPIO_PIN_7,  GPIO_AF4_TIM8 },
     [MOTOR_PALM]    = { TIM20, false, GPIOB, GPIO_PIN_2,  GPIO_AF3_TIM20,
                                        GPIOC, GPIO_PIN_2,  GPIO_AF6_TIM20 },
 };

@@ -1,10 +1,15 @@
-﻿# N-Pulse STM32G474 Firmware
+﻿# N-Pulse STM32G474 Firmware — branche `presentation`
+
+> 🎯 **Branche `presentation` — MAIN seule** (6 moteurs : THUMB, INDEX,
+> MIDDLE, RING, LITTLE, PALM). Le poignet a été retiré de cette branche
+> pour se concentrer sur la main lors de la démo. La version complète
+> avec poignet différentiel se trouve sur la branche
+> [`simulation_pipeline`](../../tree/simulation_pipeline).
 
 Firmware embarqué pour la prothèse de main N-Pulse (STM32G474RET6 / Nucleo-G474RE).
-Main 8 moteurs (doigts + paume + **poignet différentiel** 2 moteurs couplés),
-**2 cartes** (motherboard + daughterboard) qui exécutent le **même binaire** —
-le rôle master/slave est décidé par le strap `PC0` (flottant = master,
-GND = slave).
+Main 6 moteurs (5 doigts + paume), **2 cartes** (motherboard + daughterboard)
+qui exécutent le **même binaire** — le rôle master/slave est décidé par
+le strap `PC0` (flottant = master, GND = slave).
 
 ---
 
@@ -37,15 +42,13 @@ pip install pyserial protobuf
 ### Choisir un mode — toggle en haut de `Core/Src/main.c`
 
 ```c
-/* #define WRIST_ENCODER_TEST */   // lecture seule des encodeurs locaux
-/* #define MOTOR_CALIB_MODE   */   // calibration closed-loop par moteur
+#define MOTOR_CALIB_MODE   // calibration closed-loop par moteur (par défaut)
 ```
 
 | Mode | Toggle (main.c) | Script host |
 |------|-----------------|-------------|
-| **Pipeline normale** (proto + sécurité anti-butée) | les 2 commentés | `python tools\send_action.py --port COM6 --action close --listen 5` |
-| **Calibration** (auto-home, course/moteur) | `MOTOR_CALIB_MODE` | `python fw\comm-stack\PyUART\motor_calib.py --com COMx` |
-| **Test encodeurs** (lecture) | `WRIST_ENCODER_TEST` | `python fw\comm-stack\PyUART\wrist_test.py --com COMx` |
+| **Pipeline normale** (proto + sécurité anti-butée) | `MOTOR_CALIB_MODE` commenté | `python tools\send_action.py --port COM6 --action close --listen 5` |
+| **Calibration** (auto-home, course/moteur) | `MOTOR_CALIB_MODE` actif | `python fw\comm-stack\PyUART\motor_calib.py --com COMx` |
 
 Après tout changement de toggle : `.\build.ps1` puis `.\flash.ps1`.
 

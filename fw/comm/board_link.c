@@ -28,16 +28,12 @@ extern volatile uint16_t g_usart3_rxring_tail;
 static UART_HandleTypeDef s_huart3;
 static board_role_t       s_role = BOARD_ROLE_MASTER;
 
-/* Motherboard owns 3 motors (master): WRIST_X, WRIST_Y, LITTLE.
- * Les 2 moteurs du poignet (WRIST_X + WRIST_Y) DOIVENT être sur la même carte :
- * c'est un mécanisme différentiel couplé, ils sont commandés en synchro par
- * drive_wrist() dans intent_router.c — pas de tolérance au déphasage UART.
- * Daughterboard owns the other 5 (slave): INDEX, MIDDLE, RING, THUMB, PALM. */
+/* Build "presentation" (main seule) :
+ *   Master (motherboard) owns LITTLE
+ *   Slave  (daughterboard) owns THUMB, INDEX, MIDDLE, RING, PALM */
 static bool is_master_motor(motor_id_t id)
 {
-    return (id == MOTOR_WRIST_X) ||
-           (id == MOTOR_WRIST_Y) ||
-           (id == MOTOR_LITTLE);
+    return (id == MOTOR_LITTLE);
 }
 
 bool BoardLink_IsLocalMotor(motor_id_t id)

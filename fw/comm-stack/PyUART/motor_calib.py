@@ -2,10 +2,13 @@
 """
 Calibration closed-loop par moteur (firmware en MOTOR_CALIB_MODE).
 
+Build "presentation" : MAIN seule (6 moteurs). Voir branche
+`simulation_pipeline` pour la version avec poignet.
+
 Terminal série brut sur le VCP d'UNE carte : tu choisis un moteur et tu
 l'asservis à un angle pour trouver/définir les bonnes butées.
-- master  : WRIST_X, WRIST_Y, LITTLE
-- slave   : INDEX, MIDDLE, RING, THUMB, PALM
+- master  : LITTLE
+- slave   : THUMB, INDEX, MIDDLE, RING, PALM
 (une instance du script par carte / par COM)
 
 Usage :
@@ -23,7 +26,7 @@ Workflow recommandé (automatique) :
 
 Commandes (tape + Entrée) :
     ?         liste les moteurs locaux + position
-    0..7      sélectionne un moteur (par index, cf. ?)
+    0..5      sélectionne un moteur (par index, cf. ?)
     H         auto-home du moteur sélectionné (cale les 2 butées)
     A         auto-home de tous les moteurs locaux
     o / c     OPEN / CLOSE (vers les butées mesurées par H)
@@ -33,10 +36,8 @@ Commandes (tape + Entrée) :
     z         définit la position actuelle comme 0°
     s / S     stop le moteur sélectionné / tous
     i / i<n>  inverse le sens de câblage (secours si "BLOQUE")
+    v<pct>    règle la force/vitesse PWM du moteur (ex: v75)
     d         dump des courses mesurées
-    poignet (carte master) :
-    r / l     rotation droite / gauche (2 moteurs même sens)
-    f / F     flexion (penché) — 2 moteurs sens opposé
     q         quitter le script
 """
 

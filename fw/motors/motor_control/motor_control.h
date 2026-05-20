@@ -3,14 +3,14 @@
 
 #include <stdint.h>
 
+/* Presentation build : MAIN seulement. Le poignet (WRIST_X / WRIST_Y) a été
+ * retiré — branche `simulation_pipeline` pour la version complète. */
 typedef enum {
     MOTOR_THUMB,
     MOTOR_INDEX,
     MOTOR_MIDDLE,
     MOTOR_RING,
     MOTOR_LITTLE,
-    MOTOR_WRIST_X,
-    MOTOR_WRIST_Y,
     MOTOR_PALM,
     MOTOR_COUNT
 } motor_id_t;

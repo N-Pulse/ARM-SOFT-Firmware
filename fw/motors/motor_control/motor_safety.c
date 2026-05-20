@@ -11,34 +11,30 @@
 #define FORCE_HARD_LIMIT_MN 1600U
 #define FORCE_REDUCED_SPEED 25U
 
-/* Reset = main ouverte + poignet droit → tous les moteurs à 0°.
- * Chaque moteur est à sa contrainte mécanique au boot ; depuis 0° il ne peut
- * que partir dans un seul sens (positif pour les doigts, ±90° pour le poignet). */
+/* Reset = main ouverte → tous les moteurs à 0°. Chaque moteur est à sa
+ * contrainte mécanique au boot ; depuis 0° il ne peut que partir dans le
+ * sens positif (build "presentation", poignet retiré). */
 static const float s_pos_min[MOTOR_COUNT] = {
     DEGREES_TO_RAD(0.0f),   /* Thumb    — butée mécanique = main ouverte */
     DEGREES_TO_RAD(0.0f),   /* Index */
     DEGREES_TO_RAD(0.0f),   /* Middle */
     DEGREES_TO_RAD(0.0f),   /* Ring */
     DEGREES_TO_RAD(0.0f),   /* Little */
-    DEGREES_TO_RAD(-90.0f), /* Wrist X  — poignet couplé, autorise ±1.57 rad */
-    DEGREES_TO_RAD(-90.0f), /* Wrist Y  — MÊME plage que X (différentiel couplé) */
     DEGREES_TO_RAD(-5.0f),  /* Palm */
 };
 
 static const float s_pos_max[MOTOR_COUNT] = {
-    DEGREES_TO_RAD(90.0f),
-    DEGREES_TO_RAD(90.0f),
-    DEGREES_TO_RAD(90.0f),
-    DEGREES_TO_RAD(90.0f),
-    DEGREES_TO_RAD(90.0f),
-    DEGREES_TO_RAD(90.0f),  /* Wrist X — poignet couplé, autorise +1.57 rad */
-    DEGREES_TO_RAD(90.0f),  /* Wrist Y — MÊME plage que X (différentiel couplé) */
-    DEGREES_TO_RAD(15.0f),
+    DEGREES_TO_RAD(90.0f),  /* Thumb */
+    DEGREES_TO_RAD(90.0f),  /* Index */
+    DEGREES_TO_RAD(90.0f),  /* Middle */
+    DEGREES_TO_RAD(90.0f),  /* Ring */
+    DEGREES_TO_RAD(90.0f),  /* Little */
+    DEGREES_TO_RAD(15.0f),  /* Palm */
 };
 
 static const uint16_t s_force_limits[MOTOR_COUNT] = {
-    FORCE_HARD_LIMIT_MN, FORCE_HARD_LIMIT_MN, FORCE_HARD_LIMIT_MN, FORCE_HARD_LIMIT_MN,
-    FORCE_HARD_LIMIT_MN, 2000U, 2000U, FORCE_HARD_LIMIT_MN
+    FORCE_HARD_LIMIT_MN, FORCE_HARD_LIMIT_MN, FORCE_HARD_LIMIT_MN,
+    FORCE_HARD_LIMIT_MN, FORCE_HARD_LIMIT_MN, FORCE_HARD_LIMIT_MN,
 };
 
 static float    s_last_command[MOTOR_COUNT];

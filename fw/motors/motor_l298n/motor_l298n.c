@@ -45,18 +45,15 @@ typedef struct {
     uint16_t       in2_pin;
 } l298n_motor_t;
 
-/* Pin map for all 8 motors. The board owning a given motor (per
- * BoardLink_IsLocalMotor) is the one that initializes its pins and timer
- * channel; the others ignore it. */
+/* Pin map for the 6 hand motors (presentation build, no wrist). The board
+ * owning a given motor (per BoardLink_IsLocalMotor) is the one that
+ * initializes its pins and timer channel; the others ignore it. */
 static const l298n_motor_t s_motors[MOTOR_COUNT] = {
     [MOTOR_THUMB]   = { TIM1, TIM_CHANNEL_1, GPIOA, GPIO_PIN_8,  GPIO_AF6_TIM1, GPIOB, GPIO_PIN_5,  GPIOB, GPIO_PIN_4  },
     [MOTOR_INDEX]   = { TIM1, TIM_CHANNEL_2, GPIOA, GPIO_PIN_9,  GPIO_AF6_TIM1, GPIOC, GPIO_PIN_10, GPIOC, GPIO_PIN_11 },
     [MOTOR_MIDDLE]  = { TIM1, TIM_CHANNEL_3, GPIOA, GPIO_PIN_10, GPIO_AF6_TIM1, GPIOC, GPIO_PIN_12, GPIOA, GPIO_PIN_15 },
     [MOTOR_RING]    = { TIM1, TIM_CHANNEL_4, GPIOA, GPIO_PIN_11, GPIO_AF6_TIM1, GPIOB, GPIO_PIN_12, GPIOB, GPIO_PIN_13 },
     [MOTOR_LITTLE]  = { TIM4, TIM_CHANNEL_1, GPIOB, GPIO_PIN_6,  GPIO_AF2_TIM4, GPIOC, GPIO_PIN_8,  GPIOC, GPIO_PIN_9  },
-    [MOTOR_WRIST_X] = { TIM4, TIM_CHANNEL_2, GPIOB, GPIO_PIN_7,  GPIO_AF2_TIM4, GPIOC, GPIO_PIN_4,  GPIOC, GPIO_PIN_5  },
-    /* WRIST_Y IN1/IN2 moved from PC6/PC7 → PB0/PB1 (PC6/PC7 reserved for TIM8 encoder RING). */
-    [MOTOR_WRIST_Y] = { TIM4, TIM_CHANNEL_3, GPIOB, GPIO_PIN_8,  GPIO_AF2_TIM4, GPIOB, GPIO_PIN_0,  GPIOB, GPIO_PIN_1  },
     /* PALM IN1 moved from PC2 → PD2 (PC2 reserved for TIM20 encoder PALM). */
     [MOTOR_PALM]    = { TIM4, TIM_CHANNEL_4, GPIOB, GPIO_PIN_9,  GPIO_AF2_TIM4, GPIOD, GPIO_PIN_2,  GPIOC, GPIO_PIN_3  },
 };
@@ -320,19 +317,3 @@ void Motor_L298N_SetRaw(motor_id_t id, int dir, uint8_t speed_pct)
     set_duty(id, ((uint32_t)speed_pct * (PWM_ARR + 1U)) / 100U);
 }
 
-void Motor_L298N_Brake(motor_id_t id)
-{
-    if (id >= MOTOR_COUNT) return;
-    if (s_stop_timer[id] == NULL) return;          /* pas local sur cette carte */
-
-    (void)xTimerStop(s_stop_timer[id], 0);
-    const l298n_motor_t *m = &s_motors[id];
-    /* Frein dynamique L298N : IN1=IN2 (court-circuit moteur via le pont)
-     * + ENA actif (PWM plein). Le moteur ne peut plus tourner librement
-     * → la gravité ne fait plus retomber le poignet. Pas de rotation donc
-     * courant limité (≠ stall en drive) : tenue statique, peu de chauffe. */
-    HAL_GPIO_WritePin(m->in1_port, m->in1_pin, GPIO_PIN_RESET);
-    HAL_GPIO_WritePin(m->in2_port, m->in2_pin, GPIO_PIN_RESET);
-    set_duty(id, PWM_ARR);                          /* ENA haut → frein */
-    s_drv[id] = 0;                                  /* pas "en mouvement" (guard) */
-}

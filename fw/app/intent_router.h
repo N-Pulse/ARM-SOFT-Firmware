@@ -6,12 +6,14 @@
 /**
  * @brief Intent IDs mapped to the Protobuf Action enumeration.
  */
+/* Presentation build : MAIN seule. Les actions poignet (ROTATE_WRIST_R/L,
+ * valeurs 3/4 dans le proto) restent reçues mais sont ignorées (default →
+ * Motor_StopAll par sécurité). Voir branche `simulation_pipeline` pour le
+ * poignet. */
 typedef enum {
     ACTION_OPEN_HAND      = 0,
     ACTION_CLOSE_HAND     = 1,
     ACTION_PINCH          = 2,
-    ACTION_ROTATE_WRIST_R = 3,
-    ACTION_ROTATE_WRIST_L = 4,
     ACTION_UNKNOWN        = 99 // Used for safety stops/timeouts
 } intent_id_t;
 
