@@ -503,6 +503,28 @@ static void cb_arm(int i, int32_t target)
 static void cb_goto_deg(int i, int deg)        { cb_arm(i, cb_deg2cnt(deg)); }
 static void cb_jog(int i, int ddeg)            { cb_arm(i, cb_cnt(i) + cb_deg2cnt(ddeg)); }
 
+/* Diag encodeurs : snapshot des comptes + niveaux BRUTS des voies A/B
+ * lues directement sur l'IDR du port GPIO. Permet de verifier le cablage
+ * sans avoir besoin que le moteur tourne :
+ *   - tu fais tourner l'arbre a la main, tu retapes W :
+ *       cnt doit changer        -> encodeur OK
+ *       cnt ne change pas mais A/B togglent -> probleme TIM (config AF/mode)
+ *       A et/ou B figes a 0 ou 1 -> voie pas cablee / pas alimentee
+ *       les 6 montrent A=1 B=1 fixes -> pull-up interne + voies en l'air
+ *                                       (encodeur pas alimente ou GND manquant)
+ */
+static void cb_watch_enc(void)
+{
+  for (int i = 0; i < MOTOR_COUNT; i++) {
+    if (!BoardLink_IsLocalMotor((motor_id_t)i)) continue;
+    const wt_enc_t *e = &s_wt[i];
+    int a = ((e->p1->IDR & e->pin1) != 0U) ? 1 : 0;
+    int b = ((e->p2->IDR & e->pin2) != 0U) ? 1 : 0;
+    long c = (long)cb_cnt(i);
+    printf("ENC %-8s cnt=%6ld  A=%d B=%d\r\n", e->name, c, a, b);
+  }
+}
+
 /* Applique une pose canonique (OPEN/CLOSED/PINCH/NEUTRAL) sur tous les
  * moteurs LOCAUX de cette carte, en closed-loop. Equivalent calib de
  * apply_full_pose() de l'IntentRouter — meme table motor_map. */
@@ -659,6 +681,8 @@ static void cb_handle_line(char *ln)
     case 'C': cb_apply_pose(MOTOR_POSE_CLOSED,  "CLOSE_HAND");  break;
     case 'P': cb_apply_pose(MOTOR_POSE_PINCH,   "PINCH");       break;
     case 'N': cb_apply_pose(MOTOR_POSE_NEUTRAL, "NEUTRAL");     break;
+    /* --- DIAG : snapshot encodeurs (count + niveaux bruts A/B) --- */
+    case 'W': cb_watch_enc(); break;
     default: break;
   }
 }
@@ -712,6 +736,7 @@ static void Calib_Task(void *argument)
     printf("  o open | c close (moteur selectionne) | x swap | d dump\r\n");
     printf("  v<pct> force/vitesse du moteur (ex: v75 si cale a mi-course)\r\n");
     printf("  INTENTS toute la main : O=open  C=close  P=pinch  N=neutral\r\n");
+    printf("  W = snapshot encodeurs (cnt + niveaux bruts A/B) -- diag cablage\r\n");
     printf("  workflow: select -> H (le moteur cale les 2 butees seul) -> o/c\r\n");
   }
   cb_list();   /* master imprime ses locaux, slave les siens via le tunnel */
