@@ -18,7 +18,7 @@ extern TIM_HandleTypeDef htim20;
  */
 
 /* --- Motor Variables --- */
-//counter period on PWM timer. Should be equal or less than 8499 to ensure that the signals are not audible
+//counter period on PWM timer. Should be equal or less than 7999 (160MHz) or 8499 (170 MHz) to ensure that the signals are not audible
 const int ARR = htim8.Instance->ARR-1; //(change if not timer8)
 
 Motor_t   Motors[MOTOR_COUNT];
@@ -42,8 +42,10 @@ TIM_HandleTypeDef *base_timer = &htim6;
 /* --- Motors --- */
 void MotorBackend_Init(void)
 {
+	/* different initialization depending on the High Res timer of normal timer*/
 	//Motor_Init(&Motors[index], timer_pwm_a, timer_pwm_b, channel_pwm_a, channel_pwm_b);
 	Motor_Init(&Motors[0], &htim8, &htim8, TIM_CHANNEL_3,TIM_CHANNEL_4);
+	Motor_Init_HR(&Motors[0], HRTIM_TIMERINDEX_TIMER_A, HRTIM_OUTPUT_TA1 | HRTIM_OUTPUT_TA2);
 
 	Encoder_Init(&Encoders[0], &htim1, 12, 64);		//for moon encoders
 	Encoder_Init(&Encoders[1], &htim1, 4096, 203);	//for faulhaber encoders

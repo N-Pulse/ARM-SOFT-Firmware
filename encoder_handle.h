@@ -7,8 +7,7 @@
 #ifndef ENCODER_HANDLE_H_
 #define ENCODER_HANDLE_H_
 
-#include "motor_backend.h"
-#include "stm32g4xx_hal.h"
+#include "main.h"
 
 // Constants
 extern const float sample_time;
@@ -32,11 +31,13 @@ typedef struct {
     volatile float      speed;
     volatile float      pos;
 
+    uint8_t type;
 } Encoder_t;
 
 /* --- defined in main --- */
 extern Encoder_t Encoders[MOTOR_COUNT];
 extern TIM_HandleTypeDef *base_timer;
+extern volatile uint8_t control_tick ;
 
 extern const float sample_time;
 extern const int ARR;

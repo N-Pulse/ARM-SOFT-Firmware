@@ -5,30 +5,46 @@
  *      Author: cleme
  */
 #include "encoder_handle.h"
-#include "analog.h"
 #include <math.h>
 
-#define ENC_ARR ARR
+#define ENC_ARR 65534
 #define ENC_HALF (ENC_ARR / 2)
 
 /* --- Local Variables --- */
 static uint8_t base_timer_started = 0;
 
 /* --- local functions prototypes --- */
-void Encoder_Calculate(Encoder_t *self);
+static void Encoder_Calculate(Encoder_t *self);
+static void Encoder_Common_Init(Encoder_t         *self,
+					uint32_t           ecod_lines,
+					uint32_t           multipl);
 
 void Encoder_Init(Encoder_t         *self,
 					TIM_HandleTypeDef *ecod_timer,
 					uint32_t           ecod_lines,
 					uint32_t           multipl)
 {
+	self->type = 0;
+	self->_ecod_timer = ecod_timer;
+    // Start this instance's hardware encoder timer
+    HAL_TIM_Encoder_Start(self->_ecod_timer,
+                          TIM_CHANNEL_1 | TIM_CHANNEL_2);
+
+    Encoder_Common_Init(self, ecod_lines, multipl);
+
+    // Snapshot current count to avoid a spike on the first callback
+     self->_prevCount = (int16_t)self->_ecod_timer->Instance->CNT;
+}
+
+static void Encoder_Common_Init(Encoder_t         *self,
+					uint32_t           ecod_lines,
+					uint32_t           multipl){
     self->_alpha = df_alpha ;
     self->_multipl = multipl;
 
     // ── Private variables ────────────────────────────────────────────────────
     self->_ecod_lines = ecod_lines;
     self->_ecod_resol = ecod_lines*4 ;
-    self->_ecod_timer = ecod_timer;
     self->_prevCount = 0;
     self->_totCounts   = 0;
 
@@ -36,19 +52,13 @@ void Encoder_Init(Encoder_t         *self,
     self->speed    = 0.0f;
     self->pos = 0.0f;
 
-    // Start this instance's hardware encoder timer
-    HAL_TIM_Encoder_Start(self->_ecod_timer,
-                          TIM_CHANNEL_1 | TIM_CHANNEL_2);
-
-    // Snapshot current count to avoid a spike on the first callback
-     self->_prevCount = (int16_t)self->_ecod_timer->Instance->CNT;
-
      // Start the shared base timer only once across all instances
      if (!base_timer_started) {
          HAL_TIM_Base_Start_IT(base_timer);
          base_timer_started = 1;
      }
 }
+
 
 void Encoder_Reset(Encoder_t *self)
 {
@@ -58,10 +68,12 @@ void Encoder_Reset(Encoder_t *self)
     self->_prevCount = 0;
 }
 
-void Encoder_Calculate(Encoder_t *self)
+static void Encoder_Calculate(Encoder_t *self)
 {
-    int16_t count = (int16_t)self->_ecod_timer->Instance->CNT;
-
+	 int16_t count;
+	if (self->type ==0){
+		count = (int16_t)self->_ecod_timer->Instance->CNT;
+	}
     // Deplacement
     int16_t diff = (int16_t)(count - self->_prevCount);
 
@@ -84,7 +96,7 @@ void Encoder_Calculate(Encoder_t *self)
 
     //Speed
     float rawSpeed = ((float)deltaCount / (float)self->_ecod_resol)
-                     * (60.0f / self->_sample_time)
+                     * (60.0f /sample_time)
                      / (float)self->_multipl;
 
     self->speed = self->_alpha * rawSpeed
@@ -101,14 +113,5 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
     for (int i = 0; i < MOTOR_COUNT; i++) {
         Encoder_Calculate(&Encoders[i]);
     }
-
-    for (int i = 0; i < MOTOR_COUNT; i++) {
-        motor_feedback_t fb = {
-            .id       = (motor_id_t)i,
-            .position = Encoders[i].pos,
-            .velocity = Encoders[i].speed,
-            .force_mN = Analog_GetForce_mN(i),
-        };
-        MotorBackend_OnFeedback(&fb);
-    }
+    control_tick=1;
 }
