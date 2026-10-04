@@ -122,7 +122,6 @@ bool MotorSafety_FilterCommand(motor_id_t id, float *position, uint8_t *speed_pe
     }
 
     float clamped = clamp(*position, s_pos_min[id], s_pos_max[id]);
-    clamped       = apply_rate_limit(id, clamped);
 
     handle_force_limits(id, speed_percent);
     if (s_fault_active)

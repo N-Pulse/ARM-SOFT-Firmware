@@ -1,4 +1,5 @@
 #include "motor_backend.h"
+#include "motor_control.h"
 
 #ifdef MOTOR_BACKEND_SIM
 
@@ -43,7 +44,7 @@ typedef struct
 {
     motor_id_t id;
     float      position;
-    uint8_t    speed_percent;
+    int8_t    speed_percent;    // PWM signal: with direction info
 } motor_cmd_t;
 
 typedef struct
@@ -75,7 +76,7 @@ static bool                 s_ros_timer_started;
 
 extern UART_HandleTypeDef hcom_uart[COMn];
 
-static void   enqueue_cmd(motor_id_t id, float position, uint8_t speed_percent);
+static void   enqueue_cmd(motor_id_t id, float position, int8_t speed_percent);
 static void   ensure_uart_ready(void);
 static void   start_rx_interrupt(void);
 static void   handle_rx_byte(uint8_t byte);
@@ -94,6 +95,17 @@ static uint8_t compute_crc(uint8_t version, uint8_t msg_id, uint8_t length, cons
 static void   transmit_frame(uint8_t msg_id, const uint8_t *payload, uint8_t length);
 static void   SimTxTask(void *argument);
 static void   RosWatchdogTimeout(TimerHandle_t timer);
+
+static const float s_max_velocity_rad_s[MOTOR_COUNT] = {
+    [MOTOR_THUMB]   = 1.0f,
+    [MOTOR_INDEX]   = 1.0f,
+    [MOTOR_MIDDLE]  = 1.0f,
+    [MOTOR_RING]    = 1.0f,
+    [MOTOR_LITTLE]  = 1.0f,
+    [MOTOR_WRIST_X] = 1.0f,
+    [MOTOR_WRIST_Y] = 1.0f,
+    [MOTOR_PALM]    = 1.0f,
+};
 
 /* Temporary step beacons for MotorBackend_Init diagnosis — remove once boot confirmed */
 #define MINIT_BEACON(id, crc) \
@@ -137,7 +149,8 @@ void MotorBackend_Init(void)
 
 void MotorBackend_SetTarget(motor_id_t id, float position, uint8_t speed_percent)
 {
-    enqueue_cmd(id, position, speed_percent);
+    // enqueue_cmd(id, position, speed_percent);
+    return;
 }
 
 void MotorBackend_SendPreview(motor_id_t id, float position, uint8_t speed_percent)
@@ -170,12 +183,29 @@ void MotorBackend_StopAll(void)
     send_all_stop();
 }
 
-void MotorBackend_OnFeedback(const motor_feedback_t *feedback)
+void MotorBackend_RefreshFeedback(void)
 {
-    MotorSafety_OnFeedback(feedback);
+    // In sim mode, feedbacks are automatically updated by interruptions
+    return;
 }
 
-static void enqueue_cmd(motor_id_t id, float position, uint8_t speed_percent)
+void MotorBackend_OnFeedback(const motor_feedback_t *feedback)
+{
+    if (feedback == NULL ||
+        (uint32_t)feedback->id >= MOTOR_COUNT) {
+        return;
+    }
+
+    if (feedback->valid_fields & MOTOR_FB_FORCE) {
+        MotorSafety_OnFeedback(feedback);  // To be further implemented
+    }
+
+    if (feedback->valid_fields & MOTOR_FB_POSITION) {
+        Motor_OnPositionFeedback(feedback->id, feedback->position, feedback->velocity);  // At the moment velocity feedback is not utilized
+    }
+}
+
+static void enqueue_cmd(motor_id_t id, float position, int8_t speed_percent)
 {
     if ((s_cmd_lock == NULL) || (xSemaphoreTake(s_cmd_lock, portMAX_DELAY) != pdPASS))
     {
@@ -387,6 +417,7 @@ static void process_joint_feedback(const uint8_t *payload, uint8_t length)
         feedback.position = q15_to_float(pos_raw);
         feedback.velocity = q15_to_float(vel_raw);
         feedback.force_mN = 0U;
+        feedback.valid_fields = MOTOR_FB_POSITION | MOTOR_FB_VELOCITY;
         MotorBackend_OnFeedback(&feedback);
     }
 }
@@ -414,6 +445,7 @@ static void process_fsr_feedback(const uint8_t *payload, uint8_t length)
         feedback.velocity = 0.0f;
         feedback.force_mN = (uint16_t)((payload[offset + 1U] << 8U) | payload[offset]);
         offset           += 2U;
+        feedback.valid_fields = MOTOR_FB_FORCE;
         MotorBackend_OnFeedback(&feedback);
     }
 }
@@ -490,8 +522,7 @@ static bool build_set_targets_payload(uint8_t *payload, uint8_t *payload_len)
         payload[offset++]    = (uint8_t)(position_q15 & 0xFFU);
         payload[offset++]    = (uint8_t)((position_q15 >> 8U) & 0xFFU);
 
-        uint8_t speed = (s_pending_cmds[i].speed_percent > 100U) ? 100U : s_pending_cmds[i].speed_percent;
-        payload[offset++] = speed;
+        payload[offset++]    = (uint8_t)s_pending_cmds[i].speed_percent;
     }
 
     *payload_len       = offset;
@@ -652,6 +683,29 @@ void HAL_UART_ErrorCallback(UART_HandleTypeDef *huart)
         s_rx_armed = false;
         start_rx_interrupt();
     }
+}
+
+void MotorBackend_ApplyOutput(motor_id_t id, float reference_position, float output_percent)
+{
+    if ((uint32_t)id >= MOTOR_COUNT) {
+        return;
+    }
+
+    if (!isfinite(reference_position) ||
+        !isfinite(output_percent)) {
+        reference_position = 0.0f;
+        output_percent = 0.0f;
+    }
+
+    if (output_percent > 100.0f) {
+        output_percent = 100.0f;
+    } else if (output_percent < -100.0f) {
+        output_percent = -100.0f;
+    }
+
+    int8_t drive_percent = (int8_t)lroundf(output_percent);
+
+    enqueue_cmd(id, reference_position, drive_percent);
 }
 
 #endif /* MOTOR_BACKEND_SIM */

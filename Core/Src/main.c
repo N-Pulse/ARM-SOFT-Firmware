@@ -934,11 +934,12 @@ static void ControlTask(void *argument)
   (void)argument;
   const TickType_t period = pdMS_TO_TICKS(10); /* 100 Hz loop */
   TickType_t       last_wake = xTaskGetTickCount();
+  const float dt = (float)period / (float)configTICK_RATE_HZ;
 
   while (1)
   {
     App_Task();
-    Motor_Update();
+    Motor_Update(dt);
     vTaskDelayUntil(&last_wake, period);
   }
 }

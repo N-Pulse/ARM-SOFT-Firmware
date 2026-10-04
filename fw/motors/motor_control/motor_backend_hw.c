@@ -67,9 +67,68 @@ void MotorBackend_StopAll(void)
     /* L'arrêt est géré par Motor_L298N_StopAll() dans Motor_StopAll(). */
 }
 
+//Get Encoder Feedbacks
+void MotorBackend_RefreshFeedback(void)
+{
+    for (int i = 0; i < MOTOR_COUNT; ++i)
+    {
+        motor_id_t id = (motor_id_t)i;
+
+        if (!BoardLink_IsLocalMotor(id)) {
+            continue;
+        }
+
+        motor_feedback_t feedback = {0};
+        feedback.id = id;
+        feedback.position = Encoder_BSP_GetPosition(id);
+        feedback.valid_fields = MOTOR_FB_POSITION;
+
+        MotorBackend_OnFeedback(&feedback);
+    }
+}
+
 void MotorBackend_OnFeedback(const motor_feedback_t *feedback)
 {
-    MotorSafety_OnFeedback(feedback);
+    if (feedback == NULL ||
+        (uint32_t)feedback->id >= MOTOR_COUNT) {
+        return;
+    }
+
+    if (feedback->valid_fields & MOTOR_FB_POSITION) {
+        Motor_OnPositionFeedback(feedback->id, feedback->position, feedback->velocity);  // At the moment velocity feedback is not utilized
+    }
+}
+
+void MotorBackend_ApplyOutput(motor_id_t id, float reference_position, float output_percent)
+{
+    (void)reference_position; // HW 输出只需要 PID 的结果
+
+    if ((uint32_t)id >= MOTOR_COUNT ||
+        !BoardLink_IsLocalMotor(id)) {
+        return;
+    }
+
+    if (!isfinite(output_percent)) {
+        Motor_L298N_Stop(id);
+        return;
+    }
+
+    if (output_percent > 100.0f) {
+        output_percent = 100.0f;
+    } else if (output_percent < -100.0f) {
+        output_percent = -100.0f;
+    }
+
+    uint8_t duty = (uint8_t)lroundf(fabsf(output_percent));
+
+    if (duty == 0U) {
+        Motor_L298N_Stop(id);
+        return;
+    }
+
+    int direction = output_percent > 0.0f ? 1 : -1;
+
+    Motor_L298N_SetRaw(id, direction, duty);
 }
 
 #endif /* !MOTOR_BACKEND_SIM */
