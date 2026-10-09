@@ -4,14 +4,18 @@
 #include <stdint.h>
 #include "motor_control.h"
 
-// ADC BSP — current sensing via shunt resistors, one channel per motor.
-//
-// TODO: implement adc_dma_bsp.c once current-sense schematic is confirmed.
-// Call ADC_DMA_BSP_Init() from MotorBackend_Init() (motor_backend_hw.c).
-// On DMA complete ISR: call MotorBackend_OnFeedback() with measured force_mN.
+/* Experimental raw acquisition only. Disabled by default for startup bring-up.
+ * No calibrated current, force conversion or validated current protection. */
+#ifndef N_PULSE_ENABLE_CURRENT_ACQUISITION
+#define N_PULSE_ENABLE_CURRENT_ACQUISITION 0
+#endif
+#if N_PULSE_ENABLE_CURRENT_ACQUISITION != 0 && N_PULSE_ENABLE_CURRENT_ACQUISITION != 1
+#error "N_PULSE_ENABLE_CURRENT_ACQUISITION must be 0 or 1"
+#endif
 
-void     ADC_DMA_BSP_Init(void);
+bool     ADC_DMA_BSP_Init(void);
 uint16_t ADC_DMA_BSP_GetRaw(motor_id_t id);
+/* Returns NAN until a calibrated conversion exists, including acquisition off. */
 float    ADC_DMA_BSP_GetCurrentA(motor_id_t id);
 
 #endif /* ADC_DMA_BSP_H */

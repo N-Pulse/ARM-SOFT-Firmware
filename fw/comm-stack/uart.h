@@ -13,7 +13,7 @@
 #ifndef UART_H
 #define UART_H
 
-extern UART_HandleTypeDef hcom_uart[COMn];
+#include "board_uart_compat.h"
 
 void UART_Init(void);
 

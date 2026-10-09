@@ -44,6 +44,9 @@
  *----------------------------------------------------------*/
 
 /* USER CODE BEGIN Includes */
+#include "fatal_stop.h"
+#define configUSE_MALLOC_FAILED_HOOK 1
+#define configCHECK_FOR_STACK_OVERFLOW 2
 /* Section where include file can be added */
 /* USER CODE END Includes */
 
@@ -154,17 +157,18 @@ See http://www.FreeRTOS.org/RTOS-Cortex-M3-M4.html. */
 /* Normal assert() semantics without relying on the provision of an assert.h
 header file. */
 /* USER CODE BEGIN 1 */
-#define configASSERT( x ) if ((x) == 0) {taskDISABLE_INTERRUPTS(); for( ;; );}
+#define configASSERT(x) do { if ((x) == 0) N_PULSE_FatalHalt(N_PULSE_FATAL_ASSERT); } while (0)
 /* USER CODE END 1 */
 
 /* Definitions that map the FreeRTOS port interrupt handlers to their CMSIS
 standard names. */
 #define vPortSVCHandler    SVC_Handler
 #define xPortPendSVHandler PendSV_Handler
+/* The compiled GCC/ARM_CM4F port owns SysTick. HAL uses TIM6; no CMSIS
+ * RTOS wrapper or application SysTick handler is compiled. */
+#define xPortSysTickHandler SysTick_Handler
 
-/* IMPORTANT: After 10.3.1 update, Systick_Handler comes from NVIC (if SYS timebase = systick), otherwise from cmsis_os2.c */
-
-#define USE_CUSTOM_SYSTICK_HANDLER_IMPLEMENTATION 0
+#define USE_CUSTOM_SYSTICK_HANDLER_IMPLEMENTATION 1
 
 /* USER CODE BEGIN Defines */
 /* Section where parameter definitions can be added (for instance, to override default ones in FreeRTOS.h) */

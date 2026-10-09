@@ -1,3 +1,21 @@
+> **Évolution lot 6 :** les descriptions SIM v1/CRC8, RX SIM déconnectée et
+> interdiction d'activation virtuelle ci-dessous sont historiques. Le contrat
+> actuel et la boucle fermée PC sont dans [SIMULATION_LOT6](SIMULATION_LOT6.md)
+> et le [guide court](SIMULATION_QUICKSTART.md). Les invariants HW restent
+> désarmés ; UART réel/Gazebo/moteurs réels ne sont pas testés dans le lot 6.
+
+> **Archive — avertissement du 9 octobre 2026, lot 5.** Ce guide contient des
+> commandes, mappings ou conclusions historiques ; il ne décrit pas le bring-up
+> actuel mono-carte STM32G474QET6. Référence maintenue : [README](../README.md)
+> et [ROBUSTNESS_LOT5](ROBUSTNESS_LOT5.md).
+> GNU Make, HW/SIM séparés, flash HW à SN explicite. UART4 HW utilise protobuf,
+> le format SIM est distinct et RX SIM reste déconnectée. Aucun armement
+> automatique ; ADC off ; PID présent mais non réglé et désactivé. La calibration
+> historique est bloquée à la compilation. Ne pas suivre les anciennes commandes
+> de flash global/calibration ou les tableaux de câblage pour la carte actuelle.
+> Les tests Python historiques ne prouvent ni le firmware de production ni une
+> simulation complète. Les procédures ci-dessous sont conservées comme historique.
+
 # Simulation Transport & Motor Backend Plan
 
 ## Goals

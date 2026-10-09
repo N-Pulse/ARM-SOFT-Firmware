@@ -28,9 +28,7 @@ extern "C" {
 
 /* Includes ------------------------------------------------------------------*/
 #include "stm32g4xx_hal.h"
-
-#include "stm32g4xx_nucleo.h"
-#include <stdio.h>
+#include "board_uart_compat.h"
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
@@ -52,6 +50,10 @@ extern "C" {
 
 /* USER CODE END EM */
 
+void HAL_HRTIM_MspPostInit(HRTIM_HandleTypeDef *hhrtim);
+
+void HAL_TIM_MspPostInit(TIM_HandleTypeDef *htim);
+
 /* Exported functions prototypes ---------------------------------------------*/
 void Error_Handler(void);
 
@@ -60,20 +62,16 @@ void Error_Handler(void);
 /* USER CODE END EFP */
 
 /* Private defines -----------------------------------------------------------*/
-#define RCC_OSC32_IN_Pin GPIO_PIN_14
-#define RCC_OSC32_IN_GPIO_Port GPIOC
-#define RCC_OSC32_OUT_Pin GPIO_PIN_15
-#define RCC_OSC32_OUT_GPIO_Port GPIOC
-#define RCC_OSC_IN_Pin GPIO_PIN_0
-#define RCC_OSC_IN_GPIO_Port GPIOF
-#define RCC_OSC_OUT_Pin GPIO_PIN_1
-#define RCC_OSC_OUT_GPIO_Port GPIOF
-#define T_SWDIO_Pin GPIO_PIN_13
-#define T_SWDIO_GPIO_Port GPIOA
-#define T_SWCLK_Pin GPIO_PIN_14
-#define T_SWCLK_GPIO_Port GPIOA
-#define T_SWO_Pin GPIO_PIN_3
-#define T_SWO_GPIO_Port GPIOB
+#define NRST_Pin GPIO_PIN_10
+#define NRST_GPIO_Port GPIOG
+#define USART3_TX_LED_Pin GPIO_PIN_10
+#define USART3_TX_LED_GPIO_Port GPIOB
+#define BLE_RST_Pin GPIO_PIN_9
+#define BLE_RST_GPIO_Port GPIOG
+#define USART2_TX_BLE_Pin GPIO_PIN_5
+#define USART2_TX_BLE_GPIO_Port GPIOD
+#define USART2_RX_BLE_Pin GPIO_PIN_6
+#define USART2_RX_BLE_GPIO_Port GPIOD
 
 /* USER CODE BEGIN Private defines */
 

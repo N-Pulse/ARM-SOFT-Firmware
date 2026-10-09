@@ -1,61 +1,68 @@
-# Flash le firmware sur TOUTES les Nucleo branchees (ST-Link / SWD).
-# Meme binaire sur les 2 cartes : le role master/slave est decide par le
-# strap PC0, pas par le firmware. Pas besoin de debrancher.
-# Usage : .\flash.ps1
-
-$CLI = "C:\Program Files\STMicroelectronics\STM32Cube\STM32CubeProgrammer\bin\STM32_Programmer_CLI.exe"
-$ELF = Join-Path $PSScriptRoot "Debug\N-PULSE FIRMWARE.elf"
-
-if (-not (Test-Path $ELF)) {
-    Write-Host "Fichier ELF introuvable : $ELF" -ForegroundColor Red
-    Write-Host "Lance d'abord : .\build.ps1" -ForegroundColor Yellow
-    exit 1
-}
-if (-not (Test-Path $CLI)) {
-    Write-Host "STM32_Programmer_CLI introuvable : $CLI" -ForegroundColor Red
-    exit 1
-}
-
-# --- Liste les sondes ST-LINK connectees ---
-Write-Host "Detection des sondes ST-LINK..." -ForegroundColor Cyan
-$list = & $CLI -l | Out-String
-
-# Recupere les numeros de serie (ligne "ST-LINK SN : <sn>") puis DEDUPLIQUE
-# (le CLI -l peut lister chaque sonde plusieurs fois selon la version).
-$raw = @()
-foreach ($m in [regex]::Matches($list, 'ST-LINK\s+SN\s*:\s*([0-9A-Za-z]+)')) {
-    $raw += $m.Groups[1].Value
-}
-$sns = @($raw | Select-Object -Unique)
-
-if ($sns.Count -eq 0) {
-    Write-Host "Aucune sonde ST-LINK detectee." -ForegroundColor Red
-    Write-Host "Verifie que les Nucleo sont branchees en USB." -ForegroundColor Yellow
-    exit 1
-}
-
-Write-Host ("  {0} carte(s) unique(s) detectee(s) :" -f $sns.Count) -ForegroundColor Cyan
-foreach ($s in $sns) { Write-Host ("    SN = {0}" -f $s) }
-Write-Host "  Fichier : $ELF"
-
-# --- Flash chaque carte par son numero de serie ---
-$fail = 0
-$idx  = 0
-foreach ($sn in $sns) {
-    $idx++
-    Write-Host ("`n[{0}/{1}] Flash carte SN={2}" -f $idx, $sns.Count, $sn) -ForegroundColor Cyan
-    & $CLI -c port=SWD sn=$sn freq=4000 -w $ELF -rst
-    if ($LASTEXITCODE -eq 0) {
-        Write-Host ("[{0}/{1}] OK" -f $idx, $sns.Count) -ForegroundColor Green
-    } else {
-        Write-Host ("[{0}/{1}] ECHEC (code {2})" -f $idx, $sns.Count, $LASTEXITCODE) -ForegroundColor Red
-        $fail++
+# GNU Make HW canonical artifact only. Selection is mandatory, never all probes.
+[CmdletBinding()]
+param(
+    [string]$SerialNumber,
+    [string]$ProgrammerPath = 'C:\Program Files\STMicroelectronics\STM32Cube\STM32CubeProgrammer\bin\STM32_Programmer_CLI.exe',
+    [string]$ElfPath,
+    [switch]$DryRun
+)
+Set-StrictMode -Version Latest
+$ErrorActionPreference = 'Stop'
+try {
+    if ([string]::IsNullOrWhiteSpace($SerialNumber) -or $SerialNumber -notmatch '^[A-Za-z0-9]+$') {
+        throw 'Un numero de serie ST-LINK explicite (alphanumerique) est requis: -SerialNumber <SN>.'
     }
-}
-
-if ($fail -eq 0) {
-    Write-Host ("`nToutes les cartes flashees ({0}). Elles redemarrent." -f $sns.Count) -ForegroundColor Green
-} else {
-    Write-Host ("`n{0} carte(s) en echec sur {1}." -f $fail, $sns.Count) -ForegroundColor Red
+    $canonical = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot 'build\HW\n-pulse.elf'))
+    if ([string]::IsNullOrWhiteSpace($ElfPath)) { $ElfPath = $canonical }
+    $selected = [IO.Path]::GetFullPath($ElfPath)
+    if (-not [string]::Equals($selected, $canonical, [StringComparison]::OrdinalIgnoreCase)) {
+        throw "Seul l'ELF HW canonique est autorise: $canonical (SIM et alias refuses)."
+    }
+    $directory = Split-Path $canonical
+    $manifest = Get-Content -LiteralPath (Join-Path $directory 'build-manifest.json') -Raw | ConvertFrom-Json
+    $flagsPath = Join-Path $directory 'compile.flags'
+    $flags = Get-Content -LiteralPath $flagsPath -Raw
+    if ($manifest.schema -ne 1 -or $manifest.mode -cne 'HW' -or
+        $flags -match 'MOTOR_BACKEND_SIM' -or
+        $flags -notmatch '-DN_PULSE_ENABLE_CURRENT_ACQUISITION=0(?:\s|\|)' -or
+        $manifest.elf_sha256 -ine (Get-FileHash -LiteralPath $canonical -Algorithm SHA256).Hash -or
+        $manifest.flags_sha256 -ine (Get-FileHash -LiteralPath $flagsPath -Algorithm SHA256).Hash) {
+        throw 'Artefact incoherent, SIM, ADC actif ou empreinte obsolete. Reconstruire HW avec build.ps1.'
+    }
+    $header = [IO.File]::ReadAllBytes($canonical)
+    if ($header.Length -lt 52 -or $header[0] -ne 127 -or $header[1] -ne 69 -or
+        $header[2] -ne 76 -or $header[3] -ne 70 -or $header[4] -ne 1 -or
+        $header[5] -ne 1 -or [BitConverter]::ToUInt16($header,16) -ne 2 -or
+        [BitConverter]::ToUInt16($header,18) -ne 40) {
+        throw 'Un ELF executable ARM 32 bits little-endian est requis.'
+    }
+    $tool = (Resolve-Path -LiteralPath $ProgrammerPath).Path
+    # -l enumerates; no SWD connection/program/reset occurs in dry-run.
+    $listing = (& $tool -l 2>&1 | Out-String)
+    $listCode = $LASTEXITCODE
+    if ($listCode -ne 0 -or $listing -match '(?im)^\s*Error\s*:') {
+        throw "Echec enumeration (code $listCode): $listing"
+    }
+    $matches = @([regex]::Matches($listing, 'ST-LINK\s+SN\s*:\s*([0-9A-Za-z]+)') |
+        Where-Object { [string]::Equals($_.Groups[1].Value, $SerialNumber, [StringComparison]::Ordinal) })
+    if ($matches.Count -ne 1) {
+        throw "Selection refusee: SN=$SerialNumber apparait $($matches.Count) fois (absent ou ambigu)."
+    }
+    $arguments = @('-c', 'port=SWD', "sn=$SerialNumber", 'freq=4000', '-w', $canonical, '-v', '-rst')
+    $display = '"' + $tool + '" ' + (($arguments | ForEach-Object { '"' + $_ + '"' }) -join ' ')
+    Write-Host "Cible unique: SN=$SerialNumber"
+    Write-Host "Fichier HW: $canonical"
+    Write-Host "Commande: $display"
+    if ($DryRun) { Write-Host 'DRY-RUN: aucune connexion SWD, programmation ou reset.'; exit 0 }
+    $result = (& $tool @arguments 2>&1 | Out-String)
+    $programCode = $LASTEXITCODE
+    Write-Host $result
+    if ($programCode -ne 0 -or $result -match '(?im)^\s*Error\s*:') {
+        throw "Echec programmation/verification (code $programCode)."
+    }
+    Write-Host "Programmation et verification terminees pour SN=$SerialNumber."
+    exit 0
+} catch {
+    Write-Host "REFUS/ECHEC: $($_.Exception.Message)" -ForegroundColor Red
     exit 1
 }

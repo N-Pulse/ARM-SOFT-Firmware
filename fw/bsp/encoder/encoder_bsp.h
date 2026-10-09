@@ -5,66 +5,44 @@
 #include <stdbool.h>
 #include "motor_control.h"
 
-/* ─── Encoder BSP — Moon DCU10025P12 + PG10C ─────────────────────────────────
- *
- * Datasheet Moon DCU10025P12 :
- *   - Réducteur planétaire 3 étages, ratio  61:1
- *   - Encodeur magnétique incrémental « 12-line », 2 canaux quadrature
- *   - 12 PPR par canal × décodage 4× = 48 counts par tour arbre moteur
- *   - Sur l'arbre de sortie : 48 × 61 = 2928 counts par tour
- *
- * Câblage (4 fils par encodeur) :
- *   - VCC, GND : alim 5 V
- *   - A, B     : signaux quadrature → TIM CH1 / CH2 du STM32
- *
- * Architecture — même binaire, deux rôles (strap PC0) :
- *   - Master  (motherboard, PC0 = pull-up HIGH)  : WRIST_X, WRIST_Y, LITTLE
- *   - Slave   (daughterboard, PC0 = GND)         : INDEX, MIDDLE, RING, THUMB, PALM
- *
- *   WRIST_X + WRIST_Y sont groupés sur la motherboard : poignet différentiel
- *   couplé, commandé en synchro par drive_wrist() (intent_router.c).
- *
- *   Astuce clé : on partage le même timer entre deux moteurs de boards
- *   différentes. Comme un seul des deux est local par carte, il n'y a jamais
- *   de conflit à runtime. TIM1 et TIM4 restent libres pour le PWM (motor_l298n).
- *
- * Mapping timer → pin (cf. datasheet STM32G474, LQFP64) :
- *
- *   ┌─────────┬──────────┬────────┬───────────┬───────────┬─────┐
- *   │ Moteur  │ Carte    │ Timer  │ CH1 pin   │ CH2 pin   │ AF  │
- *   ├─────────┼──────────┼────────┼───────────┼───────────┼─────┤
- *   │ WRIST_X │ Master   │ TIM2   │ PA0       │ PA1       │ AF1 │
- *   │ INDEX   │ Slave    │ TIM2   │ PA0       │ PA1       │ AF1 │
- *   │ LITTLE  │ Master   │ TIM3   │ PA6       │ PA7       │ AF2 │
- *   │ MIDDLE  │ Slave    │ TIM3   │ PA6       │ PA7       │ AF2 │
- *   │ WRIST_Y │ Master   │ TIM8   │ PC6       │ PC7       │ AF4 │
- *   │ RING    │ Slave    │ TIM8   │ PC6       │ PC7       │ AF4 │
- *   │ THUMB   │ Slave    │ TIM15  │ PB14      │ PB15      │ AF1 │
- *   │ PALM    │ Slave    │ TIM20  │ PB2 (AF3) │ PC2 (AF6) │  -  │
- *   └─────────┴──────────┴────────┴───────────┴───────────┴─────┘
- *
- *   TIM2 et TIM5 sont 32-bit (pas de débordement à craindre).
- *   Les autres sont 16-bit — le code fait l'extension de signe.
- *
- * Position de reset (Encoder_BSP_Init) :
- *   Compteur = 0 quel que soit l'angle physique courant. L'opérateur doit
- *   positionner la main "ouverte + poignet droit" AVANT mise sous tension —
- *   cette position physique correspond alors à 0 rad pour tous les moteurs.
- * ──────────────────────────────────────────────────────────────────────────── */
+/* Raw counts are independent of calibration. Angular reads return NAN when
+ * unavailable; no invalid zero is suitable as controller feedback. */
 
-void  Encoder_BSP_Init(void);
+/* Called once before tasks; failure must prevent normal startup. */
+bool  Encoder_BSP_Init(void);
+typedef struct { int64_t raw_count; float position_rad, velocity_rad_s; bool valid; } encoder_snapshot_t;
+bool Encoder_BSP_GetSnapshot(motor_id_t id, encoder_snapshot_t *out);
 float Encoder_BSP_GetPosition(motor_id_t id);   /* radians */
-float Encoder_BSP_GetVelocity(motor_id_t id);   /* rad/s   */
+float Encoder_BSP_GetVelocity(motor_id_t id);   /* rad/s */
+int64_t Encoder_BSP_GetRawCount(motor_id_t id);
+bool Encoder_BSP_IsCalibrated(motor_id_t id);
 
-/* Remet le compteur d'un encodeur à zéro (calibration à chaud). */
-void Encoder_BSP_Reset(motor_id_t id);
-void Encoder_BSP_ResetAll(void);
+typedef struct {
+    uint32_t counts_per_revolution;
+    uint8_t quadrature_factor;
+    float gear_ratio;
+    int8_t direction;
+    int64_t zero_offset_counts;
+} encoder_calibration_t;
 
-/* Vrai si ce moteur est câblé localement sur cette carte. */
+/* Offset is in accumulated raw coordinates; all int64 values are supported.
+ * CPR*quadrature*ratio and radians/count must be finite normal float values.
+ * Reject invalid proposals without replacing the previous reference. Sticky
+ * measurement/accumulation faults require a disabled-controller logical reset. */
+bool Encoder_BSP_SetCalibration(motor_id_t id,
+                                const encoder_calibration_t *calibration);
+
+/* Calibration/reset refuse enabled controllers. Accepted changes invalidate
+ * control feedback/PID revision. Reset establishes new raw origin, offset=0;
+ * no timer restart. ResetAll refuses atomically if any controller is enabled. */
+bool Encoder_BSP_Reset(motor_id_t id);
+bool Encoder_BSP_ResetAll(void);
+
+/* Vrai si ce moteur dispose d'une entrée encodeur sur la carte actuelle. */
 bool Encoder_BSP_IsLocal(motor_id_t id);
 
-/* Pour la fille (slave) qui pousse les feedbacks vers la mère via board_link UART :
- * la mère appelle cette fonction quand une nouvelle trame de feedback arrive. */
+/* Compatibilité d'API pour les anciens appelants ; aucun feedback distant
+ * n'est utilisé dans l'architecture mono-carte. */
 void Encoder_BSP_UpdateRemote(motor_id_t id, float position_rad, float velocity_rad_s);
 
 #endif /* ENCODER_BSP_H */

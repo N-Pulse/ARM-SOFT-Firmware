@@ -22,6 +22,7 @@
 #include "stm32g4xx_it.h"
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
+#include "fatal_stop.h"
 #include "FreeRTOS.h"
 #include "task.h"
 /* USER CODE END Includes */
@@ -57,8 +58,14 @@
 /* USER CODE END 0 */
 
 /* External variables --------------------------------------------------------*/
+extern DMA_HandleTypeDef hdma_adc1;
+extern DMA_HandleTypeDef hdma_adc2;
+extern DMA_HandleTypeDef hdma_adc3;
+extern DMA_HandleTypeDef hdma_adc4;
+extern DMA_HandleTypeDef hdma_adc5;
 extern TIM_HandleTypeDef htim6;
-
+extern UART_HandleTypeDef huart4;
+extern DMA_HandleTypeDef hdma_usart2_rx;
 /* USER CODE BEGIN EV */
 extern void xPortPendSVHandler(void);
 extern void xPortSysTickHandler(void);
@@ -74,6 +81,7 @@ extern void vPortSVCHandler(void);
 void NMI_Handler(void)
 {
   /* USER CODE BEGIN NonMaskableInt_IRQn 0 */
+  N_PULSE_FatalHalt(N_PULSE_FATAL_NMI);
 
   /* USER CODE END NonMaskableInt_IRQn 0 */
   /* USER CODE BEGIN NonMaskableInt_IRQn 1 */
@@ -89,6 +97,7 @@ void NMI_Handler(void)
 void HardFault_Handler(void)
 {
   /* USER CODE BEGIN HardFault_IRQn 0 */
+  N_PULSE_FatalHalt(N_PULSE_FATAL_HARDFAULT);
 
   /* USER CODE END HardFault_IRQn 0 */
   while (1)
@@ -104,6 +113,7 @@ void HardFault_Handler(void)
 void MemManage_Handler(void)
 {
   /* USER CODE BEGIN MemoryManagement_IRQn 0 */
+  N_PULSE_FatalHalt(N_PULSE_FATAL_MEMMANAGE);
 
   /* USER CODE END MemoryManagement_IRQn 0 */
   while (1)
@@ -119,6 +129,7 @@ void MemManage_Handler(void)
 void BusFault_Handler(void)
 {
   /* USER CODE BEGIN BusFault_IRQn 0 */
+  N_PULSE_FatalHalt(N_PULSE_FATAL_BUSFAULT);
 
   /* USER CODE END BusFault_IRQn 0 */
   while (1)
@@ -134,6 +145,7 @@ void BusFault_Handler(void)
 void UsageFault_Handler(void)
 {
   /* USER CODE BEGIN UsageFault_IRQn 0 */
+  N_PULSE_FatalHalt(N_PULSE_FATAL_USAGEFAULT);
 
   /* USER CODE END UsageFault_IRQn 0 */
   while (1)
@@ -143,6 +155,9 @@ void UsageFault_Handler(void)
   }
 }
 
+/**
+  * @brief This function handles System service call via SWI instruction.
+  */
 /**
   * @brief This function handles Debug monitor.
   */
@@ -156,6 +171,15 @@ void DebugMon_Handler(void)
   /* USER CODE END DebugMonitor_IRQn 1 */
 }
 
+/**
+  * @brief This function handles Pendable request for system service.
+  */
+/**
+  * @brief This function handles System tick timer.
+  */
+/* SysTick_Handler is supplied by the GCC/ARM_CM4F FreeRTOS port via
+ * FreeRTOSConfig.h. TIM6 is the only source of HAL_IncTick(). */
+
 /******************************************************************************/
 /* STM32G4xx Peripheral Interrupt Handlers                                    */
 /* Add here the Interrupt Handlers for the used peripherals.                  */
@@ -164,17 +188,79 @@ void DebugMon_Handler(void)
 /******************************************************************************/
 
 /**
-  * @brief This function handles EXTI line[15:10] interrupts.
+  * @brief This function handles DMA1 channel2 global interrupt.
   */
-void EXTI15_10_IRQHandler(void)
+void DMA1_Channel2_IRQHandler(void)
 {
-  /* USER CODE BEGIN EXTI15_10_IRQn 0 */
+  /* USER CODE BEGIN DMA1_Channel2_IRQn 0 */
 
-  /* USER CODE END EXTI15_10_IRQn 0 */
-  BSP_PB_IRQHandler(BUTTON_USER);
-  /* USER CODE BEGIN EXTI15_10_IRQn 1 */
+  /* USER CODE END DMA1_Channel2_IRQn 0 */
+  HAL_DMA_IRQHandler(&hdma_adc2);
+  /* USER CODE BEGIN DMA1_Channel2_IRQn 1 */
 
-  /* USER CODE END EXTI15_10_IRQn 1 */
+  /* USER CODE END DMA1_Channel2_IRQn 1 */
+}
+
+/**
+  * @brief This function handles DMA1 channel3 global interrupt.
+  */
+void DMA1_Channel3_IRQHandler(void)
+{
+  /* USER CODE BEGIN DMA1_Channel3_IRQn 0 */
+
+  /* USER CODE END DMA1_Channel3_IRQn 0 */
+  HAL_DMA_IRQHandler(&hdma_adc3);
+  /* USER CODE BEGIN DMA1_Channel3_IRQn 1 */
+
+  /* USER CODE END DMA1_Channel3_IRQn 1 */
+}
+
+/**
+  * @brief This function handles DMA1 channel4 global interrupt.
+  */
+void DMA1_Channel4_IRQHandler(void)
+{
+  /* USER CODE BEGIN DMA1_Channel4_IRQn 0 */
+
+  /* USER CODE END DMA1_Channel4_IRQn 0 */
+  HAL_DMA_IRQHandler(&hdma_adc4);
+  /* USER CODE BEGIN DMA1_Channel4_IRQn 1 */
+
+  /* USER CODE END DMA1_Channel4_IRQn 1 */
+}
+
+/**
+  * @brief This function handles DMA1 channel5 global interrupt.
+  */
+void DMA1_Channel5_IRQHandler(void)
+{
+  /* USER CODE BEGIN DMA1_Channel5_IRQn 0 */
+
+  /* USER CODE END DMA1_Channel5_IRQn 0 */
+  HAL_DMA_IRQHandler(&hdma_adc5);
+  /* USER CODE BEGIN DMA1_Channel5_IRQn 1 */
+
+  /* USER CODE END DMA1_Channel5_IRQn 1 */
+}
+
+/* Single UART4 HAL instance, RX/TX callbacks owned by uart4_transport. */
+void UART4_IRQHandler(void)
+{
+  HAL_UART_IRQHandler(&huart4);
+}
+
+/**
+  * @brief This function handles DMA1 channel7 global interrupt.
+  */
+void DMA1_Channel7_IRQHandler(void)
+{
+  /* USER CODE BEGIN DMA1_Channel7_IRQn 0 */
+
+  /* USER CODE END DMA1_Channel7_IRQn 0 */
+  HAL_DMA_IRQHandler(&hdma_usart2_rx);
+  /* USER CODE BEGIN DMA1_Channel7_IRQn 1 */
+
+  /* USER CODE END DMA1_Channel7_IRQn 1 */
 }
 
 /**
@@ -182,63 +268,29 @@ void EXTI15_10_IRQHandler(void)
   */
 void TIM6_DAC_IRQHandler(void)
 {
+  /* USER CODE BEGIN TIM6_DAC_IRQn 0 */
+
+  /* USER CODE END TIM6_DAC_IRQn 0 */
   HAL_TIM_IRQHandler(&htim6);
+  /* USER CODE BEGIN TIM6_DAC_IRQn 1 */
+
+  /* USER CODE END TIM6_DAC_IRQn 1 */
 }
 
 /**
-  * @brief SysTick is used exclusively by FreeRTOS (HAL timebase is TIM6).
+  * @brief This function handles DMA1 channel8 global interrupt.
   */
-void SysTick_Handler(void)
+void DMA1_Channel8_IRQHandler(void)
 {
-  xPortSysTickHandler();
+  /* USER CODE BEGIN DMA1_Channel8_IRQn 0 */
+
+  /* USER CODE END DMA1_Channel8_IRQn 0 */
+  HAL_DMA_IRQHandler(&hdma_adc1);
+  /* USER CODE BEGIN DMA1_Channel8_IRQn 1 */
+
+  /* USER CODE END DMA1_Channel8_IRQn 1 */
 }
 
 /* USER CODE BEGIN 1 */
-/* RX ring buffer fed by LPUART1_IRQHandler, drained by Comms_Task.
- * 256 bytes is enough for a few back-to-back frames at 115200 baud. */
-#define COMMS_RXRING_SIZE  256U
-volatile uint8_t  g_rxring[COMMS_RXRING_SIZE];
-volatile uint16_t g_rxring_head = 0;  /* written by ISR */
-volatile uint16_t g_rxring_tail = 0;  /* read by task */
-
-void LPUART1_IRQHandler(void)
-{
-    USART_TypeDef *u = LPUART1;
-    /* Clear sticky error flags so the IRQ can keep firing. */
-    if (u->ISR & (USART_ISR_ORE | USART_ISR_FE | USART_ISR_NE)) {
-        u->ICR = USART_ICR_ORECF | USART_ICR_FECF | USART_ICR_NECF;
-    }
-    while (u->ISR & USART_ISR_RXNE_RXFNE) {
-        uint8_t b = (uint8_t)u->RDR;
-        uint16_t next = (uint16_t)((g_rxring_head + 1U) % COMMS_RXRING_SIZE);
-        if (next != g_rxring_tail) {  /* drop on overflow rather than corrupt */
-            g_rxring[g_rxring_head] = b;
-            g_rxring_head = next;
-        }
-    }
-}
-
-/* RX ring buffer for USART3 — board-to-board link drained by BoardLink_RxTask
- * on the slave side. Same pattern as LPUART1. */
-#define USART3_RXRING_SIZE  256U
-volatile uint8_t  g_usart3_rxring[USART3_RXRING_SIZE];
-volatile uint16_t g_usart3_rxring_head = 0;
-volatile uint16_t g_usart3_rxring_tail = 0;
-
-void USART3_IRQHandler(void)
-{
-    USART_TypeDef *u = USART3;
-    if (u->ISR & (USART_ISR_ORE | USART_ISR_FE | USART_ISR_NE)) {
-        u->ICR = USART_ICR_ORECF | USART_ICR_FECF | USART_ICR_NECF;
-    }
-    while (u->ISR & USART_ISR_RXNE_RXFNE) {
-        uint8_t b = (uint8_t)u->RDR;
-        uint16_t next = (uint16_t)((g_usart3_rxring_head + 1U)
-                                   % USART3_RXRING_SIZE);
-        if (next != g_usart3_rxring_tail) {
-            g_usart3_rxring[g_usart3_rxring_head] = b;
-            g_usart3_rxring_head = next;
-        }
-    }
-}
+/* No LPUART1 consumer for the UART4 link. */
 /* USER CODE END 1 */

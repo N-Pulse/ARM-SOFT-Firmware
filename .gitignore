@@ -7,9 +7,15 @@
 *.list
 *.log
 *.d
+*.su
 .DS_Store
 
 # venv Python embarqué dans comm-stack (ne pas committer)
 fw/comm-stack/PyUART/venv_py/
 __pycache__/
 *.pyc
+
+.mypy_cache/
+desktop.ini
+/Debug/*
+!/Debug/makefile

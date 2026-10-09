@@ -1,3 +1,15 @@
+> **Archive — avertissement du 9 octobre 2026, lot 5.** Ce guide contient des
+> commandes, mappings ou conclusions historiques ; il ne décrit pas le bring-up
+> actuel mono-carte STM32G474QET6. Référence maintenue : [README](../README.md)
+> et [ROBUSTNESS_LOT5](ROBUSTNESS_LOT5.md).
+> GNU Make, HW/SIM séparés, flash HW à SN explicite. UART4 HW utilise protobuf,
+> le format SIM est distinct et RX SIM reste déconnectée. Aucun armement
+> automatique ; ADC off ; PID présent mais non réglé et désactivé. La calibration
+> historique est bloquée à la compilation. Ne pas suivre les anciennes commandes
+> de flash global/calibration ou les tableaux de câblage pour la carte actuelle.
+> Les tests Python historiques ne prouvent ni le firmware de production ni une
+> simulation complète. Les procédures ci-dessous sont conservées comme historique.
+
 # Câblage hardware — N-Pulse STM32G474
 
 Mapping complet des connexions entre les 2 cartes (motherboard + daughterboard), les 8 moteurs Moon DCU10025P12, les 8 encodeurs PG10C et les drivers L298N.

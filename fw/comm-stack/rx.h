@@ -2,10 +2,9 @@
 #define RX_H
 
 #include <stdint.h>
+#include <stddef.h>
 #include <stdbool.h>
 
-#include "stm32g4xx_hal.h"
-#include "stm32g4xx_nucleo.h"
 
 #define RX_BUFFER_SIZE 128
 #define SYNC_BYTE 0xAA
@@ -20,6 +19,7 @@ typedef enum {
 
 typedef struct {
     rx_msg_type_t type;
+    uint32_t proto_version;
     union {
         uint32_t action_id;
         uint32_t device_id;
@@ -32,14 +32,9 @@ typedef struct {
 extern "C" {
 #endif
 
-// 1. The Packetizer: Finds [0xAA][Len][Payload] in the UART stream
-//    `length` is an out-pointer (was a C++ reference; changed so this header
-//    can be included from C translation units like comm.c).
-bool ReceiveMessage(uint8_t* buffer, uint8_t* length);
-
-// 2. The Parsers: Turns raw bytes into the C struct
-rx_result_t HandleDeviceMessage(uint8_t* buffer, uint8_t length);
-rx_result_t HandleProsthesisMessage(uint8_t* buffer, uint8_t length);
+/* Task-context protobuf decoders. Incremental packetizing is in comms_parser. */
+rx_result_t HandleDeviceMessage(const uint8_t* buffer, size_t length);
+rx_result_t HandleProsthesisMessage(const uint8_t* buffer, size_t length);
 
 #ifdef __cplusplus
 }

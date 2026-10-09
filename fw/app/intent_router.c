@@ -3,12 +3,12 @@
 #include "motor_map.h"
 #include <stddef.h>
 
-static void apply_full_pose(motor_pose_id_t pose)
+static void apply_full_pose(motor_pose_id_t pose, uint32_t epoch)
 {
     for (int i = 0; i < MOTOR_COUNT; i++)
     {
         float target_rad = MotorMap_GetPose(pose, (motor_id_t)i);
-        Motor_SetTarget((motor_id_t)i, target_rad, 100);
+        Motor_SetTargetAtEpoch((motor_id_t)i, target_rad, 100, epoch);
     }
 }
 
@@ -24,10 +24,10 @@ static void apply_full_pose(motor_pose_id_t pose)
  *
  * Donc rotation pure  → flexion = 0  → les 2 moteurs vont dans le même sens.
  *      flexion pure    → rotation = 0 → les 2 moteurs vont en sens opposé. */
-static void drive_wrist(float rotation_rad, float flexion_rad, uint8_t speed)
+static void drive_wrist(float rotation_rad, float flexion_rad, uint8_t speed, uint32_t epoch)
 {
-    Motor_SetTarget(MOTOR_WRIST_X, rotation_rad + flexion_rad, speed);
-    Motor_SetTarget(MOTOR_WRIST_Y, rotation_rad - flexion_rad, speed);
+    Motor_SetTargetAtEpoch(MOTOR_WRIST_X, rotation_rad + flexion_rad, speed, epoch);
+    Motor_SetTargetAtEpoch(MOTOR_WRIST_Y, rotation_rad - flexion_rad, speed, epoch);
 }
 
 void IntentRouter_Handle(const intent_t *intent)
@@ -36,12 +36,12 @@ void IntentRouter_Handle(const intent_t *intent)
 
     switch (intent->id)
     {
-        case ACTION_OPEN_HAND:      apply_full_pose(MOTOR_POSE_OPEN);              break;
-        case ACTION_CLOSE_HAND:     apply_full_pose(MOTOR_POSE_CLOSED);            break;
-        case ACTION_PINCH:          apply_full_pose(MOTOR_POSE_PINCH);             break;
+        case ACTION_OPEN_HAND:      apply_full_pose(MOTOR_POSE_OPEN, intent->epoch); break;
+        case ACTION_CLOSE_HAND:     apply_full_pose(MOTOR_POSE_CLOSED, intent->epoch); break;
+        case ACTION_PINCH:          apply_full_pose(MOTOR_POSE_PINCH, intent->epoch); break;
         /* Rotation pure : les 2 moteurs du poignet dans le même sens. */
-        case ACTION_ROTATE_WRIST_R: drive_wrist( 1.57f, 0.0f, 100);               break;
-        case ACTION_ROTATE_WRIST_L: drive_wrist(-1.57f, 0.0f, 100);               break;
+        case ACTION_ROTATE_WRIST_R: drive_wrist( 1.57f, 0.0f, 100, intent->epoch); break;
+        case ACTION_ROTATE_WRIST_L: drive_wrist(-1.57f, 0.0f, 100, intent->epoch); break;
 
         case ACTION_UNKNOWN:
         default:

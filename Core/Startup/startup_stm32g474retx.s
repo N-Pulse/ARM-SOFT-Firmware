@@ -108,16 +108,14 @@ LoopForever:
 
 /**
  * @brief  This is the code that gets called when the processor receives an
- *         unexpected interrupt.  This simply enters an infinite loop, preserving
- *         the system state for examination by a debugger.
+ *         unexpected interrupt. Cut the existing motor outputs before halting.
  *
  * @param  None
  * @retval : None
 */
     .section	.text.Default_Handler,"ax",%progbits
 Default_Handler:
-Infinite_Loop:
-	b	Infinite_Loop
+	b	N_PULSE_FatalUnhandledIRQ
 	.size	Default_Handler, .-Default_Handler
 /******************************************************************************
 *

@@ -6,10 +6,8 @@
  */
 
 #pragma once
-#include <cstdint>
-
-#include "stm32g4xx_hal.h"
-#include "stm32g4xx_nucleo.h"
+#include <stdint.h>
+#include <stdbool.h>
 
 #ifndef INC_TX_H_
 #define INC_TX_H_
@@ -17,12 +15,16 @@
 #define TX_BUFFER_SIZE  128
 #define DATA_REP_LENGTH  64
 
-void SendStartByte(void);
-
-void SendHelloMessage(void);
+#ifdef __cplusplus
+extern "C" {
+#endif
+bool SendHelloMessage(void);
 
 // void SendDataMessage(void);
 
-void SendClassificationData(uint8_t input);
+bool SendClassificationData(uint8_t input);
+#ifdef __cplusplus
+}
+#endif
 
 #endif /* INC_TX_H_ */

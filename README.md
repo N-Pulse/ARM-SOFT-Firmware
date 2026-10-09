@@ -1,4 +1,118 @@
+# N-Pulse — firmware mono-carte STM32G474QET6
+
+État maintenu au **9 octobre 2026, lot 6**. Le banc PC exécute maintenant une
+boucle SIM fermée avec le **vrai contrôleur/PID/safety C** et un modèle fictif de
+huit rotors. Les deux profils démarrent inactifs. HW reste désarmé : ADC/OPAMP off,
+aucun caller d'armement/activation/calibration active, aucun démarrage PWM/HRTIM.
+Les gains, mappings et calibrations HW ne sont pas modifiés par le lot 6.
+
+## Reproduire la boucle SIM sans matériel
+
+Avec Python 3.9+ et GCC natif PC dans PATH, depuis la racine :
+
+```powershell
+python tools/run_simulation.py
+```
+
+Compile les modules C de production, exécute **26 scénarios**, les contrôles
+codec/hôte et les sondes sanitizer. Aucun ROS2/Gazebo, pyserial/protobuf,
+compilateur ARM ou port physique requis. Critère modèle : huit objectifs 0,30–0,65 rad,
+erreur <0,02 rad après 5 s ; résultat mesuré sur PC : maximum 0,00011994 rad.
+STOP annule l'actionnement en conservant l'inertie. Pertes de liaison/feedback
+et watchdog du modèle sont testés ; aucune reprise automatique après reconnexion.
+
+[Guide court et commandes](docs/SIMULATION_QUICKSTART.md) ·
+[Rapport lot 6 et contrat SIM v2](docs/SIMULATION_LOT6.md) ·
+[Trace CSV générée](build/simulation/trace.csv) ·
+[Résultats JSON générés](build/simulation/results.json).
+Ces résultats décrivent un modèle fictif ; les rotors 5/6 ne prouvent pas la
+mécanique différentielle du poignet.
+
+| Périmètre | Testé PC | Compilé STM32 | UART réel | Gazebo/ROS2 | Moteurs réels |
+|---|---|---|---|---|---|
+| Boucle SIM / STOP / pertes | Oui, 26 scénarios | SIM oui, ELF inspecté | Non | Non | Non |
+| Client / mapping effort | Oui, transports virtuels et logique pure | Sans objet | Non | Non, imports seulement | Non |
+| Invariants HW / lots 1–5 | Oui, frontières matérielles simulées | HW oui, ELF inspecté | Non | Sans objet | Non |
+
+ASan/UBSan : skips, runtimes indisponibles localement. Codec Python HW optionnel :
+skip, protobuf absent. Les tests C/C++ de production et les scénarios sans sanitizer
+passent. Les marges de pile/CPU/latences matérielles restent à mesurer.
+
+## Compiler et vérifier les profils STM32
+
+GNU Make, ARM GCC et Python dans PATH ; wrappers PowerShell conservés.
+GNU Make 3.81 fonctionne ici ; l'ancien MinGW Make échoue avec INTERNAL readdir.
+
+```powershell
+.\build.ps1 -Rebuild
+.\build-sim.ps1 -Rebuild
+python tests/startup/run_tests.py
+python tests/safety/run_tests.py
+python tests/comms/run_tests.py
+python tests/outputs/run_tests.py
+python tools/verify_startup_build.py
+python tests/safety/verify_build.py
+python tests/comms/verify_build.py
+python tests/outputs/verify_build.py
+python tests/startup/test_build_modes.py
+```
+
+| Profil | ELF canonique | Alias compatible |
+|---|---|---|
+| HW | `build/HW/n-pulse.elf` | `Debug/N-PULSE FIRMWARE.elf` |
+| SIM | `build/SIM/n-pulse.elf` | `Debug/SIM/N-PULSE FIRMWARE.elf` |
+
+Objets et flags isolés ; alternance HW → SIM → HW/Debug testée, 140 objets
+inchangés et alias HW préservé. `flash.ps1` reste limité au SN explicite et à
+l'ELF HW canonique avec manifeste cohérent. Même son DryRun énumère les sondes :
+aucun appel au programmeur réel dans ce lot ; tests avec faux programmeur seulement.
+Le chargement SIM futur relève d'une procédure séparée, sans élargir ce script.
+
+## Communication et contrôle
+
+UART4 unique, PC10 TX/PC11 RX, 115200 8N1. HW conserve `AA / longueur u8 /
+protobuf DeviceMessage`, Hello proto_ver=1 et session fraîche pour les actions,
+sans chemin d'armement. SIM v2 utilise `A5 5A / 02 / type / longueur / payload /
+CRC16`, RX et activation **virtuelle** explicites. Sélection du parser au build,
+aucune auto-détection HW/SIM et aucune compatibilité avec SIM v1/CRC8.
+
+Session/configuration → mesures fraîches → récupération conditionnelle si besoin
+→ armement virtuel → nouvelles mesures → activation → cible nouvelle.
+La sortie échangée est le pourcentage signé issu du PID, pas une position à
+publier dans Gazebo. STOP inhibe localement, invalide consignes et générations,
+priorise le TX et révoque le run ; un watchdog propre au modèle couvre un STOP
+non livré, une trame en vol ou la mort du bridge. La réception/activation SIM
+ne peut relever SLEEP ni démarrer les sorties physiques ; preuves ELF et pièges PC.
+
+Lire [MOTOR_STATUS](docs/MOTOR_STATUS.md), [lot 6](docs/SIMULATION_LOT6.md),
+[lot 5](docs/ROBUSTNESS_LOT5.md), [lot 1](docs/STARTUP_LOT1.md),
+[lot 2](docs/SAFETY_LOT2.md), [lot 3](docs/COMMS_LOT3.md) et [lot 4](docs/OUTPUTS_LOT4.md).
+Les anciens constats RX SIM déconnectée sont historiques. Les prérequis du prochain
+lot HW et la checklist désarmée sont détaillés dans le rapport lot 6.
+
+## Archive documentaire
+
+Les descriptions suivantes sont conservées pour l'historique deux-cartes. Leurs
+commandes de flash/calibration, mappings et affirmations de fonctionnement ne sont
+pas des instructions applicables à la carte QET6 actuelle.
+
+<details>
+<summary>Ancien README — historique, non applicable au bring-up actuel</summary>
+
 ﻿# N-Pulse STM32G474 Firmware
+
+> **Migration carte unique STM32G474QET6 — lots 1 à 4 :**
+> voir [docs/STARTUP_LOT1.md](docs/STARTUP_LOT1.md) pour les corrections,
+> les validations et la procédure sur carte désarmée. GNU Make reste utilisé :
+> `./build.ps1 -Rebuild` produit HW, `./build-sim.ps1 -Rebuild` produit SIM
+> dans des objets séparés. L'acquisition de courant est désactivée par défaut.
+> Voir aussi [SAFETY_LOT2](docs/SAFETY_LOT2.md), [COMMS_LOT3](docs/COMMS_LOT3.md)
+> et [OUTPUTS_LOT4](docs/OUTPUTS_LOT4.md). Les moteurs restent désarmés.
+> `flash.ps1` exige maintenant `-SerialNumber <SN>` ; `-DryRun` affiche la cible
+> et la commande sans connexion SWD, écriture ni reset. Seul `build/HW/n-pulse.elf`
+> avec son manifeste de compilation est accepté.
+> Les descriptions de deux cartes, du strap PC0, de la calibration et les
+> anciennes instructions de flash ci-dessous sont historiques pour cette migration.
 
 Firmware embarqué pour la prothèse de main N-Pulse (STM32G474RET6 / Nucleo-G474RE).
 Main 8 moteurs (doigts + paume + **poignet différentiel** 2 moteurs couplés),
@@ -8,7 +122,7 @@ GND = slave).
 
 ---
 
-## 🚀 Démarrage rapide (à jour — lire ceci en premier)
+## 🚀 Démarrage rapide historique (obsolète)
 
 > ✅ **Plus aucun submodule** : `comm-stack` et `EmbeddedProto` sont
 > versionnés directement ici. Un `git clone` simple suffit pour compiler.
@@ -72,8 +186,7 @@ l'encodeur n'est pas câblé sera coupé rapidement (volontaire).
 
 > ℹ️ **Les sections ci-dessous sont la doc d'architecture détaillée et
 > sont partiellement historiques** (antérieures au poignet différentiel,
-> à la calibration closed-loop et au retrait des submodules). Se référer
-> au *Démarrage rapide* ci-dessus et aux guides `docs/` pour l'état réel.
+> à la calibration closed-loop et au retrait des submodules). Se référer au début de ce README et au rapport ROBUSTNESS_LOT5 pour l’état maintenu.
 
 ## 🎯 Vue d'ensemble du projet
 
@@ -647,3 +760,5 @@ ARM-SOFT-Firmware/
 ---
 
 **Projet N-Pulse** - Firmware STM32 pour Prothèse de Main Robotique
+
+</details>

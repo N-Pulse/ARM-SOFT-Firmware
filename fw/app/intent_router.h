@@ -16,10 +16,11 @@ typedef enum {
 } intent_id_t;
 
 /**
- * @brief The data structure sent through the FreeRTOS queue.
+ * @brief Command stored in the bounded interlock-protected intent ring.
  */
 typedef struct {
     intent_id_t id;
+    uint32_t epoch; /* Stop/recovery generation at reception, never restamped. */
 } intent_t;
 
 /**

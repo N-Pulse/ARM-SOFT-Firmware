@@ -9,8 +9,7 @@
  *
  * On boot, the module looks at BoardLink_IsLocalMotor() for each motor id
  * and only initializes the GPIO + PWM channels for motors physically wired
- * to THIS board. The other motors get their commands forwarded over the
- * board-link by motor_control.c, so this module never sees them.
+ * to THIS board.
  *
  * Open-loop position control: with no encoder, the move duration for a
  * given angular delta is derived from L298N_DEG_PER_SEC_AT_FULL (an
