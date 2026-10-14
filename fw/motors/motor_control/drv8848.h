@@ -4,6 +4,25 @@
 #include <stdint.h>
 #include "motor_control.h"
 
+#if N_PULSE_OLD_HW
+/* Preserve modern callers without linking the new-board driver. */
+#include "motor_l298n.h"
+#define Motor_DRV8848_Init Motor_L298N_Init
+#define Motor_DRV8848_Arm Motor_L298N_Arm
+#define Motor_DRV8848_Disarm Motor_L298N_Disarm
+#define Motor_DRV8848_CleanupStoppedInternal Motor_L298N_CleanupStoppedInternal
+#define Motor_DRV8848_InhibitLocked Motor_L298N_InhibitLocked
+#define Motor_DRV8848_IsArmed Motor_L298N_IsArmed
+#define Motor_DRV8848_IsTransitioning Motor_L298N_IsTransitioning
+#define Motor_DRV8848_FaultActive Motor_L298N_FaultActive
+#define Motor_DRV8848_SetRaw Motor_L298N_SetRaw
+#define Motor_DRV8848_SetSignedRaw Motor_L298N_SetSignedRaw
+#define Motor_DRV8848_Stop Motor_L298N_Stop
+#define Motor_DRV8848_Brake Motor_L298N_Brake
+#define Motor_DRV8848_StopAll Motor_L298N_StopAll
+#define Motor_DRV8848_DrivingDir Motor_L298N_DrivingDir
+#endif
+
 void Motor_DRV8848_Init(void);
 bool Motor_DRV8848_Arm(void);
 /* Public safe disarm: latches global stop, discards activation/commands. */

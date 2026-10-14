@@ -50,7 +50,9 @@ extern "C" {
 
 /* USER CODE END EM */
 
+#if !N_PULSE_OLD_HW
 void HAL_HRTIM_MspPostInit(HRTIM_HandleTypeDef *hhrtim);
+#endif
 
 void HAL_TIM_MspPostInit(TIM_HandleTypeDef *htim);
 
@@ -62,6 +64,7 @@ void Error_Handler(void);
 /* USER CODE END EFP */
 
 /* Private defines -----------------------------------------------------------*/
+#if !N_PULSE_OLD_HW
 #define NRST_Pin GPIO_PIN_10
 #define NRST_GPIO_Port GPIOG
 #define USART3_TX_LED_Pin GPIO_PIN_10
@@ -72,6 +75,7 @@ void Error_Handler(void);
 #define USART2_TX_BLE_GPIO_Port GPIOD
 #define USART2_RX_BLE_Pin GPIO_PIN_6
 #define USART2_RX_BLE_GPIO_Port GPIOD
+#endif /* New-board pin names are not part of OLD_HW. */
 
 /* USER CODE BEGIN Private defines */
 

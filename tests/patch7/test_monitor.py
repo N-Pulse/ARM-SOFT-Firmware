@@ -8,10 +8,12 @@ import hw_monitor as h
 def run():
     assert h.stop_frame()==bytes.fromhex('aa022200')
     for command in ('limits 0 0.2 0.02 2 0.1','calibrate 1000 4 1 -1 -9223372036854775808',
-                    'zero','recover','arm','enable','target 0.02 2','disable','estimator-reset verified','estimator-stop'):
+                    'zero','recover','preflight verified','link-authorize','link-recover','arm','enable','target 0.02 2','disable','estimator-reset verified','estimator-stop'):
         data=h.command_frame(command,1,3,4); assert len(data)<=130
         message=h.pb.DeviceMessage(); message.ParseFromString(data[2:]); assert message.commission.epoch==3
-    for command in ('arm','target nan 2','limits 0 1 inf 2 0.1','estimator-reset no'):
+    preflight=h.pb.DeviceMessage(); preflight.ParseFromString(h.command_frame('preflight verified',1,3,4)[2:])
+    assert preflight.commission.operation==11 and preflight.commission.stationary_reference_verified
+    for command in ('arm','target nan 2','limits 0 1 inf 2 0.1','estimator-reset no','preflight no'):
         try: h.command_frame(command,1,None if command=='arm' else 3,4)
         except ValueError: pass
         else: raise AssertionError(command)
@@ -30,5 +32,17 @@ def run():
     text=h.describe(d)
     assert 'A=unavailable' in text and 'ADC=unavailable/INVALID' in text and 'encoder=unavailable' in text
     assert 'A=unavailable' in h.describe(h.pb.MotorDiagnostic())
-    print('PASS monitor/schema: ten explicit commands, finite validation, signed raw counts, 123-byte worst payload, fragmented/noisy/expired frames, unavailable display')
+    d.flags=(1<<21)|(42<<24)
+    assert 'source=remote remote_age_ms=42' in h.describe(d)
+    assert 'counts=unavailable' in h.describe(d)
+    d.flags|=128; d.raw_count=17; assert 'counts=17' in h.describe(d)
+    for command,mid in (('link',8),('status 4',4),('raw 1',1)):
+        request=h.pb.DeviceMessage(); request.ParseFromString(h.command_frame(command,1,None,0)[2:])
+        assert request.diagnostic.motor_id==mid
+    status=h.pb.LinkDiagnostic(role=1,local_stops=1,remote_stops=128,flags=1,heartbeat_age_ms=50)
+    text=h.describe_link(status)
+    assert 'role=MASTER' in text and 'local_STOP=MANUAL' in text and 'remote_STOP=LINK' in text
+    response=h.pb.ProsthesisMessage(link=status); wire=h.frame(response)
+    decoded=h.Decoder().feed(wire,0); assert len(decoded)==1 and decoded[0].WhichOneof('message')=='link'
+    print('PASS monitor/schema: thirteen explicit commands, link recovery/authorization, preflight attestation, remote age, finite validation, signed raw counts, 123-byte worst payload, fragmented/noisy/expired frames, unavailable display')
 if __name__=='__main__': run()

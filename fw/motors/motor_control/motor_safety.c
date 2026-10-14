@@ -3,6 +3,9 @@
 #include "motor_safety_config.h"
 #include "comms_session.h"
 #include "motor_backend_state.h"
+#if N_PULSE_DUAL_BOARD_LINK && !defined(MOTOR_BACKEND_SIM)
+#include "board_link.h"
+#endif
 #ifdef MOTOR_BACKEND_SIM
 #include "sim_session.h"
 #include "motor_sim_config.h"
@@ -40,6 +43,7 @@ static bool s_force_received[MOTOR_COUNT];
 static uint32_t s_causes;
 static uint32_t s_cause_motors[8];
 static uint32_t s_epoch;
+static uint32_t s_stop_serial;
 static bool s_stop_pending;
 static bool s_stop_in_progress;
 
@@ -65,6 +69,7 @@ void MotorSafety_Init(void)
     memset(s_cause_motors, 0, sizeof(s_cause_motors));
     s_causes = 0U;
     s_epoch = 0U;
+    s_stop_serial = 0U;
     s_stop_pending = false;
     s_stop_in_progress = false;
     CommsSession_Init(false); /* Comms_Init enables HW session supervision. */
@@ -75,10 +80,14 @@ void MotorSafety_RequestStopCauseLocked(motor_stop_cause_t cause, motor_id_t sou
     uint32_t bits = (uint32_t)cause;
     /* This entry accepts one known cause, preserving an unambiguous history. */
     if (bits == 0U || (bits & (bits - 1U)) != 0U || bits > MOTOR_STOP_LINK) return;
+    ++s_stop_serial; /* Repeated STOP also cancels a recovery already in progress. */
     unsigned index = cause_index(cause);
     uint32_t mask = (uint32_t)source < MOTOR_COUNT ? (1U << source) :
                     ((1U << MOTOR_COUNT) - 1U);
     if ((s_causes & bits) && (s_cause_motors[index] & mask) == mask) return;
+#if N_PULSE_TIMING_DIAGNOSTICS
+    uint32_t timing=OldHW_TimingBegin(OLD_TIME_STOP);
+#endif
     s_causes |= bits;
     s_cause_motors[index] |= mask;
     ++s_epoch;
@@ -89,6 +98,9 @@ void MotorSafety_RequestStopCauseLocked(motor_stop_cause_t cause, motor_id_t sou
     MotorBackend_InhibitActuationLocked();
     MotorBackend_InhibitOutputsLocked();
     s_stop_pending = true;
+#if N_PULSE_TIMING_DIAGNOSTICS
+    OldHW_TimingEnd(OLD_TIME_STOP,timing);
+#endif
 }
 
 void MotorSafety_RequestStopCause(motor_stop_cause_t cause, motor_id_t source)
@@ -130,9 +142,13 @@ uint32_t MotorSafety_GetCauseMotorMask(motor_stop_cause_t cause)
 }
 
 uint32_t MotorSafety_EpochLocked(void) { return s_epoch; }
+uint32_t MotorSafety_StopSerialLocked(void) { return s_stop_serial; }
 
 bool MotorSafety_CanArmLocked(void)
 {
+#if N_PULSE_DUAL_BOARD_LINK && !defined(MOTOR_BACKEND_SIM)
+    if (!BoardLink_ActuationAllowedLocked(HAL_GetTick())) return false;
+#endif
     return s_causes == 0U && !s_stop_pending && !s_stop_in_progress;
 }
 
@@ -198,6 +214,9 @@ void MotorSafety_Poll(void)
     Motor_CheckHealth();
     uint32_t key = Motor_Lock();
     CommsSession_PollLocked(HAL_GetTick());
+#if N_PULSE_DUAL_BOARD_LINK && !defined(MOTOR_BACKEND_SIM)
+    BoardLink_SafetyPollLocked(HAL_GetTick());
+#endif
 #ifdef MOTOR_BACKEND_SIM
     SimSession_PollLocked(HAL_GetTick());
 #endif
@@ -226,6 +245,9 @@ uint32_t MotorSafety_RequiredFeedbackMaskLocked(void)
 
 bool MotorSafety_CanRecoverLocked(uint32_t now)
 {
+#if N_PULSE_DUAL_BOARD_LINK && !defined(MOTOR_BACKEND_SIM)
+    if (!BoardLink_CanRecoverLocked(now)) return false;
+#endif
     if (!CommsSession_CanRecoverLocked(now)) return false;
 #ifdef MOTOR_BACKEND_SIM
     if (!SimSession_CanRecoverLocked(now)) return false;

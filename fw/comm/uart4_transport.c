@@ -4,11 +4,19 @@
 #include "motor_lock.h"
 #include "motor_safety.h"
 #include "comms_session.h"
+#if N_PULSE_DUAL_BOARD_LINK && !defined(MOTOR_BACKEND_SIM)
+#include "board_link.h"
+#endif
 #ifdef MOTOR_BACKEND_SIM
 #include "sim_session.h"
 #include "motor_sim_config.h"
 #endif
 #include <string.h>
+#if N_PULSE_OLD_HW
+#define HOST_UART_IRQn LPUART1_IRQn
+#else
+#define HOST_UART_IRQn UART4_IRQn
+#endif
 #if COMMS_UART_IRQ_PRIORITY < configLIBRARY_MAX_SYSCALL_INTERRUPT_PRIORITY
 #error UART4 IRQ cannot call FreeRTOS above its configured syscall ceiling
 #endif
@@ -70,8 +78,8 @@ bool UART4Transport_StartRx(TaskHandle_t owner)
 {
     configASSERT(owner != NULL && tx_queue != NULL);
     rx_task = owner;
-    HAL_NVIC_ClearPendingIRQ(UART4_IRQn);
-    HAL_NVIC_EnableIRQ(UART4_IRQn);
+    HAL_NVIC_ClearPendingIRQ(HOST_UART_IRQn);
+    HAL_NVIC_EnableIRQ(HOST_UART_IRQn);
     if (HAL_UART_Receive_IT(BoardUART_GetHandle(), &rx_byte, 1U) == HAL_OK) return true;
     ++diag.rx_start_errors;
     rx_fault(false);
@@ -79,6 +87,9 @@ bool UART4Transport_StartRx(TaskHandle_t owner)
 }
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *uart)
 {
+#if N_PULSE_DUAL_BOARD_LINK && !defined(MOTOR_BACKEND_SIM)
+    if (BoardLink_RxCallback(uart)) return;
+#endif
     if (uart != BoardUART_GetHandle() || !rx_task || rx_recovery) return;
     uint32_t key = Motor_Lock();
     unsigned next = (head + 1U) % COMMS_RX_CAPACITY;
@@ -95,6 +106,9 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *uart)
 }
 void HAL_UART_ErrorCallback(UART_HandleTypeDef *uart)
 {
+#if N_PULSE_DUAL_BOARD_LINK && !defined(MOTOR_BACKEND_SIM)
+    if (BoardLink_ErrorCallback(uart)) return;
+#endif
     if (uart != BoardUART_GetHandle() || !rx_task) return;
     rx_fault(false);
     /* End IT RX now, including nonblocking FE/NE errors which HAL may leave
@@ -104,6 +118,9 @@ void HAL_UART_ErrorCallback(UART_HandleTypeDef *uart)
 }
 void HAL_UART_TxCpltCallback(UART_HandleTypeDef *uart)
 {
+#if N_PULSE_DUAL_BOARD_LINK && !defined(MOTOR_BACKEND_SIM)
+    if (BoardLink_TxCallback(uart)) return;
+#endif
     if (uart != BoardUART_GetHandle() || !tx_task) return;
     /* Only HAL's ended transfer can complete the active owner. A late wakeup
      * alone is never evidence of completion. Abort disables TX IRQ sources. */
@@ -129,7 +146,7 @@ bool UART4Transport_RxGenerationMatches(uint32_t value)
 bool UART4Transport_RecoverRx(void)
 {
     if (!rx_recovery || !rx_task) return false;
-    HAL_NVIC_DisableIRQ(UART4_IRQn);
+    HAL_NVIC_DisableIRQ(HOST_UART_IRQn);
     HAL_UART_AbortReceive(BoardUART_GetHandle());
     __HAL_UART_CLEAR_FLAG(BoardUART_GetHandle(), UART_CLEAR_OREF | UART_CLEAR_NEF | UART_CLEAR_FEF | UART_CLEAR_PEF);
     __HAL_UART_SEND_REQ(BoardUART_GetHandle(), UART_RXDATA_FLUSH_REQUEST);
@@ -139,8 +156,8 @@ bool UART4Transport_RecoverRx(void)
     if (HAL_UART_Receive_IT(BoardUART_GetHandle(), &rx_byte, 1U) != HAL_OK) {
         ++diag.rx_start_errors; rx_fault(false);
     }
-    HAL_NVIC_ClearPendingIRQ(UART4_IRQn);
-    HAL_NVIC_EnableIRQ(UART4_IRQn);
+    HAL_NVIC_ClearPendingIRQ(HOST_UART_IRQn);
+    HAL_NVIC_EnableIRQ(HOST_UART_IRQn);
     return true;
 }
 bool UART4Transport_QueueFrameAtEpoch(const uint8_t *bytes, size_t size, uint32_t epoch)
@@ -265,7 +282,7 @@ bool UART4Transport_TxOnce(TickType_t wait)
 static void tx_worker(void *unused)
 {
     (void)unused;
-    HAL_NVIC_EnableIRQ(UART4_IRQn); /* Objects and tasks are now initialized. */
+    HAL_NVIC_EnableIRQ(HOST_UART_IRQn); /* Objects and tasks are now initialized. */
     for (;;) UART4Transport_TxOnce(portMAX_DELAY);
 }
 void UART4Transport_CreateTxTask(void)

@@ -297,14 +297,27 @@ bool Motor_CanRecoverLocked(uint32_t required_feedback_mask, uint32_t now)
     return true;
 }
 
+motor_recovery_ticket_t Motor_RecoveryTicketLocked(void)
+{ return (motor_recovery_ticket_t){MotorSafety_EpochLocked(),MotorSafety_StopSerialLocked()}; }
+
 bool Motor_RecoverFromFault(void)
+{
+    uint32_t key=Motor_Lock();
+    motor_recovery_ticket_t ticket=Motor_RecoveryTicketLocked();
+    Motor_Unlock(key);
+    return Motor_RecoverFromFaultWithTicket(ticket);
+}
+
+bool Motor_RecoverFromFaultWithTicket(motor_recovery_ticket_t ticket)
 {
     MotorGuard_Poll();
     MotorSafety_Poll();
     Motor_ServiceStop();
     uint32_t key = Motor_Lock();
     uint32_t now = HAL_GetTick();
-    bool recoverable = MotorSafety_CanRecoverLocked(now) && MotorGuard_CanRecoverLocked() &&
+    bool recoverable = ticket.epoch == MotorSafety_EpochLocked() &&
+                       ticket.stop_serial == MotorSafety_StopSerialLocked() &&
+                       MotorSafety_CanRecoverLocked(now) && MotorGuard_CanRecoverLocked() &&
                        Motor_CanRecoverLocked(MotorSafety_RequiredFeedbackMaskLocked(), now);
     if (recoverable) {
         /* Already inhibited: clearing a latch neither arms nor starts anything. */

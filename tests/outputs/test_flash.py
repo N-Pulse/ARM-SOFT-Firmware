@@ -25,8 +25,8 @@ def main():
     header=bytearray(52); header[:6]=b'\x7fELF\x01\x01'; struct.pack_into('<HH',header,16,2,40)
     def artifact(mode='HW', compile_flags=None):
         elf.write_bytes(header)
-        flags.write_text(compile_flags or '-DN_PULSE_ENABLE_CURRENT_ACQUISITION=0 -DN_PULSE_HW_SINGLE_MOTOR_TEST=0 | test\n')
-        manifest.write_text(json.dumps({'schema':1,'mode':mode,
+        flags.write_text(compile_flags or '-DN_PULSE_OLD_HW=1 -DN_PULSE_TARGET_RET6=1 -DN_PULSE_DUAL_BOARD_LINK=1 -DN_PULSE_OLD_HW_MOTION_OPT_IN=0 -DN_PULSE_THUMB_EXTI_MOTION_QUALIFIED=0 -DN_PULSE_TIMING_DIAGNOSTICS=0 -DN_PULSE_ENABLE_CURRENT_ACQUISITION=0 -DN_PULSE_HW_SINGLE_MOTOR_TEST=0 | test\n')
+        manifest.write_text(json.dumps({'schema':1,'mode':mode,'hardware':'STM32G474RET6','milestone':'OLD_HW_LOT4','physical_outputs':'permanently_disabled',
             'elf_sha256':hashlib.sha256(elf.read_bytes()).hexdigest(),
             'flags_sha256':hashlib.sha256(flags.read_bytes()).hexdigest()}))
     log=FIXTURE/'fake.log'; count=0
@@ -78,6 +78,12 @@ def main():
     case('experimental ADC build refused',False,['-SerialNumber','SNA','-DryRun'])
     artifact(); flags.write_text('changed flags')
     case('changed flags digest refused',False,['-SerialNumber','SNA','-DryRun'])
+    artifact(); original_flags=flags.read_text()
+    for flag in ('N_PULSE_OLD_HW_MOTION_OPT_IN','N_PULSE_TIMING_DIAGNOSTICS','N_PULSE_THUMB_EXTI_MOTION_QUALIFIED'):
+        artifact(compile_flags=original_flags.replace(flag+'=0',flag+'=1'))
+        case(flag+' refused',False,['-SerialNumber','SNA','-DryRun'])
+    artifact(); info=json.loads(manifest.read_text()); info['physical_outputs']='enabled'; manifest.write_text(json.dumps(info))
+    case('non inhibited manifest refused',False,['-SerialNumber','SNA','-DryRun'])
     artifact(); header[18]=62; artifact()
     case('non ARM ELF refused',False,['-SerialNumber','SNA','-DryRun'])
     print(f'{count} script scenarios passed using ONLY the simulated executable.')

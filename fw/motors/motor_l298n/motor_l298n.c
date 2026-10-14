@@ -1,338 +1,308 @@
+#if N_PULSE_OLD_HW && !defined(MOTOR_BACKEND_SIM)
 #include "motor_l298n.h"
-#include "board_link.h"
-#include "stm32g4xx_hal.h"
-#include "FreeRTOS.h"
-#include "timers.h"
 #include "main.h"
+#include "old_hw.h"
+#include "board_link.h"
+#include "motor_lock.h"
+#include "motor_safety.h"
+#include "encoder_bsp.h"
+#include "hw_commission.h"
+#include "hw_test_config.h"
+#include "l298n_config.h"
+#include "fatal_stop.h"
 #include <math.h>
-#include <stdint.h>
+#include <string.h>
 
-extern UART_HandleTypeDef hcom_uart[COMn];
+static bool initialized, armed, transitioning, register_fault;
+static uint32_t armed_ms;
+static int8_t direction[MOTOR_COUNT], last_direction[MOTOR_COUNT];
+static uint32_t off_ms[MOTOR_COUNT];
+static float applied[MOTOR_COUNT];
+static uint32_t expected_ticks[MOTOR_COUNT];
+static l298n_output_result_t result[MOTOR_COUNT];
 
-/* Tiny debug beacon over LPUART1 (capture host-side with --listen). */
-static void l298n_beacon(uint8_t id, uint8_t crc)
+static unsigned pin_shift(uint16_t pin)
 {
-    uint8_t b[] = { 0xAAU, 0x01U, id, 0x00U, crc };
-    HAL_UART_Transmit(&hcom_uart[COM1], b, sizeof(b), 50U);
+    unsigned n = 0;
+    while ((1U << n) != pin) ++n;
+    return n;
 }
-
-/* Clock chain: HSI 16 MHz → PLL → SYSCLK 170 MHz, APB1/APB2 prescaler = 1
- * → TIM1 and TIM4 kernel clock = 170 MHz.
- * 170 MHz / 8500 = 20 kHz PWM (PSC=0, ARR=8499). */
-#define PWM_ARR                   8499U
-
-/* Empirical full-speed travel rate. See README for calibration procedure. */
-#define L298N_DEG_PER_SEC_AT_FULL 120.0f
-#define L298N_RAD_TO_DEG          (180.0f / 3.14159265358979f)
-#define L298N_DURATION_CAP_MS     5000U
-#define L298N_MIN_MOVE_DEG        1.0f
-
-/* Sens de câblage global du H-bridge vs sens d'angle attendu.
- *   1  = normal
- *  -1  = tous les moteurs inversés (close ouvre / open ferme) → on inverse.
- * Tous les moteurs sont câblés pareil, donc une seule inversion globale. */
-#define L298N_DIR_SIGN            (-1)
-
-typedef struct {
-    TIM_TypeDef *  tim;
-    uint32_t       tim_channel;
-    GPIO_TypeDef * pwm_port;
-    uint16_t       pwm_pin;
-    uint8_t        pwm_af;
-    GPIO_TypeDef * in1_port;
-    uint16_t       in1_pin;
-    GPIO_TypeDef * in2_port;
-    uint16_t       in2_pin;
-} l298n_motor_t;
-
-/* Pin map for all 8 motors. The board owning a given motor (per
- * BoardLink_IsLocalMotor) is the one that initializes its pins and timer
- * channel; the others ignore it. */
-static const l298n_motor_t s_motors[MOTOR_COUNT] = {
-    [MOTOR_THUMB]   = { TIM1, TIM_CHANNEL_1, GPIOA, GPIO_PIN_8,  GPIO_AF6_TIM1, GPIOB, GPIO_PIN_5,  GPIOB, GPIO_PIN_4  },
-    [MOTOR_INDEX]   = { TIM1, TIM_CHANNEL_2, GPIOA, GPIO_PIN_9,  GPIO_AF6_TIM1, GPIOC, GPIO_PIN_10, GPIOC, GPIO_PIN_11 },
-    [MOTOR_MIDDLE]  = { TIM1, TIM_CHANNEL_3, GPIOA, GPIO_PIN_10, GPIO_AF6_TIM1, GPIOC, GPIO_PIN_12, GPIOA, GPIO_PIN_15 },
-    [MOTOR_RING]    = { TIM1, TIM_CHANNEL_4, GPIOA, GPIO_PIN_11, GPIO_AF6_TIM1, GPIOB, GPIO_PIN_12, GPIOB, GPIO_PIN_13 },
-    [MOTOR_LITTLE]  = { TIM4, TIM_CHANNEL_1, GPIOB, GPIO_PIN_6,  GPIO_AF2_TIM4, GPIOC, GPIO_PIN_8,  GPIOC, GPIO_PIN_9  },
-    [MOTOR_WRIST_X] = { TIM4, TIM_CHANNEL_2, GPIOB, GPIO_PIN_7,  GPIO_AF2_TIM4, GPIOC, GPIO_PIN_4,  GPIOC, GPIO_PIN_5  },
-    /* WRIST_Y IN1/IN2 moved from PC6/PC7 → PB0/PB1 (PC6/PC7 reserved for TIM8 encoder RING). */
-    [MOTOR_WRIST_Y] = { TIM4, TIM_CHANNEL_3, GPIOB, GPIO_PIN_8,  GPIO_AF2_TIM4, GPIOB, GPIO_PIN_0,  GPIOB, GPIO_PIN_1  },
-    /* PALM IN1 moved from PC2 → PD2 (PC2 reserved for TIM20 encoder PALM). */
-    [MOTOR_PALM]    = { TIM4, TIM_CHANNEL_4, GPIOB, GPIO_PIN_9,  GPIO_AF2_TIM4, GPIOD, GPIO_PIN_2,  GPIOC, GPIO_PIN_3  },
-};
-
-/* One TIM_HandleTypeDef per shared timer. TIM1 drives motors 0-3 (4 PWM
- * channels), TIM4 drives motors 4-7. */
-static TIM_HandleTypeDef s_htim1;
-static TIM_HandleTypeDef s_htim4;
-
-/* Per-motor auto-stop timer (one-shot, period rewritten per move) +
- * cached commanded angle for open-loop direction/duration calculation. */
-static TimerHandle_t s_stop_timer[MOTOR_COUNT];
-static float        s_current_rad[MOTOR_COUNT];
-
-/* Sens de drive courant par moteur : +1 / -1 / 0 (arrêté).
- * Lu par la sécurité anti-butée (MotorGuard, main.c) pour détecter un calage. */
-static volatile int8_t s_drv[MOTOR_COUNT];
-
-int Motor_L298N_DrivingDir(motor_id_t id)
+static uint32_t pin_mode(GPIO_TypeDef *port, uint16_t pin)
+{ return (port->MODER >> (2U * pin_shift(pin))) & 3U; }
+static void gpio_low(GPIO_TypeDef *port, uint16_t pin)
 {
-    if (id >= MOTOR_COUNT) return 0;
-    return (int)s_drv[id];
+    port->BSRR = (uint32_t)pin << 16;
+    __DSB();
+    port->OTYPER &= ~pin;
+    unsigned shift = 2U * pin_shift(pin);
+    port->MODER = (port->MODER & ~(3U << shift)) | (1U << shift);
 }
-
-/* ------------------------------------------------------------------------ */
-
-static TIM_HandleTypeDef *htim_for(TIM_TypeDef *tim)
+static volatile uint32_t *compare(const old_hw_motor_pins_t *m)
 {
-    if (tim == TIM1) return &s_htim1;
-    if (tim == TIM4) return &s_htim4;
-    return NULL;
+    switch (m->channel) {
+    case TIM_CHANNEL_1: return &m->timer->CCR1;
+    case TIM_CHANNEL_2: return &m->timer->CCR2;
+    case TIM_CHANNEL_3: return &m->timer->CCR3;
+    case TIM_CHANNEL_4: return &m->timer->CCR4;
+    default: return NULL;
+    }
 }
-
-static void enable_gpio_clock(GPIO_TypeDef *port)
+static bool timer_ready(TIM_TypeDef *t)
 {
-    if      (port == GPIOA) __HAL_RCC_GPIOA_CLK_ENABLE();
-    else if (port == GPIOB) __HAL_RCC_GPIOB_CLK_ENABLE();
-    else if (port == GPIOC) __HAL_RCC_GPIOC_CLK_ENABLE();
-    else if (port == GPIOD) __HAL_RCC_GPIOD_CLK_ENABLE();
+    if (t == TIM1 && !(RCC->APB2ENR & RCC_APB2ENR_TIM1EN)) return false;
+    if (t == TIM4 && !(RCC->APB1ENR1 & RCC_APB1ENR1_TIM4EN)) return false;
+    return t->PSC == 0U && t->ARR == 8499U &&
+           !(t->CR1 & (TIM_CR1_DIR | TIM_CR1_CMS | TIM_CR1_UDIS)) &&
+           (t != TIM1 || !(t->BDTR & (TIM_BDTR_AOE | TIM_BDTR_LOCK)));
 }
-
-static void init_timer_base(TIM_HandleTypeDef *htim, TIM_TypeDef *instance)
+static bool local(motor_id_t id)
+{ return (uint32_t)id < MOTOR_COUNT && BoardLink_IsLocalMotor(id); }
+static void direction_inputs(const old_hw_motor_pins_t *m, int sign)
 {
-    htim->Instance               = instance;
-    htim->Init.Prescaler         = 0;
-    htim->Init.CounterMode       = TIM_COUNTERMODE_UP;
-    htim->Init.Period            = PWM_ARR;
-    htim->Init.ClockDivision     = TIM_CLOCKDIVISION_DIV1;
-    htim->Init.RepetitionCounter = 0;
-    htim->Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_ENABLE;
-    HAL_TIM_PWM_Init(htim);
+    uint32_t in1 = sign>0 ? m->in1_pin : (uint32_t)m->in1_pin<<16;
+    uint32_t in2 = sign<0 ? m->in2_pin : (uint32_t)m->in2_pin<<16;
+    if (m->in1_port == m->in2_port) m->in1_port->BSRR = in1 | in2;
+    else { m->in1_port->BSRR=in1; m->in2_port->BSRR=in2; }
+    __DSB();
 }
-
-static void init_pwm_channel(TIM_HandleTypeDef *htim, uint32_t channel)
+static void inactive_locked(motor_id_t id)
 {
-    TIM_OC_InitTypeDef oc = {0};
-    oc.OCMode       = TIM_OCMODE_PWM1;
-    oc.Pulse        = 0;
-    oc.OCPolarity   = TIM_OCPOLARITY_HIGH;
-    oc.OCFastMode   = TIM_OCFAST_DISABLE;
-    /* TIM1 is advanced; HAL still wants OCN fields. */
-    oc.OCNPolarity  = TIM_OCNPOLARITY_HIGH;
-    oc.OCIdleState  = TIM_OCIDLESTATE_RESET;
-    oc.OCNIdleState = TIM_OCNIDLESTATE_RESET;
-    HAL_TIM_PWM_ConfigChannel(htim, &oc, channel);
-    HAL_TIM_PWM_Start(htim, channel);
+    if (!local(id)) return;
+    const old_hw_motor_pins_t *m = &g_old_hw_motor_pins[id];
+    gpio_low(m->enable_port,m->enable_pin); /* Disconnect AF before touching direction. */
+    m->timer->CCER &= ~(1U << m->channel);
+    *compare(m) = 0;
+    direction_inputs(m,0);
+    if (direction[id]) off_ms[id] = HAL_GetTick();
+    direction[id] = 0; applied[id] = 0; expected_ticks[id] = 0;
+    if (!(m->timer->CCER & 0x1111U)) {
+        m->timer->CR1 &= ~TIM_CR1_CEN;
+        if (m->timer == TIM1) m->timer->BDTR &= ~TIM_BDTR_MOE;
+    }
+    __DSB();
 }
-
-static void set_duty(motor_id_t id, uint32_t pulse)
+static void fail_locked(void)
 {
-    if (pulse > PWM_ARR) pulse = PWM_ARR;
-    __HAL_TIM_SET_COMPARE(htim_for(s_motors[id].tim),
-                          s_motors[id].tim_channel, pulse);
+    register_fault = true;
+    MotorSafety_RequestStopCauseLocked(MOTOR_STOP_DRIVER,MOTOR_COUNT);
+    /* Even if the same STOP cause was already latched, force the registers off. */
+    Motor_L298N_InhibitLocked();
 }
-
-static void stop_callback(TimerHandle_t t)
+static bool consistent_locked(void)
 {
-    motor_id_t id = (motor_id_t)(uintptr_t)pvTimerGetTimerID(t);
-    l298n_beacon(0xF1U, (uint8_t)id);   /* F1 = motor `id` auto-stopped */
-    Motor_L298N_Stop(id);
+    uint32_t tim1 = 0, tim4 = 0;
+    for (unsigned i = 0; i < MOTOR_COUNT; ++i) {
+        if (!local((motor_id_t)i)) continue;
+        const old_hw_motor_pins_t *m = &g_old_hw_motor_pins[i];
+        if (!timer_ready(m->timer)) return false;
+        if ((m->enable_port->OTYPER & m->enable_pin) ||
+            (m->in1_port->OTYPER & m->in1_pin) || (m->in2_port->OTYPER & m->in2_pin)) return false;
+        if (direction[i]) {
+            if (m->timer == TIM1) tim1 |= 1U << m->channel;
+            else tim4 |= 1U << m->channel;
+            unsigned shift = 4U * (pin_shift(m->enable_pin) % 8U);
+            unsigned af = m->timer == TIM1 ? 6U : 2U;
+            if (pin_mode(m->enable_port,m->enable_pin) != 2U ||
+                ((m->enable_port->AFR[pin_shift(m->enable_pin)/8U] >> shift) & 15U) != af ||
+                *compare(m) == 0U || *compare(m) != expected_ticks[i] || *compare(m) > 8500U) return false;
+            uint32_t ccmr=m->channel<TIM_CHANNEL_3 ? m->timer->CCMR1 : m->timer->CCMR2;
+            unsigned mode_shift=(m->channel==TIM_CHANNEL_2 || m->channel==TIM_CHANNEL_4) ? 8U : 0U;
+            if ((ccmr & ((TIM_CCMR1_OC1M | TIM_CCMR1_OC1PE | 3U)<<mode_shift)) !=
+                (TIM_OCMODE_PWM1<<mode_shift)) return false;
+        } else if (pin_mode(m->enable_port,m->enable_pin) != 1U ||
+                   (m->enable_port->ODR & m->enable_pin) || *compare(m)) return false;
+        bool forward = direction[i] > 0, reverse = direction[i] < 0;
+        if (pin_mode(m->in1_port,m->in1_pin) != 1U || pin_mode(m->in2_port,m->in2_pin) != 1U ||
+            !!(m->in1_port->ODR & m->in1_pin) != forward ||
+            !!(m->in2_port->ODR & m->in2_pin) != reverse) return false;
+    }
+    if (RCC->APB2ENR & RCC_APB2ENR_TIM1EN) {
+        if (TIM1->CCER != tim1 || !!(TIM1->CR1 & TIM_CR1_CEN) != !!tim1 ||
+            !!(TIM1->BDTR & TIM_BDTR_MOE) != !!tim1) return false;
+    }
+    return TIM4->CCER == tim4 && !!(TIM4->CR1 & TIM_CR1_CEN) == !!tim4;
 }
-
-static void arm_stop_timer(motor_id_t id, uint32_t duration_ms)
-{
-    if (s_stop_timer[id] == NULL) return;
-    (void)xTimerChangePeriod(s_stop_timer[id],
-                             pdMS_TO_TICKS(duration_ms),
-                             pdMS_TO_TICKS(10));
-}
-
-/* ------------------------------------------------------------------------ */
-
 void Motor_L298N_Init(void)
 {
-    bool need_tim1 = false;
-    bool need_tim4 = false;
-
-    for (int i = 0; i < MOTOR_COUNT; i++)
-    {
-        s_current_rad[i]   = 0.0f;
-        s_stop_timer[i]    = NULL;
-        if (!BoardLink_IsLocalMotor((motor_id_t)i)) continue;
-        if (s_motors[i].tim == TIM1) need_tim1 = true;
-        if (s_motors[i].tim == TIM4) need_tim4 = true;
+    uint32_t key = Motor_Lock();
+    if (initialized) {
+        /* Reinitialization is never permission to retain a live output. */
+        MotorSafety_RequestStopCauseLocked(MOTOR_STOP_MANUAL,MOTOR_COUNT);
+        Motor_L298N_InhibitLocked();
+        Motor_Unlock(key); return;
     }
-
-    if (need_tim1) {
-        __HAL_RCC_TIM1_CLK_ENABLE();
-        init_timer_base(&s_htim1, TIM1);
-    }
-    if (need_tim4) {
-        __HAL_RCC_TIM4_CLK_ENABLE();
-        init_timer_base(&s_htim4, TIM4);
-    }
-
-    for (int i = 0; i < MOTOR_COUNT; i++)
-    {
-        if (!BoardLink_IsLocalMotor((motor_id_t)i)) continue;
-        const l298n_motor_t *m = &s_motors[i];
-
-        enable_gpio_clock(m->pwm_port);
-        enable_gpio_clock(m->in1_port);
-        enable_gpio_clock(m->in2_port);
-
-        /* PWM pin in alternate-function push-pull. */
-        GPIO_InitTypeDef g = {0};
-        g.Mode      = GPIO_MODE_AF_PP;
-        g.Pull      = GPIO_NOPULL;
-        g.Speed     = GPIO_SPEED_FREQ_HIGH;
-        g.Alternate = m->pwm_af;
-        g.Pin       = m->pwm_pin;
-        HAL_GPIO_Init(m->pwm_port, &g);
-
-        /* IN1 / IN2 — push-pull GPIO, default LOW. */
-        g.Mode      = GPIO_MODE_OUTPUT_PP;
-        g.Speed     = GPIO_SPEED_FREQ_LOW;
-        g.Alternate = 0;
-        g.Pin       = m->in1_pin;
-        HAL_GPIO_Init(m->in1_port, &g);
-        g.Pin       = m->in2_pin;
-        HAL_GPIO_Init(m->in2_port, &g);
-        HAL_GPIO_WritePin(m->in1_port, m->in1_pin, GPIO_PIN_RESET);
-        HAL_GPIO_WritePin(m->in2_port, m->in2_pin, GPIO_PIN_RESET);
-
-        init_pwm_channel(htim_for(m->tim), m->tim_channel);
-
-        s_stop_timer[i] = xTimerCreate("L298NStop",
-                                       1,                /* placeholder */
-                                       pdFALSE,
-                                       (void *)(uintptr_t)i,
-                                       stop_callback);
-        configASSERT(s_stop_timer[i] != NULL);
-    }
-
-    /* TIM1 advanced timer needs MOE asserted to actually drive the pins.
-     * HAL_TIM_PWM_Start does this internally but be paranoid. */
-    if (need_tim1) {
-        __HAL_TIM_MOE_ENABLE(&s_htim1);
-    }
+    OldHW_HoldOutputsLow();
+    memset(direction,0,sizeof direction); memset(last_direction,0,sizeof last_direction);
+    for (unsigned i = 0; i < MOTOR_COUNT; ++i) off_ms[i] = HAL_GetTick();
+    initialized = OldHW_OutputsDisabled() && consistent_locked();
+    if (!initialized) register_fault = true;
+    Motor_Unlock(key);
+    if (!initialized) Error_Handler();
 }
-
-/* ------------------------------------------------------------------------ */
-
-static void drive_forward_for(motor_id_t id, uint8_t speed_pct, uint32_t ms)
+bool Motor_L298N_FaultActive(void)
 {
-    const l298n_motor_t *m = &s_motors[id];
-    HAL_GPIO_WritePin(m->in1_port, m->in1_pin, GPIO_PIN_SET);
-    HAL_GPIO_WritePin(m->in2_port, m->in2_pin, GPIO_PIN_RESET);
-    set_duty(id, ((uint32_t)speed_pct * (PWM_ARR + 1U)) / 100U);
-    s_drv[id] = +1;
-    arm_stop_timer(id, ms);
+    uint32_t key = Motor_Lock();
+    bool fault = !initialized || register_fault || g_n_pulse_fatal_cause != 0U;
+    if (initialized && !consistent_locked()) fault = true;
+    if (armed && (uint32_t)(HAL_GetTick()-armed_ms) >= N_PULSE_L298N_MAX_ARM_MS) fault = true;
+    /* No nFAULT/current sensor exists in this mapping. This is a software/register status. */
+    Motor_Unlock(key); return fault;
 }
-
-static void drive_backward_for(motor_id_t id, uint8_t speed_pct, uint32_t ms)
+bool Motor_L298N_Arm(void)
 {
-    const l298n_motor_t *m = &s_motors[id];
-    HAL_GPIO_WritePin(m->in1_port, m->in1_pin, GPIO_PIN_RESET);
-    HAL_GPIO_WritePin(m->in2_port, m->in2_pin, GPIO_PIN_SET);
-    set_duty(id, ((uint32_t)speed_pct * (PWM_ARR + 1U)) / 100U);
-    s_drv[id] = -1;
-    arm_stop_timer(id, ms);
+#if !N_PULSE_OLD_HW_MOTION_OPT_IN
+    ++g_old_hw_rejected_commands;
+    return false;
+#else
+    /* PB14/PB15 acquisition can be monitored now; its worst IRQ latency still
+     * needs qualification under real target load before driving THUMB. */
+    if (N_PULSE_HW_TEST_MOTOR == MOTOR_THUMB && !N_PULSE_THUMB_EXTI_MOTION_QUALIFIED) return false;
+    if (__get_IPSR() || __get_PRIMASK() || !HWCommission_Ready() ||
+        !HWCommission_OutputPreflightReady()) return false;
+    uint32_t key = Motor_Lock();
+    if (armed || transitioning || !MotorSafety_CanArmLocked() || Motor_L298N_FaultActive()) {
+        Motor_Unlock(key); return false;
+    }
+    uint32_t epoch = MotorSafety_EpochLocked();
+    transitioning = true;
+    Motor_L298N_InhibitLocked();
+    Motor_Unlock(key);
+    /* No blocking HAL start or delayed command exists. STOP may run here and
+     * invalidate the epoch; ownership remains held until final validation. */
+    bool consistent = OldHW_OutputsDisabled();
+    key = Motor_Lock();
+    bool ok = consistent && epoch == MotorSafety_EpochLocked() &&
+        MotorSafety_CanArmLocked() && HWCommission_Ready() &&
+        HWCommission_OutputPreflightReady() && !Motor_L298N_FaultActive() && consistent_locked();
+    if (ok) { armed = true; armed_ms = HAL_GetTick(); }
+    else Motor_L298N_InhibitLocked();
+    transitioning = false;
+    Motor_Unlock(key);
+    return ok;
+#endif
 }
-
-void Motor_L298N_MoveToAngle(motor_id_t id, float target_rad, uint8_t speed_pct)
+bool Motor_L298N_IsArmed(void)
+{ uint32_t key=Motor_Lock(); bool value=armed; Motor_Unlock(key); return value; }
+bool Motor_L298N_IsTransitioning(void) { return transitioning; }
+void Motor_L298N_InhibitLocked(void)
 {
-    if (id >= MOTOR_COUNT) return;
-    if (s_stop_timer[id] == NULL) return;   /* not local on this board */
-    if (speed_pct == 0U) { Motor_L298N_Stop(id); return; }
-    if (speed_pct > 100U) speed_pct = 100U;
-
-    float delta_rad = target_rad - s_current_rad[id];
-    float delta_deg = fabsf(delta_rad) * L298N_RAD_TO_DEG;
-
-    if (delta_deg < L298N_MIN_MOVE_DEG) {
-        Motor_L298N_Stop(id);
-        return;
+    armed = false;
+    for (unsigned i=0;i<MOTOR_COUNT;++i) {
+        if (direction[i]) off_ms[i]=HAL_GetTick();
+        direction[i]=0; applied[i]=0; expected_ticks[i]=0; result[i]=L298N_INHIBITED;
     }
-
-    float deg_per_s   = L298N_DEG_PER_SEC_AT_FULL * ((float)speed_pct / 100.0f);
-    uint32_t duration = (uint32_t)((delta_deg / deg_per_s) * 1000.0f);
-    if (duration == 0U) duration = 1U;
-    if (duration > L298N_DURATION_CAP_MS) duration = L298N_DURATION_CAP_MS;
-
-    float dir = delta_rad * (float)L298N_DIR_SIGN;   /* inversion globale câblage */
-    if (dir > 0.0f) {
-        drive_forward_for(id, speed_pct, duration);
-        l298n_beacon(0xF4U, (uint8_t)id);
-    } else {
-        drive_backward_for(id, speed_pct, duration);
-        l298n_beacon(0xF5U, (uint8_t)id);
-    }
-
-    /* Optimistic update — no encoder. Drift recoverable via reboot. */
-    s_current_rad[id] = target_rad;
+    OldHW_HoldOutputsLow();
 }
-
+bool Motor_L298N_CleanupStoppedInternal(void)
+{
+    uint32_t key=Motor_Lock();
+    if (armed || transitioning) { Motor_Unlock(key); return false; }
+    transitioning=true;
+    OldHW_HoldOutputsLow();
+    bool ok=OldHW_OutputsDisabled();
+    if (!ok) fail_locked();
+    transitioning=false;
+    Motor_Unlock(key); return ok;
+}
+void Motor_L298N_Disarm(void)
+{
+    MotorSafety_RequestStopCause(MOTOR_STOP_MANUAL,MOTOR_COUNT);
+    if (!__get_PRIMASK() && !__get_IPSR()) Motor_ServiceStop();
+}
+#if N_PULSE_OLD_HW_MOTION_OPT_IN
+static bool program_locked(motor_id_t id, float output)
+{
+    const old_hw_motor_pins_t *m=&g_old_hw_motor_pins[id];
+    int sign=output>0 ? 1 : -1;
+    if (direction[id] && direction[id]!=sign) inactive_locked(id);
+    if (sign!=last_direction[id] &&
+        (uint32_t)(HAL_GetTick()-off_ms[id])<N_PULSE_L298N_REVERSE_BLANK_MS) {
+        result[id]=L298N_BLANKED; return consistent_locked(); /* No staged output. */
+    }
+    inactive_locked(id);
+    uint32_t ticks=(uint32_t)(fabsf(output)*85.0f); /* ARR+1=8500; 100%=8500, zero never AF. */
+    if (!ticks) { result[id]=L298N_ZERO; return consistent_locked(); }
+    TIM_TypeDef *t=m->timer;
+    t->CR1 &= ~TIM_CR1_CEN;
+    volatile uint32_t *ccmr=m->channel<TIM_CHANNEL_3 ? &t->CCMR1 : &t->CCMR2;
+    unsigned mode_shift=(m->channel==TIM_CHANNEL_2 || m->channel==TIM_CHANNEL_4) ? 8U : 0U;
+    *ccmr=(*ccmr & ~((TIM_CCMR1_OC1M | TIM_CCMR1_OC1PE) << mode_shift)) |
+           (TIM_OCMODE_PWM1 << mode_shift); /* Immediate CCR while ENA remains GPIO low. */
+    *compare(m)=ticks;
+    expected_ticks[id]=ticks;
+    t->EGR=TIM_EGR_UG; t->CNT=0;
+    direction_inputs(m,sign);
+    unsigned pin=pin_shift(m->enable_pin), shift=4U*(pin%8U);
+    m->enable_port->AFR[pin/8U]=(m->enable_port->AFR[pin/8U] & ~(15U<<shift)) |
+                               ((t==TIM1 ? 6U : 2U)<<shift);
+    if (t==TIM1) t->BDTR |= TIM_BDTR_MOE;
+    t->CCER |= 1U<<m->channel;
+    t->CR1 |= TIM_CR1_CEN;
+    __DSB();
+    m->enable_port->MODER=(m->enable_port->MODER & ~(3U<<(2U*pin))) | (2U<<(2U*pin));
+    direction[id]=(int8_t)sign; last_direction[id]=(int8_t)sign;
+    applied[id]=(float)sign*(float)ticks/85.0f;
+    result[id]=L298N_APPLIED;
+    return consistent_locked();
+}
+#endif
+l298n_output_result_t Motor_L298N_ApplySigned(motor_id_t id,float output)
+{
+    if (!local(id)) { ++g_old_hw_rejected_commands; return L298N_INHIBITED; }
+    uint32_t key=Motor_Lock();
+    if (!isfinite(output)) {
+        MotorSafety_RequestStopCauseLocked(MOTOR_STOP_PID,id);
+        Motor_L298N_InhibitLocked(); result[id]=L298N_FAULT;
+    } else if (Motor_L298N_FaultActive()) { fail_locked(); result[id]=L298N_FAULT; }
+    else if (output==0.0f) {
+        inactive_locked(id); result[id]=L298N_ZERO;
+        if (!consistent_locked()) { fail_locked(); result[id]=L298N_FAULT; }
+    }
+    else {
+#if N_PULSE_OLD_HW_MOTION_OPT_IN
+        if (!armed || transitioning || !HWTest_MotorAllowed(id) || !Motor_OutputAllowedLocked(id) ||
+            (id == MOTOR_THUMB && !N_PULSE_THUMB_EXTI_MOTION_QUALIFIED)) {
+            inactive_locked(id); result[id]=L298N_INHIBITED; ++g_old_hw_rejected_commands;
+        } else if (!Encoder_BSP_IsCalibrated(id) || !Motor_HasFreshPositionFeedback(id) || !HWCommission_Ready()) {
+            MotorSafety_RequestStopCauseLocked(MOTOR_STOP_FEEDBACK,id);
+            Motor_L298N_InhibitLocked(); result[id]=L298N_FAULT;
+        } else {
+            float ceiling=HWCommission_PwmCeiling();
+            if (ceiling>100.0f) ceiling=100.0f;
+            if (!isfinite(ceiling) || ceiling<=0.0f) { fail_locked(); result[id]=L298N_FAULT; }
+            else {
+                if (output>ceiling) output=ceiling;
+                if (output<-ceiling) output=-ceiling;
+                if (!program_locked(id,output)) { fail_locked(); result[id]=L298N_FAULT; }
+            }
+        }
+#else
+        inactive_locked(id); result[id]=L298N_INHIBITED; ++g_old_hw_rejected_commands;
+#endif
+    }
+    l298n_output_result_t value=result[id];
+    Motor_Unlock(key); return value;
+}
+void Motor_L298N_SetRaw(motor_id_t id,float output) { (void)Motor_L298N_ApplySigned(id,output); }
+void Motor_L298N_SetSignedRaw(motor_id_t id,int sign,uint8_t speed)
+{ Motor_L298N_SetRaw(id,sign>0 ? (float)speed : sign<0 ? -(float)speed : 0.0f); }
 void Motor_L298N_Stop(motor_id_t id)
 {
-    if (id >= MOTOR_COUNT) return;
-    if (s_stop_timer[id] == NULL) return;
-
-    (void)xTimerStop(s_stop_timer[id], 0);
-    set_duty(id, 0);
-    const l298n_motor_t *m = &s_motors[id];
-    HAL_GPIO_WritePin(m->in1_port, m->in1_pin, GPIO_PIN_RESET);
-    HAL_GPIO_WritePin(m->in2_port, m->in2_pin, GPIO_PIN_RESET);
-    s_drv[id] = 0;
+    uint32_t key=Motor_Lock();
+    if(local(id)) { inactive_locked(id); result[id]=L298N_ZERO; }
+    if(initialized && !consistent_locked()) fail_locked();
+    Motor_Unlock(key);
 }
-
+void Motor_L298N_Brake(motor_id_t id) { Motor_L298N_Stop(id); } /* Coast only, never an active brake. */
 void Motor_L298N_StopAll(void)
 {
-    for (int i = 0; i < MOTOR_COUNT; i++) {
-        Motor_L298N_Stop((motor_id_t)i);
-    }
+    uint32_t key=Motor_Lock();
+    for(unsigned i=0;i<MOTOR_COUNT;++i) if(local((motor_id_t)i)) inactive_locked((motor_id_t)i);
+    if(initialized && !consistent_locked()) fail_locked();
+    Motor_Unlock(key);
 }
-
-void Motor_L298N_SetRaw(motor_id_t id, int dir, uint8_t speed_pct)
-{
-    if (id >= MOTOR_COUNT) return;
-    if (s_stop_timer[id] == NULL) return;          /* pas local sur cette carte */
-
-    (void)xTimerStop(s_stop_timer[id], 0);         /* pas d'auto-stop en closed-loop */
-    const l298n_motor_t *m = &s_motors[id];
-
-    if (dir > 0) {
-        HAL_GPIO_WritePin(m->in1_port, m->in1_pin, GPIO_PIN_SET);
-        HAL_GPIO_WritePin(m->in2_port, m->in2_pin, GPIO_PIN_RESET);
-        s_drv[id] = +1;
-    } else if (dir < 0) {
-        HAL_GPIO_WritePin(m->in1_port, m->in1_pin, GPIO_PIN_RESET);
-        HAL_GPIO_WritePin(m->in2_port, m->in2_pin, GPIO_PIN_SET);
-        s_drv[id] = -1;
-    } else {
-        HAL_GPIO_WritePin(m->in1_port, m->in1_pin, GPIO_PIN_RESET);
-        HAL_GPIO_WritePin(m->in2_port, m->in2_pin, GPIO_PIN_RESET);
-        set_duty(id, 0);
-        s_drv[id] = 0;
-        return;
-    }
-    if (speed_pct > 100U) speed_pct = 100U;
-    set_duty(id, ((uint32_t)speed_pct * (PWM_ARR + 1U)) / 100U);
-}
-
-void Motor_L298N_Brake(motor_id_t id)
-{
-    if (id >= MOTOR_COUNT) return;
-    if (s_stop_timer[id] == NULL) return;          /* pas local sur cette carte */
-
-    (void)xTimerStop(s_stop_timer[id], 0);
-    const l298n_motor_t *m = &s_motors[id];
-    /* Frein dynamique L298N : IN1=IN2 (court-circuit moteur via le pont)
-     * + ENA actif (PWM plein). Le moteur ne peut plus tourner librement
-     * → la gravité ne fait plus retomber le poignet. Pas de rotation donc
-     * courant limité (≠ stall en drive) : tenue statique, peu de chauffe. */
-    HAL_GPIO_WritePin(m->in1_port, m->in1_pin, GPIO_PIN_RESET);
-    HAL_GPIO_WritePin(m->in2_port, m->in2_pin, GPIO_PIN_RESET);
-    set_duty(id, PWM_ARR);                          /* ENA haut → frein */
-    s_drv[id] = 0;                                  /* pas "en mouvement" (guard) */
-}
+int Motor_L298N_DrivingDir(motor_id_t id)
+{ uint32_t key=Motor_Lock(); int value=local(id) ? direction[id] : 0; Motor_Unlock(key); return value; }
+float Motor_L298N_AppliedPWM(motor_id_t id)
+{ uint32_t key=Motor_Lock(); float value=local(id) ? applied[id] : 0; Motor_Unlock(key); return value; }
+#endif

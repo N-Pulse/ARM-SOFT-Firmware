@@ -20,6 +20,16 @@
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
 #include "comms_config.h"
+#if N_PULSE_OLD_HW
+/* Peripheral clocks/pins are configured explicitly in old_hw.c. */
+void HAL_MspInit(void)
+{
+    __HAL_RCC_SYSCFG_CLK_ENABLE();
+    __HAL_RCC_PWR_CLK_ENABLE();
+    HAL_NVIC_SetPriority(PendSV_IRQn,15,0);
+    HAL_PWREx_DisableUCPDDeadBattery();
+}
+#else
 /* USER CODE BEGIN Includes */
 
 /* USER CODE END Includes */
@@ -1679,3 +1689,5 @@ void HAL_UART_MspDeInit(UART_HandleTypeDef* huart)
 /* USER CODE BEGIN 1 */
 
 /* USER CODE END 1 */
+
+#endif /* preserved new-board MSP */

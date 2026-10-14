@@ -14,6 +14,9 @@
 #include "tx.h"
 #include "hw_telemetry.h"
 
+/* This parser/UART fixture supplies encoder samples at the BSP boundary. */
+bool Encoder_BSP_RawAvailable(motor_id_t id) { return (unsigned)id < MOTOR_COUNT; }
+
 UART_HandleTypeDef huart4;
 static uint8_t *rx_destination;
 static uint32_t ipsr, notifications[3], waits, waits_last, uart_tx_calls, rx_abort, tx_abort;

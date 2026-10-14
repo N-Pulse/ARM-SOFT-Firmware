@@ -1,9 +1,19 @@
-# GNU Make rules for the single STM32G474QET6. Run from the repository root.
+# GNU Make rules for OLD_HW lot 4: STM32G474RET6; motion opt-in is commissioning-only.
 SIM_MODE ?= 0
 CURRENT_ACQUISITION ?= 0
 HW_SINGLE_MOTOR_TEST ?= 0
 HW_TEST_MOTOR ?= 1
 HW_TEST_PWM_CAP ?= 5
+OLD_HW_MOTION_OPT_IN ?= 0
+THUMB_EXTI_MOTION_QUALIFIED ?= 0
+TIMING_DIAGNOSTICS ?= 0
+TIMING_MARKER ?= 3
+ifneq ($(filter $(TIMING_DIAGNOSTICS),0 1),$(TIMING_DIAGNOSTICS))
+$(error TIMING_DIAGNOSTICS must be 0 or 1)
+endif
+ifeq ($(TIMING_DIAGNOSTICS)$(SIM_MODE),11)
+$(error Timing instrumentation is HW-only)
+endif
 PYTHON ?= python
 TOOLCHAIN_PREFIX ?= arm-none-eabi-
 
@@ -18,6 +28,18 @@ $(error CURRENT_ACQUISITION must be 0 or 1)
 endif
 endif
 
+ifneq ($(CURRENT_ACQUISITION),0)
+$(error OLD_HW requires CURRENT_ACQUISITION=0: sensor mapping unavailable)
+endif
+ifneq ($(filter $(OLD_HW_MOTION_OPT_IN),0 1),$(OLD_HW_MOTION_OPT_IN))
+$(error OLD_HW_MOTION_OPT_IN must be 0 or 1)
+endif
+ifeq ($(OLD_HW_MOTION_OPT_IN),1)
+ifneq ($(HW_SINGLE_MOTOR_TEST),1)
+$(error OLD_HW motion opt-in requires HW_SINGLE_MOTOR_TEST=1)
+endif
+endif
+
 CONFIG := $(if $(filter 1,$(SIM_MODE)),SIM,HW)
 ifneq ($(filter $(HW_SINGLE_MOTOR_TEST),0 1),$(HW_SINGLE_MOTOR_TEST))
 $(error HW_SINGLE_MOTOR_TEST must be 0 or 1)
@@ -28,7 +50,8 @@ $(error HW_SINGLE_MOTOR_TEST requires SIM_MODE=0)
 endif
 endif
 # Explicitly isolate the experimental ADC option too.
-OUT := build/$(CONFIG)$(if $(filter 1,$(HW_SINGLE_MOTOR_TEST)),-single-$(HW_TEST_MOTOR),)$(if $(filter 1,$(CURRENT_ACQUISITION)),-current,)
+OUT := build/$(CONFIG)$(if $(filter 1,$(HW_SINGLE_MOTOR_TEST)),-single-$(HW_TEST_MOTOR),)$(if $(filter 1,$(OLD_HW_MOTION_OPT_IN)),-optin,)
+OUT := $(OUT)$(if $(filter 1,$(TIMING_DIAGNOSTICS)),-timing,)
 ELF := $(OUT)/n-pulse.elf
 MAP := $(OUT)/n-pulse.map
 LIST := $(OUT)/n-pulse.list
@@ -41,11 +64,15 @@ CPU_FLAGS := -mcpu=cortex-m4 -mfpu=fpv4-sp-d16 -mfloat-abi=hard -mthumb
 INCLUDES := Core/Inc Drivers/STM32G4xx_HAL_Driver/Inc \
  Drivers/STM32G4xx_HAL_Driver/Inc/Legacy Drivers/CMSIS/Device/ST/STM32G4xx/Include \
  Drivers/CMSIS/Include fw fw/app fw/comm fw/comm-stack fw/motors \
- fw/motors/motor_control fw/motors/motor_map fw/motors/estimation fw/bsp/encoder fw/bsp/adc_dma \
+ fw/motors/motor_control fw/motors/motor_l298n fw/motors/motor_map fw/motors/estimation fw/bsp/encoder fw/bsp/adc_dma \
  Middlewares/Third_Party/EmbeddedProto/src \
  Middlewares/Third_Party/FreeRTOS-Kernel/include \
  Middlewares/Third_Party/FreeRTOS-Kernel/portable/GCC/ARM_CM4F
 CPPFLAGS += $(addprefix -I,$(INCLUDES)) -DDEBUG -DUSE_HAL_DRIVER -DSTM32G474xx \
+ -DN_PULSE_OLD_HW=1 -DN_PULSE_DUAL_BOARD_LINK=1 -DN_PULSE_OLD_HW_LOT4=1 -DN_PULSE_TARGET_RET6=1 \
+ -DN_PULSE_TIMING_DIAGNOSTICS=$(TIMING_DIAGNOSTICS) -DN_PULSE_TIMING_MARKER=$(TIMING_MARKER) \
+ -DN_PULSE_OLD_HW_MOTION_OPT_IN=$(OLD_HW_MOTION_OPT_IN) \
+ -DN_PULSE_THUMB_EXTI_MOTION_QUALIFIED=$(THUMB_EXTI_MOTION_QUALIFIED) \
  -DN_PULSE_ENABLE_CURRENT_ACQUISITION=$(CURRENT_ACQUISITION) \
  -DN_PULSE_HW_SINGLE_MOTOR_TEST=$(HW_SINGLE_MOTOR_TEST) -DN_PULSE_HW_TEST_MOTOR=$(HW_TEST_MOTOR) \
  -DN_PULSE_HW_TEST_PWM_CAP=$(HW_TEST_PWM_CAP)
@@ -62,24 +89,25 @@ LDFLAGS += $(CPU_FLAGS) -T$(LDSCRIPT) --specs=nosys.specs --specs=nano.specs \
 
 HAL_DIR := Drivers/STM32G4xx_HAL_Driver/Src
 HAL_MODULES := hal hal_adc hal_adc_ex hal_cortex hal_dma hal_dma_ex hal_exti \
- hal_flash hal_flash_ex hal_flash_ramfunc hal_gpio hal_hrtim hal_lptim \
- hal_opamp hal_opamp_ex hal_pwr hal_pwr_ex hal_rcc hal_rcc_ex hal_tim \
+ hal_flash hal_flash_ex hal_flash_ramfunc hal_gpio \
+ hal_pwr hal_pwr_ex hal_rcc hal_rcc_ex hal_tim \
  hal_tim_ex hal_uart hal_uart_ex
 RTOS_DIR := Middlewares/Third_Party/FreeRTOS-Kernel
-C_SOURCES := Core/Src/main.c Core/Src/stm32g4xx_hal_msp.c \
+C_SOURCES := Core/Src/main.c Core/Src/old_hw.c Core/Src/stm32g4xx_hal_msp.c \
  Core/Src/stm32g4xx_hal_timebase_tim.c Core/Src/stm32g4xx_it.c \
  Core/Src/syscalls.c Core/Src/sysmem.c Core/Src/system_stm32g4xx.c Core/Src/fatal_stop.c \
  $(addprefix $(HAL_DIR)/stm32g4xx_,$(addsuffix .c,$(HAL_MODULES))) \
  $(addprefix $(RTOS_DIR)/,croutine.c event_groups.c list.c queue.c stream_buffer.c tasks.c timers.c) \
  $(RTOS_DIR)/portable/GCC/ARM_CM4F/port.c $(RTOS_DIR)/portable/MemMang/heap_4.c \
- fw/app/app.c fw/app/intent_router.c fw/app/hw_commission.c fw/app/hw_telemetry.c fw/comm/comm.c fw/comm/board_link.c \
- fw/comm/board_uart_compat.c fw/comm/uart4_transport.c fw/comm/comms_parser.c \
- fw/comm/comms_session.c fw/comm/sim_protocol.c fw/comm/sim_session.c fw/bsp/encoder/encoder_bsp.c fw/bsp/adc_dma/adc_dma_bsp.c \
+ fw/app/old_hw_timing.c fw/app/app.c fw/app/intent_router.c fw/app/hw_commission.c fw/app/hw_telemetry.c fw/comm/comm.c fw/comm/board_link.c \
+ fw/comm/board_protocol.c fw/comm/board_link_runtime.c fw/comm/board_uart_compat.c fw/comm/uart4_transport.c fw/comm/comms_parser.c \
+ fw/comm/comms_session.c fw/comm/sim_protocol.c fw/comm/sim_session.c fw/bsp/encoder/encoder_bsp.c \
+ fw/bsp/encoder/quadrature_decoder.c fw/bsp/encoder/thumb_encoder.c fw/bsp/adc_dma/adc_dma_bsp.c \
  fw/motors/motor_map/motor_map.c fw/motors/motor_control/motor_backend_hw.c \
  fw/motors/motor_control/motor_backend_sim.c fw/motors/motor_control/motor_control.c \
  fw/motors/motor_control/motor_safety.c fw/motors/motor_control/motor_guard.c \
  fw/motors/motor_control/motor_feedback.c fw/motors/motor_control/motor_sim_feedback.c \
- fw/motors/motor_control/drv8848.c fw/motors/motor_control/motor_outputs.c \
+ fw/motors/motor_l298n/motor_l298n.c \
  fw/motors/motor_control/motor_pid.c fw/motors/motor_control/motor_pid_config.c \
  fw/motors/estimation/motor_kalman.c fw/motors/estimation/motor_estimation.c
 CPP_SOURCES := fw/comm-stack/rx.cpp fw/comm-stack/tx.cpp \
@@ -118,7 +146,7 @@ $(LIST): $(ELF)
 
 # The old flash.ps1 path remains HW-only. SIM never overwrites that ELF.
 # Experimental current acquisition never replaces the default artifacts.
-ifeq ($(CURRENT_ACQUISITION)$(HW_SINGLE_MOTOR_TEST),00)
+ifeq ($(CURRENT_ACQUISITION)$(HW_SINGLE_MOTOR_TEST)$(OLD_HW_MOTION_OPT_IN)$(TIMING_DIAGNOSTICS),0000)
 publish: $(ELF) $(LIST)
 	$(PYTHON) tools/build_artifacts.py publish "$(CONFIG)" "$(OUT)"
 else
@@ -132,8 +160,8 @@ rebuild:
 	$(MAKE) clean
 	$(MAKE) all
 help:
-	@echo GNU Make: SIM_MODE=0 HW, SIM_MODE=1 SIM; default HW, current acquisition off.
+	@echo OLD_HW lot 4 RET6: SIM_MODE=0 default HW inhibited, SIM_MODE=1 virtual SIM.
 	@echo Targets: all, rebuild, clean. Objects are isolated under build/HW and build/SIM.
-	@echo Explicit commissioning: HW_SINGLE_MOTOR_TEST=1 HW_TEST_MOTOR=1 CURRENT_ACQUISITION=1, never published or production-flashable.
+	@echo Dedicated bench: HW_SINGLE_MOTOR_TEST=1 HW_TEST_MOTOR=0..4 OLD_HW_MOTION_OPT_IN=1; never auto-published.
 
 -include $(DEPS)

@@ -33,6 +33,7 @@ bool MotorSafety_Recover(void);
 /* Internal operations: caller holds Motor_Lock. No UART or blocking HAL. */
 void MotorSafety_RequestStopCauseLocked(motor_stop_cause_t cause, motor_id_t source);
 uint32_t MotorSafety_EpochLocked(void);
+uint32_t MotorSafety_StopSerialLocked(void);
 bool MotorSafety_CanArmLocked(void);
 bool MotorSafety_CanEnableLocked(motor_id_t id, uint32_t now);
 bool MotorSafety_CanRecoverLocked(uint32_t now);

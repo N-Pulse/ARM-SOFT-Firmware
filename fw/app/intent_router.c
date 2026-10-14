@@ -2,13 +2,19 @@
 #include "motor_control.h"
 #include "motor_map.h"
 #include <stddef.h>
+#if N_PULSE_DUAL_BOARD_LINK && !defined(MOTOR_BACKEND_SIM)
+#include "board_link.h"
+#define ROUTE_TARGET BoardLink_RouteTarget
+#else
+#define ROUTE_TARGET Motor_SetTargetAtEpoch
+#endif
 
 static void apply_full_pose(motor_pose_id_t pose, uint32_t epoch)
 {
     for (int i = 0; i < MOTOR_COUNT; i++)
     {
         float target_rad = MotorMap_GetPose(pose, (motor_id_t)i);
-        Motor_SetTargetAtEpoch((motor_id_t)i, target_rad, 100, epoch);
+        if (!ROUTE_TARGET((motor_id_t)i, target_rad, 100, epoch)) return;
     }
 }
 
@@ -26,8 +32,8 @@ static void apply_full_pose(motor_pose_id_t pose, uint32_t epoch)
  *      flexion pure    → rotation = 0 → les 2 moteurs vont en sens opposé. */
 static void drive_wrist(float rotation_rad, float flexion_rad, uint8_t speed, uint32_t epoch)
 {
-    Motor_SetTargetAtEpoch(MOTOR_WRIST_X, rotation_rad + flexion_rad, speed, epoch);
-    Motor_SetTargetAtEpoch(MOTOR_WRIST_Y, rotation_rad - flexion_rad, speed, epoch);
+    if (!ROUTE_TARGET(MOTOR_WRIST_X, rotation_rad + flexion_rad, speed, epoch)) return;
+    ROUTE_TARGET(MOTOR_WRIST_Y, rotation_rad - flexion_rad, speed, epoch);
 }
 
 void IntentRouter_Handle(const intent_t *intent)

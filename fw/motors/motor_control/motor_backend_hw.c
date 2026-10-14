@@ -8,21 +8,23 @@
 #include "encoder_bsp.h"
 #include "adc_dma_bsp.h"
 #include "board_link.h"
+#if N_PULSE_OLD_HW
+#include "l298n_config.h"
+#endif
 
-/* ─── Hardware backend — STM32G474 ────────────────────────────────────────────
- *
- * Le pilotage moteur réel se fait dans deux modules :
- *
- * Le pilotage est préparé par drv8848.c, mais reste volontairement inhibé
- * jusqu'à confirmation du câblage PH/EN, SLEEP et FAULT. Aucun output HRTIM
- * n'est démarré pendant cette phase de migration.
- * ──────────────────────────────────────────────────────────────────────────── */
+/* Signed PID output uses the OLD_HW L298N boundary. Production stays disarmed;
+ * a dedicated commissioning build and fresh operator preflight are required.
+ * Current acquisition stays unavailable until an old-board signal path exists.
+ * Non-OLD native regression tests retain their original DRV8848 boundary. */
 
 void MotorBackend_Init(void)
 {
     if (!ADC_DMA_BSP_Init()) {
         Error_Handler();
     }
+#if N_PULSE_OLD_HW && !N_PULSE_OLD_HW_MOTION_OPT_IN
+    MotorSafety_RequestStopCause(MOTOR_STOP_DRIVER, MOTOR_COUNT);
+#endif
 
     /* Raw acquisition is optional and off by default. It provides no
      * calibrated current feedback or validated current protection. */
@@ -45,7 +47,7 @@ void MotorBackend_SendPreview(motor_id_t id, float position, uint8_t speed_perce
 
 void MotorBackend_Flush(void)
 {
-    /* The safe DRV8848 backend does not queue hardware writes yet. */
+    /* Direct PID output: no queued hardware command can survive STOP. */
 }
 
 void MotorBackend_StopAll(void)
@@ -61,7 +63,9 @@ void MotorBackend_RefreshFeedback(void)
     if (Motor_DRV8848_FaultActive())
     {
         MotorSafety_RequestStopCause(MOTOR_STOP_DRIVER, MOTOR_COUNT);
+#if !N_PULSE_OLD_HW
         return;
+#endif
     }
 
     for (int i = 0; i < MOTOR_COUNT; ++i)

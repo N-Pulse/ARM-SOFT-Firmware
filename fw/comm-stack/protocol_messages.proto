@@ -49,6 +49,7 @@ message ProsthesisMessage {
     Error error = 2;
     MotorDiagnostic diagnostic = 3;
     CommandReply reply = 4;
+    LinkDiagnostic link = 5;
   }
 }
 
@@ -85,12 +86,13 @@ message Error {
 
 // STOP is supported in every HW build, without Hello, epoch or prerequisites.
 message StopRequest {}
-message DiagnosticRequest { uint32 motor_id = 1; }
+message DiagnosticRequest { uint32 motor_id = 1; } // 8 selects LinkDiagnostic
 // No persistent storage; operator must re-establish verified parameters on boot.
 message CommissionCommand {
   enum Operation { UNSPECIFIED = 0; LIMITS = 1; CALIBRATE = 2; ZERO = 3;
     RECOVER = 4; ARM = 5; ENABLE = 6; TARGET = 7; DISABLE = 8;
-    ESTIMATOR_RESET = 9; ESTIMATOR_STOP = 10; }
+    ESTIMATOR_RESET = 9; ESTIMATOR_STOP = 10; OUTPUT_PREFLIGHT = 11;
+    LINK_AUTHORIZE = 12; LINK_RECOVER = 13; }
   uint32 request_id = 1;
   uint32 epoch = 2; // latest diagnostic epoch; STOP/recovery invalidate old work
   Operation operation = 3;
@@ -106,7 +108,7 @@ message CommissionCommand {
   uint32 pwm_percent = 13;
   float target_rad = 14;
   float reference_rate_rad_s = 15;
-  bool stationary_reference_verified = 16;
+  bool stationary_reference_verified = 16; // OUTPUT_PREFLIGHT: operator confirms documented electrical preflight
 }
 message CommandReply {
   enum Result { OK = 0; PRODUCTION = 1; SESSION = 2; STALE = 3; WRONG_MOTOR = 4;
@@ -119,7 +121,7 @@ message CommandReply {
 }
 // Single motor, bounded <128 byte payload even with all fields present.
 // flags: enabled=1, armed=2, encoder fresh=4, calibration=8, test image=16,
-// limits configured=32, ADC active=64. NAN means unavailable float.
+// limits configured=32, ADC active=64, raw encoder available=128. NAN means unavailable float.
 message MotorDiagnostic {
   uint32 timestamp_ms = 1;
   uint32 motor_id = 2;
@@ -141,5 +143,29 @@ message MotorDiagnostic {
   float kalman_rad = 18;
   float kalman_velocity_rad_s = 19;
   uint32 kalman_status = 20;
+}
+
+// Independent status message: bounded payload, existing motor fields unchanged.
+// flags: fresh=1, established=2, local authorization=4, peer authorization=8,
+// motion opt-in build=16, quarantine=32, peer epoch known=64, worker started=128.
+message LinkDiagnostic {
+  uint32 timestamp_ms = 1;
+  uint32 role = 2;
+  uint64 local_session = 3;
+  uint64 remote_session = 4;
+  uint32 local_epoch = 5;
+  uint32 remote_epoch = 6;
+  uint32 local_stops = 7;
+  uint32 remote_stops = 8;
+  uint32 heartbeat_age_ms = 9;
+  uint32 echo_age_ms = 10;
+  uint32 flags = 11;
+  uint32 rx_sequence = 12;
+  uint32 tx_sequence = 13;
+  uint32 malformed = 14;
+  uint32 overflows = 15;
+  uint32 restarts = 16;
+  uint32 rejected = 17;
+  uint32 transport_errors = 18;
 }
 

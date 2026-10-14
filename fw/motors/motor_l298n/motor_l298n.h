@@ -1,49 +1,21 @@
 #ifndef MOTOR_L298N_H
 #define MOTOR_L298N_H
-
-#include <stdint.h>
 #include "motor_control.h"
-
-/*
- * motor_l298n — generic L298N H-bridge driver for the 8 hand motors.
- *
- * On boot, the module looks at BoardLink_IsLocalMotor() for each motor id
- * and only initializes the GPIO + PWM channels for motors physically wired
- * to THIS board.
- *
- * Open-loop position control: with no encoder, the move duration for a
- * given angular delta is derived from L298N_DEG_PER_SEC_AT_FULL (an
- * empirical constant — see README to recalibrate per motor + gearbox).
- * Each motor has its own per-id auto-stop FreeRTOS timer.
- *
- * See README.md for the full pin map and wiring.
- */
-
+typedef enum { L298N_INHIBITED, L298N_ZERO, L298N_BLANKED, L298N_APPLIED, L298N_FAULT } l298n_output_result_t;
 void Motor_L298N_Init(void);
-
-/* Drive `id` toward `target_rad` (clamped to [-pi, +pi]) at `speed_pct`
- * (0..100). The motor runs only as long as needed to traverse the angular
- * delta from its cached commanded position; the auto-stop timer cuts the
- * H-bridge when the open-loop estimate of "we got there" elapses. */
-void Motor_L298N_MoveToAngle(motor_id_t id, float target_rad, uint8_t speed_pct);
-
-/* Cut a single motor (and cancel its pending auto-stop). */
+bool Motor_L298N_Arm(void);
+void Motor_L298N_Disarm(void);
+bool Motor_L298N_CleanupStoppedInternal(void);
+void Motor_L298N_InhibitLocked(void);
+bool Motor_L298N_IsArmed(void);
+bool Motor_L298N_IsTransitioning(void);
+bool Motor_L298N_FaultActive(void);
+l298n_output_result_t Motor_L298N_ApplySigned(motor_id_t id,float output_percent);
+void Motor_L298N_SetRaw(motor_id_t id,float output_percent);
+void Motor_L298N_SetSignedRaw(motor_id_t id,int direction,uint8_t speed_percent);
 void Motor_L298N_Stop(motor_id_t id);
-
-/* Cut every locally-owned motor. */
-void Motor_L298N_StopAll(void);
-
-/* Closed-loop raw drive (continu, sans auto-stop timer) :
- *   dir > 0 → forward, dir < 0 → backward, dir == 0 → stop.
- * La boucle d'asservissement appelante décide quand arrêter. */
-void Motor_L298N_SetRaw(motor_id_t id, int dir, uint8_t speed_pct);
-
-/* Sens de drive courant du moteur : +1 / -1 / 0 (arrêté).
- * Utilisé par la sécurité anti-butée (coupe si calé). */
-int  Motor_L298N_DrivingDir(motor_id_t id);
-
-/* Frein dynamique : court-circuite le moteur (tenue statique contre la
- * gravité, ex: poids de la main sur le poignet). Pas de roue libre. */
 void Motor_L298N_Brake(motor_id_t id);
-
-#endif /* MOTOR_L298N_H */
+void Motor_L298N_StopAll(void);
+int Motor_L298N_DrivingDir(motor_id_t id);
+float Motor_L298N_AppliedPWM(motor_id_t id);
+#endif

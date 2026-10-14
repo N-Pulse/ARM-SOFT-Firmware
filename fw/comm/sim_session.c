@@ -150,8 +150,10 @@ bool SimSession_OnFrame(uint8_t type,const uint8_t *p,size_t n,uint32_t ms,uint3
     case SIM_CONFIG:
         if(!configured && !armed && !enabled_mask()) { configured=true; force_mask=p[19U]; invalidate(); success=true; }
         break;
-    case SIM_RECOVER:
-        Motor_Unlock(key); success=Motor_RecoverFromFault(); key=Motor_Lock(); break;
+    case SIM_RECOVER: {
+        motor_recovery_ticket_t ticket=Motor_RecoveryTicketLocked();
+        Motor_Unlock(key); success=Motor_RecoverFromFaultWithTicket(ticket); key=Motor_Lock(); break;
+    }
     case SIM_ARM:
         success=configured && !armed && run!=UINT32_MAX && MotorSafety_CanArmLocked();
         for(unsigned i=0;i<MOTOR_COUNT && success;++i) success=SimSession_FeedbackReadyLocked((motor_id_t)i) && Motor_HasFreshPositionFeedback((motor_id_t)i);

@@ -14,6 +14,9 @@
 #include "tx.h"
 #include "hw_commission.h"
 #include "hw_telemetry.h"
+#if N_PULSE_DUAL_BOARD_LINK
+#include "board_link.h"
+#endif
 #endif
 
 #ifdef MOTOR_BACKEND_SIM
@@ -51,6 +54,14 @@ static bool frame_received(const uint8_t *bytes, size_t length, uint32_t ms,
         return true;
     }
     if (result.type == RX_TYPE_COMMISSION) {
+#if N_PULSE_DUAL_BOARD_LINK
+        if (result.command.operation==12 || result.command.operation==13) {
+            uint32_t code=UART4Transport_RxGenerationMatches(current_generation) && result.command.epoch==epoch ?
+                BoardLink_Operator(result.command.operation,result.command.request_id,epoch,ms) : HW_STALE;
+            HWTelemetry_Reply(result.command.request_id,code);
+            return code==HW_OK;
+        }
+#endif
         uint32_t code = UART4Transport_RxGenerationMatches(current_generation) ?
             HWCommission_Execute(&result.command, ms, epoch) : HW_STALE;
         HWTelemetry_Reply(result.command.request_id, code);

@@ -35,9 +35,14 @@ def main():
         flags = (directory / "compile.flags").read_bytes()
         sim_defined = b"-DMOTOR_BACKEND_SIM=1" in flags
         if (sim_defined != (config == "SIM") or b"-DN_PULSE_ENABLE_CURRENT_ACQUISITION=0" not in flags
-                or b"-DN_PULSE_HW_SINGLE_MOTOR_TEST=0" not in flags):
+                or b"-DN_PULSE_HW_SINGLE_MOTOR_TEST=0" not in flags
+                or b"-DN_PULSE_OLD_HW_MOTION_OPT_IN=0" not in flags
+                or b"-DN_PULSE_TIMING_DIAGNOSTICS=0" not in flags
+                or directory != ROOT / "build" / config):
             raise ValueError("Refusing inconsistent/default-ADC build publication")
         manifest = {"schema": 1, "mode": config,
+                    "hardware": "STM32G474RET6", "milestone": "OLD_HW_LOT4",
+                    "physical_outputs": "permanently_disabled",
                     "elf_sha256": hashlib.sha256((directory / "n-pulse.elf").read_bytes()).hexdigest(),
                     "flags_sha256": hashlib.sha256(flags).hexdigest()}
         (directory / "build-manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
@@ -48,8 +53,8 @@ def main():
                          destination / f"N-PULSE FIRMWARE.{extension}")
     elif action == "clean":
         path = build_path(args[0])
-        if path.parent != ROOT / "build" or path.name not in (
-                "HW", "SIM", "HW-current", "SIM-current"):
+        import re
+        if path.parent != ROOT / "build" or not re.fullmatch(r'(HW|SIM)(-single-[0-4](-optin)?)?(-timing)?', path.name):
             raise ValueError(f"Refusing unknown build configuration: {path}")
         # Never touch old Debug objects, tracked .su files, or sources.
         # Remove only generated artifacts in the selected configuration.

@@ -2,6 +2,13 @@
 #include "stm32g4xx_hal.h"
 #include "main.h"
 #include "motor_lock.h"
+#if N_PULSE_OLD_HW
+#include "board_link.h"
+#include "thumb_encoder.h"
+#include "drv8848.h"
+#include "motor_safety_config.h"
+static int64_t previous_thumb_count;
+#endif
 #include <float.h>
 #include <limits.h>
 
@@ -15,7 +22,9 @@ extern TIM_HandleTypeDef htim4;
 extern TIM_HandleTypeDef htim5;
 extern TIM_HandleTypeDef htim8;
 extern TIM_HandleTypeDef htim20;
+#if !N_PULSE_OLD_HW
 extern LPTIM_HandleTypeDef hlptim1;
+#endif
 
 typedef enum {
     ENCODER_TIM,
@@ -28,6 +37,26 @@ typedef struct {
     bool counter_is_32bit;
 } encoder_cfg_t;
 
+#if N_PULSE_OLD_HW
+static const encoder_cfg_t s_encoder_cfg[MOTOR_COUNT] = {
+    [MOTOR_THUMB] = {ENCODER_TIM,NULL,false}, /* Historical TIM15 cannot decode quadrature. */
+    [MOTOR_INDEX] = {ENCODER_TIM,TIM2,true},
+    [MOTOR_MIDDLE] = {ENCODER_TIM,TIM3,false},
+    [MOTOR_RING] = {ENCODER_TIM,TIM8,false},
+    [MOTOR_LITTLE] = {ENCODER_TIM,TIM3,false},
+    [MOTOR_WRIST_X] = {ENCODER_TIM,TIM2,true},
+    [MOTOR_WRIST_Y] = {ENCODER_TIM,TIM8,false},
+    [MOTOR_PALM] = {ENCODER_TIM,TIM20,false},
+};
+static TIM_HandleTypeDef *tim_handle(TIM_TypeDef *instance)
+{
+    if (instance == TIM2) return &htim2;
+    if (instance == TIM3) return &htim3;
+    if (instance == TIM8) return &htim8;
+    if (instance == TIM20) return &htim20;
+    return NULL;
+}
+#else
 static const encoder_cfg_t s_encoder_cfg[MOTOR_COUNT] = {
     [MOTOR_INDEX]   = { ENCODER_TIM,   TIM8,  false }, /* PA15/PB8 */
     [MOTOR_MIDDLE]  = { ENCODER_TIM,   TIM2,  false }, /* PD3/PD4; ARR=0xffff */
@@ -51,6 +80,8 @@ static TIM_HandleTypeDef *tim_handle(TIM_TypeDef *instance)
     return NULL;
 }
 
+#endif
+
 static int64_t s_raw_count[MOTOR_COUNT];
 static uint32_t s_previous_counter[MOTOR_COUNT];
 static float s_position_rad[MOTOR_COUNT];
@@ -67,9 +98,11 @@ static bool s_count_fault[MOTOR_COUNT];
 static uint32_t read_counter(motor_id_t id)
 {
     const encoder_cfg_t *cfg = &s_encoder_cfg[id];
+#if !N_PULSE_OLD_HW
     if (cfg->kind == ENCODER_LPTIM) {
         return (uint32_t)(uint16_t)hlptim1.Instance->CNT;
     }
+#endif
 
     TIM_HandleTypeDef *htim = tim_handle(cfg->tim_instance);
     return htim == NULL ? 0U : __HAL_TIM_GET_COUNTER(htim);
@@ -92,7 +125,11 @@ bool Encoder_BSP_IsLocal(motor_id_t id)
 
 static bool calibrated_locked(motor_id_t id)
 {
-    return s_started[id] && s_scale[id] != 0.0f && !s_numeric_fault[id];
+    return s_started[id] && s_scale[id] != 0.0f && !s_numeric_fault[id]
+#if N_PULSE_OLD_HW
+        && (id == MOTOR_THUMB ? ThumbEncoder_HealthyLocked() : OldHW_EncoderRunning(id))
+#endif
+        ;
 }
 
 bool Encoder_BSP_IsCalibrated(motor_id_t id)
@@ -102,6 +139,17 @@ bool Encoder_BSP_IsCalibrated(motor_id_t id)
     bool valid = calibrated_locked(id);
     Motor_Unlock(key);
     return valid;
+}
+
+bool Encoder_BSP_RawAvailable(motor_id_t id)
+{
+    if ((uint32_t)id>=MOTOR_COUNT) return false;
+    uint32_t key=Motor_Lock();
+    bool valid=s_started[id] && !s_numeric_fault[id] && !s_count_fault[id];
+#if N_PULSE_OLD_HW
+    valid=valid && (id==MOTOR_THUMB ? ThumbEncoder_HealthyLocked() : OldHW_EncoderRunning(id));
+#endif
+    Motor_Unlock(key); return valid;
 }
 
 static bool calibration_scale(const encoder_calibration_t *cal, float *scale)
@@ -129,7 +177,12 @@ bool Encoder_BSP_SetCalibration(motor_id_t id, const encoder_calibration_t *cali
     uint32_t key = Motor_Lock();
     /* Refuse live reference changes atomically with activation. Rejected
      * changes preserve the old calibration and measurement. No homing. */
-    if (!s_started[id] || s_numeric_fault[id] || Motor_IsEnabled(id)) {
+    if (!s_started[id] || s_numeric_fault[id] || Motor_IsEnabled(id)
+#if N_PULSE_OLD_HW
+        || Motor_DRV8848_IsArmed() || Motor_DRV8848_IsTransitioning()
+        || (id == MOTOR_THUMB && !ThumbEncoder_HealthyLocked())
+#endif
+        ) {
         Motor_Unlock(key); return false;
     }
     s_calibration[id] = proposed;
@@ -153,8 +206,22 @@ bool Encoder_BSP_Init(void)
     memset(s_calibration, 0, sizeof(s_calibration));
 
     for (uint32_t i = 0U; i < MOTOR_COUNT; ++i) {
+#if N_PULSE_OLD_HW
+        if (!BoardLink_IsLocalMotor((motor_id_t)i)) continue;
+        if (i == MOTOR_THUMB) {
+            uint32_t key = Motor_Lock();
+            bool ok = ThumbEncoder_Init() && ThumbEncoder_ReadLocked(&previous_thumb_count);
+            Motor_Unlock(key);
+            if (!ok) return false;
+            s_previous_ms[i] = HAL_GetTick();
+            s_started[i] = true;
+            g_old_hw_encoder_unavailable_mask &= ~(1U << MOTOR_THUMB);
+            continue;
+        }
+#endif
         s_previous_ms[i] = HAL_GetTick();
 
+#if !N_PULSE_OLD_HW
         if (s_encoder_cfg[i].kind == ENCODER_LPTIM) {
             if (HAL_LPTIM_Encoder_Start(&hlptim1, 0xFFFFU) != HAL_OK)
                 return false;
@@ -162,6 +229,7 @@ bool Encoder_BSP_Init(void)
             s_started[i] = true;
             continue;
         }
+#endif
 
         TIM_HandleTypeDef *htim = tim_handle(s_encoder_cfg[i].tim_instance);
         if (htim == NULL ||
@@ -177,9 +245,28 @@ bool Encoder_BSP_Init(void)
 static void sample_locked(motor_id_t id)
 {
     uint32_t now = HAL_GetTick();
-    uint32_t current = read_counter(id);
-    int32_t delta = counter_delta(id, current);
+    uint32_t current = 0;
+    int32_t delta = 0;
+#if N_PULSE_OLD_HW
+    if (id == MOTOR_THUMB) {
+        int64_t full;
+        if (!ThumbEncoder_ReadLocked(&full)) s_numeric_fault[id] = true;
+        else {
+            uint64_t magnitude = full >= previous_thumb_count ? (uint64_t)full - (uint64_t)previous_thumb_count :
+                                 (uint64_t)previous_thumb_count - (uint64_t)full;
+            if (magnitude > INT32_MAX) s_numeric_fault[id] = true;
+            else delta = full >= previous_thumb_count ? (int32_t)magnitude : -(int32_t)magnitude;
+            previous_thumb_count = full;
+        }
+    } else if (!OldHW_EncoderRunning(id)) s_numeric_fault[id] = true;
+    else
+#endif
+    { current = read_counter(id); delta = counter_delta(id,current); }
     uint32_t elapsed_ms = now - s_previous_ms[id];
+#if N_PULSE_OLD_HW
+    /* Beyond this gap a wrapped 16-bit hardware count is not trustworthy. */
+    if (elapsed_ms > MOTOR_FEEDBACK_TIMEOUT_MS) s_numeric_fault[id] = true;
+#endif
     if ((delta > 0 && s_raw_count[id] > INT64_MAX - delta) ||
         (delta < 0 && s_raw_count[id] < INT64_MIN - delta)) s_count_fault[id] = s_numeric_fault[id] = true;
     else if (!s_count_fault[id]) s_raw_count[id] += delta;
@@ -237,18 +324,33 @@ float Encoder_BSP_GetPosition(motor_id_t id)
 
 float Encoder_BSP_GetVelocity(motor_id_t id)
 {
+#if N_PULSE_OLD_HW
+    encoder_snapshot_t sample;
+    return Encoder_BSP_GetSnapshot(id,&sample) ? sample.velocity_rad_s : NAN;
+#else
     if (!Encoder_BSP_IsLocal(id)) return NAN;
     uint32_t key = Motor_Lock();
     float velocity = calibrated_locked(id) ? s_velocity_rad_s[id] : NAN;
     Motor_Unlock(key);
     return velocity;
+#endif
 }
 
 bool Encoder_BSP_Reset(motor_id_t id)
 {
     if (!Encoder_BSP_IsLocal(id)) return false;
     uint32_t key = Motor_Lock();
-    if (Motor_IsEnabled(id)) { Motor_Unlock(key); return false; }
+    if (Motor_IsEnabled(id)
+#if N_PULSE_OLD_HW
+        || Motor_DRV8848_IsArmed() || Motor_DRV8848_IsTransitioning()
+#endif
+        ) { Motor_Unlock(key); return false; }
+#if N_PULSE_OLD_HW
+    if (id == MOTOR_THUMB) {
+        if (!ThumbEncoder_ResetLocked()) { Motor_Unlock(key); return false; }
+        previous_thumb_count = 0;
+    } else if (!OldHW_EncoderRunning(id)) { Motor_Unlock(key); return false; }
+#endif
     /* New logical raw origin at the current hardware counter, and offset=0
      * in that new coordinate system. Never write/restart any encoder timer. */
     s_raw_count[id] = 0;
@@ -266,9 +368,21 @@ bool Encoder_BSP_ResetAll(void)
 {
     uint32_t key = Motor_Lock();
     for (unsigned i = 0; i < MOTOR_COUNT; ++i) {
+#if N_PULSE_OLD_HW
+        if (!BoardLink_IsLocalMotor((motor_id_t)i)) continue;
+        if (Motor_DRV8848_IsArmed() || Motor_DRV8848_IsTransitioning()) { Motor_Unlock(key); return false; }
+        if (i==MOTOR_THUMB ? !ThumbEncoder_CanResetLocked() : !OldHW_EncoderRunning((motor_id_t)i)) {
+            Motor_Unlock(key); return false;
+        }
+#endif
         if (!s_started[i] || Motor_IsEnabled((motor_id_t)i)) { Motor_Unlock(key); return false; }
     }
-    for (unsigned i = 0; i < MOTOR_COUNT; ++i) (void)Encoder_BSP_Reset((motor_id_t)i);
+    for (unsigned i = 0; i < MOTOR_COUNT; ++i) {
+#if N_PULSE_OLD_HW
+        if (!BoardLink_IsLocalMotor((motor_id_t)i)) continue;
+#endif
+        if (!Encoder_BSP_Reset((motor_id_t)i)) { Motor_Unlock(key); return false; }
+    }
     Motor_Unlock(key);
     return true;
 }

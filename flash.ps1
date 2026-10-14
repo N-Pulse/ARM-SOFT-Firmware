@@ -22,7 +22,15 @@ try {
     $manifest = Get-Content -LiteralPath (Join-Path $directory 'build-manifest.json') -Raw | ConvertFrom-Json
     $flagsPath = Join-Path $directory 'compile.flags'
     $flags = Get-Content -LiteralPath $flagsPath -Raw
+    foreach ($requiredFlag in @('N_PULSE_OLD_HW=1','N_PULSE_TARGET_RET6=1','N_PULSE_DUAL_BOARD_LINK=1',
+            'N_PULSE_OLD_HW_MOTION_OPT_IN=0','N_PULSE_THUMB_EXTI_MOTION_QUALIFIED=0','N_PULSE_TIMING_DIAGNOSTICS=0')) {
+        if ($flags -notmatch ('-D' + [regex]::Escape($requiredFlag) + '(?:\s|\|)')) {
+            throw "Build OLD_HW ordinaire requis, flag absent/invalide: $requiredFlag"
+        }
+    }
     if ($manifest.schema -ne 1 -or $manifest.mode -cne 'HW' -or
+        $manifest.hardware -cne 'STM32G474RET6' -or $manifest.milestone -cne 'OLD_HW_LOT4' -or
+        $manifest.physical_outputs -cne 'permanently_disabled' -or
         $flags -match 'MOTOR_BACKEND_SIM' -or
         $flags -notmatch '-DN_PULSE_ENABLE_CURRENT_ACQUISITION=0(?:\s|\|)' -or
         $flags -notmatch '-DN_PULSE_HW_SINGLE_MOTOR_TEST=0(?:\s|\|)' -or
@@ -44,10 +52,13 @@ try {
     if ($listCode -ne 0 -or $listing -match '(?im)^\s*Error\s*:') {
         throw "Echec enumeration (code $listCode): $listing"
     }
-    $matches = @([regex]::Matches($listing, 'ST-LINK\s+SN\s*:\s*([0-9A-Za-z]+)') |
+    $probes = @([regex]::Matches($listing, 'ST-LINK\s+SN\s*:\s*([0-9A-Za-z]+)'))
+    if ($probes.Count -eq 1) { Write-Host 'Un seul ST-LINK detecte ; aucune seconde carte ne sera programmee implicitement.' }
+    else { Write-Host "ST-LINK detectes: $($probes.Count) ; seule la cible explicite sera utilisee." }
+    $selectedProbes = @($probes |
         Where-Object { [string]::Equals($_.Groups[1].Value, $SerialNumber, [StringComparison]::Ordinal) })
-    if ($matches.Count -ne 1) {
-        throw "Selection refusee: SN=$SerialNumber apparait $($matches.Count) fois (absent ou ambigu)."
+    if ($selectedProbes.Count -ne 1) {
+        throw "Selection refusee: SN=$SerialNumber apparait $($selectedProbes.Count) fois (absent ou ambigu)."
     }
     $arguments = @('-c', 'port=SWD', "sn=$SerialNumber", 'freq=4000', '-w', $canonical, '-v', '-rst')
     $display = '"' + $tool + '" ' + (($arguments | ForEach-Object { '"' + $_ + '"' }) -join ' ')

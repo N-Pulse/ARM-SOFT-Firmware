@@ -19,6 +19,7 @@
 
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
+#include "old_hw_timing.h"
 #include "stm32g4xx_it.h"
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
@@ -190,6 +191,7 @@ void DebugMon_Handler(void)
 /**
   * @brief This function handles DMA1 channel2 global interrupt.
   */
+#if !N_PULSE_OLD_HW
 void DMA1_Channel2_IRQHandler(void)
 {
   /* USER CODE BEGIN DMA1_Channel2_IRQn 0 */
@@ -294,3 +296,43 @@ void DMA1_Channel8_IRQHandler(void)
 /* USER CODE BEGIN 1 */
 /* No LPUART1 consumer for the UART4 link. */
 /* USER CODE END 1 */
+
+#else
+extern UART_HandleTypeDef hlpuart1;
+#ifndef MOTOR_BACKEND_SIM
+#include "thumb_encoder.h"
+#include "board_link.h"
+void EXTI15_10_IRQHandler(void)
+{
+    bool thumb_board = BoardLink_Role() == BOARD_ROLE_SLAVE;
+    if (thumb_board) ThumbEncoder_IRQHandler();
+    /* Preserve shared-line ownership. No BSP button is enabled by OLD_HW;
+     * future users of lines 10..13 use HAL callbacks without RTOS at priority 3. */
+    uint32_t other = EXTI->PR1 & EXTI->IMR1 & (thumb_board ? 0x3C00U : 0xFC00U);
+    for (unsigned line = 10; line <= 15; ++line)
+        if (other & (1U << line)) HAL_GPIO_EXTI_IRQHandler((uint16_t)(1U << line));
+}
+#endif
+void LPUART1_IRQHandler(void) {
+#if N_PULSE_TIMING_DIAGNOSTICS
+    uint32_t timing=OldHW_TimingBegin(OLD_TIME_HOST_IRQ);
+#endif
+    HAL_UART_IRQHandler(&hlpuart1);
+#if N_PULSE_TIMING_DIAGNOSTICS
+    OldHW_TimingEnd(OLD_TIME_HOST_IRQ,timing);
+#endif
+}
+void TIM6_DAC_IRQHandler(void) { HAL_TIM_IRQHandler(&htim6); }
+#if N_PULSE_DUAL_BOARD_LINK && !defined(MOTOR_BACKEND_SIM)
+extern UART_HandleTypeDef huart3;
+void USART3_IRQHandler(void) {
+#if N_PULSE_TIMING_DIAGNOSTICS
+    uint32_t timing=OldHW_TimingBegin(OLD_TIME_LINK_IRQ);
+#endif
+    HAL_UART_IRQHandler(&huart3);
+#if N_PULSE_TIMING_DIAGNOSTICS
+    OldHW_TimingEnd(OLD_TIME_LINK_IRQ,timing);
+#endif
+}
+#endif
+#endif

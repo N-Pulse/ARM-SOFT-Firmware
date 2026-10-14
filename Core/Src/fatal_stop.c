@@ -1,11 +1,17 @@
 #include "fatal_stop.h"
 #include "stm32g4xx.h"
+#if N_PULSE_OLD_HW
+#include "old_hw_cutoff.h"
+#endif
 
 volatile uint32_t g_n_pulse_fatal_cause;
 
 void N_PULSE_FatalCutoff(n_pulse_fatal_cause_t cause)
 {
     __disable_irq();
+#if N_PULSE_OLD_HW
+    OldHW_CutoffRegisters();
+#else
     /* Fixed G474 peripheral addresses, NOT potentially uninitialized handles.
      * Existing SLEEP mapping: PG0/PG2/PG4 and PC4. Latch low before selecting
      * GPIO output mode; preserve every unrelated pin and clock bit. */
@@ -45,6 +51,7 @@ void N_PULSE_FatalCutoff(n_pulse_fatal_cause_t cause)
         TIM17->CR1 &= ~TIM_CR1_CEN;
     }
     __DSB();
+#endif
     g_n_pulse_fatal_cause = (uint32_t)cause;
 }
 

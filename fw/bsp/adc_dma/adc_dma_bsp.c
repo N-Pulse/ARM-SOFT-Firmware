@@ -5,7 +5,9 @@
 #include <math.h>
 #include <string.h>
 extern ADC_HandleTypeDef hadc1,hadc2,hadc3,hadc4,hadc5;
+#if N_PULSE_ENABLE_CURRENT_ACQUISITION
 extern OPAMP_HandleTypeDef hopamp1,hopamp2,hopamp3,hopamp4,hopamp5,hopamp6;
+#endif
 static ADC_HandleTypeDef *const adcs[5]={&hadc1,&hadc2,&hadc3,&hadc4,&hadc5};
 #if N_PULSE_ENABLE_CURRENT_ACQUISITION
 static OPAMP_HandleTypeDef *const amps[6]={&hopamp1,&hopamp2,&hopamp3,&hopamp4,&hopamp5,&hopamp6};

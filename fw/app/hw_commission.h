@@ -13,6 +13,10 @@ enum { HW_OK, HW_PRODUCTION, HW_SESSION, HW_STALE, HW_WRONG_MOTOR,
        HW_FAULT, HW_ARM_FIRST, HW_ENABLE_FIRST, HW_REJECTED };
 bool HWCommission_Ready(void);
 bool HWCommission_Configured(void);
+#if N_PULSE_OLD_HW
+/* Explicit operator preflight acknowledgement, scoped to the current STOP epoch. */
+bool HWCommission_OutputPreflightReady(void);
+#endif
 bool HWCommission_MeasurementAllowed(float position);
 float HWCommission_ReferenceRate(void);
 float HWCommission_PwmCeiling(void);

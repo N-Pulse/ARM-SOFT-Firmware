@@ -43,6 +43,11 @@ void Motor_Disable(motor_id_t id);
 bool Motor_IsEnabled(motor_id_t id);
 /* Explicit task-context recovery; refuses persistent causes, never arms. */
 bool Motor_RecoverFromFault(void);
+/* Capture while validating an operator request under Motor_Lock. Any newer
+ * STOP, including a repeat of the same cause, invalidates this ticket. */
+typedef struct { uint32_t epoch, stop_serial; } motor_recovery_ticket_t;
+motor_recovery_ticket_t Motor_RecoveryTicketLocked(void);
+bool Motor_RecoverFromFaultWithTicket(motor_recovery_ticket_t ticket);
 void Motor_StopAll(void);
 void Motor_OnPositionFeedback(motor_id_t id, float position_rad, float velocity_rad_s);
 void Motor_OnPositionFeedbackAtTime(motor_id_t id, float position, float velocity, uint32_t ms);

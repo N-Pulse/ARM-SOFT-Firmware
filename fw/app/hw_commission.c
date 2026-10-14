@@ -7,6 +7,14 @@
 #include "drv8848.h"
 #include "motor_estimation.h"
 #include <math.h>
+#if N_PULSE_OLD_HW
+#include "board_link.h"
+static bool output_preflight;
+static uint32_t preflight_epoch;
+bool HWCommission_OutputPreflightReady(void) {
+    return output_preflight && preflight_epoch == MotorSafety_EpochLocked();
+}
+#endif
 #if N_PULSE_HW_SINGLE_MOTOR_TEST
 static bool configured;
 static float minimum, maximum, step_limit, rate;
@@ -22,6 +30,9 @@ bool HWCommission_Ready(void) {
     uint32_t key = Motor_Lock();
     motor_state_t m;
     motor_id_t id = (motor_id_t)N_PULSE_HW_TEST_MOTOR;
+#if N_PULSE_OLD_HW
+    if (!BoardLink_IsLocalMotor(id)) { Motor_Unlock(key); return false; }
+#endif
     Motor_GetSnapshot(id, &m);
     bool ok = configured && CommsSession_IsFreshLocked(HAL_GetTick()) &&
         Encoder_BSP_IsCalibrated(id) && Motor_HasFreshPositionFeedback(id) &&
@@ -44,6 +55,9 @@ uint32_t HWCommission_Execute(const hw_command_t *c, uint32_t ms, uint32_t epoch
     else if (epoch != MotorSafety_EpochLocked() || c->epoch != epoch ||
              (uint32_t)(now-ms) > 250U || !c->request_id || c->request_id <= last_request) result = HW_STALE;
     else if (c->motor_id != N_PULSE_HW_TEST_MOTOR) result = HW_WRONG_MOTOR;
+#if N_PULSE_OLD_HW
+    else if (!BoardLink_IsLocalMotor((motor_id_t)c->motor_id)) result = HW_WRONG_MOTOR;
+#endif
     if (result != HW_OK) { Motor_Unlock(key); return result; }
     last_request = c->request_id; /* Every admissible request is consumed once. */
     motor_id_t id = (motor_id_t)c->motor_id;
@@ -70,9 +84,11 @@ uint32_t HWCommission_Execute(const hw_command_t *c, uint32_t ms, uint32_t epoch
         if (enabled || armed) result=HW_DISABLE_FIRST;
         else if (!Encoder_BSP_Reset(id)) result=HW_REJECTED;
         break;
-    case 4:
+    case 4: {
+        motor_recovery_ticket_t ticket=Motor_RecoveryTicketLocked();
         Motor_Unlock(key);
-        return Motor_RecoverFromFault() ? HW_OK : HW_FAULT;
+        return Motor_RecoverFromFaultWithTicket(ticket) ? HW_OK : HW_FAULT;
+    }
     case 5:
         if (!configured) result=HW_PARAMETERS;
         else if (!Encoder_BSP_IsCalibrated(id)) result=HW_CALIBRATION;
@@ -101,6 +117,13 @@ uint32_t HWCommission_Execute(const hw_command_t *c, uint32_t ms, uint32_t epoch
         else if(!MotorEstimation_Reset(id,c->stationary_reference_verified)) result=HW_REJECTED;
         break;
     case 10: MotorEstimation_Stop(id); break;
+#if N_PULSE_OLD_HW
+    case 11: /* Existing stationary_reference_verified bool is an explicit operator attestation here. */
+        if (enabled || armed) result = HW_DISABLE_FIRST;
+        else if (!c->stationary_reference_verified || !HWCommission_Ready()) result = HW_REJECTED;
+        else { output_preflight = true; preflight_epoch = epoch; }
+        break;
+#endif
     default: result=HW_PARAMETERS; break;
     }
     Motor_Unlock(key); return result;

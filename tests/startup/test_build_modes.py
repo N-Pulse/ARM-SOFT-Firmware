@@ -34,7 +34,13 @@ def main():
     assert before == after, "Object content or timestamp changed during mode alternation"
     invalid = subprocess.run([make, "-n", "SIM_MODE=2"], cwd=ROOT, capture_output=True, text=True)
     assert invalid.returncode != 0 and "SIM_MODE must be 0" in invalid.stderr
+    for unsafe in ('CURRENT_ACQUISITION=1', 'OLD_HW_MOTION_OPT_IN=1'):
+        rejected = subprocess.run([make, '-n', unsafe], cwd=ROOT, capture_output=True, text=True)
+        assert rejected.returncode != 0 and 'OLD_HW' in rejected.stderr, unsafe
     print(f"HW -> SIM -> HW/Debug: {len(objects)} isolated objects unchanged; HW alias preserved; invalid mode rejected.")
+    print('OLD_HW: unmapped current acquisition and unscoped motion opt-in rejected before compilation.')
+    timing_sim = subprocess.run([make,'-n','SIM_MODE=1','TIMING_DIAGNOSTICS=1'],cwd=ROOT,capture_output=True,text=True)
+    assert timing_sim.returncode!=0 and 'HW-only' in timing_sim.stderr
 
 
 if __name__ == "__main__":

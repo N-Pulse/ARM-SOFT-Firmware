@@ -17,11 +17,18 @@
   */
 /* USER CODE END Header */
 /* Includes ------------------------------------------------------------------*/
+#if (defined(__arm__) || defined(__thumb__)) && (!N_PULSE_OLD_HW || !N_PULSE_TARGET_RET6)
+#error "This branch requires the maintained OLD_HW RET6 build; generated legacy flags are unsafe"
+#endif
 #include "main.h"
+#include "old_hw_timing.h"
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include "fatal_stop.h"
+#if N_PULSE_OLD_HW
+#include "old_hw.h"
+#endif
 #include "FreeRTOS.h"
 #include "task.h"
 #include "timers.h"
@@ -80,6 +87,7 @@ DMA_HandleTypeDef hdma_adc3;
 DMA_HandleTypeDef hdma_adc4;
 DMA_HandleTypeDef hdma_adc5;
 
+#if !N_PULSE_OLD_HW
 HRTIM_HandleTypeDef hhrtim1;
 
 LPTIM_HandleTypeDef hlptim1;
@@ -90,6 +98,7 @@ OPAMP_HandleTypeDef hopamp3;
 OPAMP_HandleTypeDef hopamp4;
 OPAMP_HandleTypeDef hopamp5;
 OPAMP_HandleTypeDef hopamp6;
+#endif
 
 TIM_HandleTypeDef htim1;
 TIM_HandleTypeDef htim2;
@@ -108,7 +117,9 @@ UART_HandleTypeDef huart3;
 DMA_HandleTypeDef hdma_usart2_rx;
 
 /* USER CODE BEGIN PV */
+#if !N_PULSE_OLD_HW
 static TaskHandle_t sDefaultTaskHandle;
+#endif
 static TaskHandle_t sControlTaskHandle;
 static TaskHandle_t sSafetyTaskHandle;
 static TaskHandle_t sTelemetryTaskHandle;
@@ -118,6 +129,7 @@ static TimerHandle_t sLedTimer;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
+#if !N_PULSE_OLD_HW
 void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
 static void MX_DMA_Init(void);
@@ -147,6 +159,7 @@ static void MX_ADC3_Init(void);
 static void MX_ADC5_Init(void);
 static void MX_OPAMP5_Init(void);
 static void MX_USART3_UART_Init(void);
+#endif /* preserved new-board peripheral prototypes */
 /* USER CODE BEGIN PFP */
 static void ControlTask(void *argument);
 static void SafetyTask(void *argument);
@@ -185,13 +198,25 @@ int main(void)
   /* USER CODE END Init */
 
   /* Configure the system clock */
+#if N_PULSE_OLD_HW
+  BoardLink_Init(); /* PC0 before motor peripherals or output pin setup. */
+  OldHW_HoldOutputsLow();
+  OldHW_ClockConfig();
+#else
   SystemClock_Config();
+#endif
 
   /* USER CODE BEGIN SysInit */
 
   /* USER CODE END SysInit */
 
   /* Initialize all configured peripherals */
+#if N_PULSE_OLD_HW
+  OldHW_Init();
+#if N_PULSE_TIMING_DIAGNOSTICS
+  OldHW_TimingInit();
+#endif
+#else
   MX_GPIO_Init();
   MX_DMA_Init();
   MX_TIM1_Init();
@@ -220,6 +245,7 @@ int main(void)
   MX_ADC5_Init();
   MX_OPAMP5_Init();
   MX_USART3_UART_Init();
+#endif
   /* USER CODE BEGIN 2 */
   BoardUART_Compat_Init();
   BoardLink_Init();
@@ -244,6 +270,8 @@ int main(void)
   * @brief System Clock Configuration
   * @retval None
   */
+#if !N_PULSE_OLD_HW
+/* New-board generated initialization and legacy diagnostics preserved, inactive. */
 void SystemClock_Config(void)
 {
   RCC_OscInitTypeDef RCC_OscInitStruct = {0};
@@ -2023,6 +2051,8 @@ static void wt_init_one(const wt_enc_t *e)
 
 #endif /* MOTOR_CALIB_MODE: legacy helpers are not compiled */
 
+#endif /* preserved new-board peripheral initialization */
+
 #ifndef MOTOR_CALIB_MODE
 /* ===========================================================================
  *  SÉCURITÉ ANTI-BUTÉE — TOUJOURS ACTIVE (pipeline normale + tests).
@@ -2083,6 +2113,7 @@ static void WristTest_TaskCreate(void)
 }
 #endif /* WRIST_ENCODER_TEST */
 
+#if !N_PULSE_OLD_HW
 #ifdef MOTOR_CALIB_MODE
 /* ---------------------------------------------------------------------------
  * Calibration closed-loop par moteur (bang-bang + deadband).
@@ -2521,6 +2552,8 @@ static void Calib_TaskCreate(void)
 }
 #endif /* MOTOR_CALIB_MODE */
 
+#endif /* preserved new-board initialization/legacy test code */
+
 static void CreateTasks(void)
 {
   BaseType_t status = pdPASS;
@@ -2540,8 +2573,15 @@ static void CreateTasks(void)
    * on ne démarre PAS la pile proto. */
   Calib_TaskCreate();
 #else
+#if N_PULSE_OLD_HW
+  if (OldHW_HostEnabled()) Comms_TaskCreate();
+#else
   Comms_TaskCreate();
+#endif
   MotorGuard_TaskCreate();   /* SÉCURITÉ anti-butée — toujours active */
+#if N_PULSE_DUAL_BOARD_LINK && !defined(MOTOR_BACKEND_SIM)
+  BoardLink_TaskCreate();
+#endif
 #ifdef WRIST_ENCODER_TEST
   WristTest_TaskCreate();
 #endif
@@ -2572,7 +2612,13 @@ static void ControlTask(void *argument)
   while (1)
   {
     App_Task();
+#if N_PULSE_TIMING_DIAGNOSTICS
+    uint32_t timing=OldHW_TimingBegin(OLD_TIME_CONTROL);
+#endif
     Motor_Update(); /* Real elapsed HAL time; excessive delays latch a stop. */
+#if N_PULSE_TIMING_DIAGNOSTICS
+    OldHW_TimingEnd(OLD_TIME_CONTROL,timing);
+#endif
     vTaskDelayUntil(&last_wake, period);
   }
 }
@@ -2585,8 +2631,14 @@ static void SafetyTask(void *argument)
 
   while (1)
   {
+#if N_PULSE_TIMING_DIAGNOSTICS
+    uint32_t timing=OldHW_TimingBegin(OLD_TIME_SAFETY);
+#endif
     MotorSafety_Poll();
     Motor_ServiceStop();
+#if N_PULSE_TIMING_DIAGNOSTICS
+    OldHW_TimingEnd(OLD_TIME_SAFETY,timing);
+#endif
     vTaskDelayUntil(&last_wake, period);
   }
 }
@@ -2616,7 +2668,11 @@ static void TelemetryTask(void *argument)
 static void LedTimerCallback(TimerHandle_t timer)
 {
   (void)timer;
+#if N_PULSE_OLD_HW
+  OldHW_Heartbeat();
+#else
   HAL_GPIO_TogglePin(USART3_TX_LED_GPIO_Port, USART3_TX_LED_Pin);
+#endif
 }
 
 void vApplicationMallocFailedHook(void)

@@ -18,6 +18,13 @@ typedef struct {
     float kalman_rad, kalman_velocity_rad_s;
     uint32_t kalman_status;
 } hw_diagnostic_t;
+typedef struct {
+    uint32_t timestamp_ms, role;
+    uint64_t local_session, remote_session;
+    uint32_t local_epoch, remote_epoch, local_stops, remote_stops;
+    uint32_t heartbeat_age_ms, echo_age_ms, flags, rx_sequence, tx_sequence;
+    uint32_t malformed, overflows, restarts, rejected, transport_errors;
+} link_diagnostic_t;
 #include <stdbool.h>
 
 #ifndef INC_TX_H_
@@ -30,6 +37,7 @@ typedef struct {
 extern "C" {
 #endif
 bool SendMotorDiagnostic(const hw_diagnostic_t *diagnostic);
+bool SendLinkDiagnostic(const link_diagnostic_t *diagnostic);
 bool SendCommandReply(uint32_t request, uint32_t result, uint32_t epoch, uint32_t faults);
 bool SendHelloMessage(void);
 

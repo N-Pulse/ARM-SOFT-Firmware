@@ -47,3 +47,24 @@ bool SendMotorDiagnostic(const hw_diagnostic_t *d) {
 #undef SET
     ProsthesisMessage<TX_BUFFER_SIZE> msg; msg.set_diagnostic(diagnostic); return queue_response(msg);
 }
+
+bool SendLinkDiagnostic(const link_diagnostic_t *d) {
+    if (!d) return false;
+    /* Small bounded varint-only writer for the additive LinkDiagnostic schema.
+     * Existing generated host command/motor classes remain unchanged. The
+     * native schema test decodes this exact output with Google's protobuf. */
+    uint8_t payload[TX_BUFFER_SIZE]; size_t size=2;
+    auto put=[&](uint64_t value) {
+        do { if(size==sizeof(payload)) return false;
+             payload[size++]=static_cast<uint8_t>((value&127U)|(value>127U?128U:0U)); value>>=7;
+        } while(value);
+        return true;
+    };
+    const uint64_t fields[]={d->timestamp_ms,d->role,d->local_session,d->remote_session,
+        d->local_epoch,d->remote_epoch,d->local_stops,d->remote_stops,d->heartbeat_age_ms,
+        d->echo_age_ms,d->flags,d->rx_sequence,d->tx_sequence,d->malformed,d->overflows,d->restarts,
+        d->rejected,d->transport_errors};
+    for(unsigned i=0;i<18;++i) if(fields[i] && (!put((i+1U)<<3) || !put(fields[i]))) return false;
+    payload[0]=0x2AU; payload[1]=static_cast<uint8_t>(size-2U); /* ProsthesisMessage.link=5. */
+    return UART4Transport_QueuePayload(payload,size);
+}
