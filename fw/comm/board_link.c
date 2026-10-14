@@ -42,7 +42,11 @@ static bool is_master_motor(motor_id_t id)
 
 bool BoardLink_IsLocalMotor(motor_id_t id)
 {
-    return (s_role == BOARD_ROLE_MASTER) ?  is_master_motor(id)
+    #ifdef MOTOR_BACKEND_SIM
+     (void)id;
+     return true;  /* sim test with one board: all motors local */
+    #endif
+     return (s_role == BOARD_ROLE_MASTER) ?  is_master_motor(id)
                                          : !is_master_motor(id);
 }
 
@@ -54,7 +58,6 @@ board_role_t BoardLink_Role(void)
 static void link_strap_init(void)
 {
     __HAL_RCC_GPIOC_CLK_ENABLE();
-
     GPIO_InitTypeDef g = {0};
     g.Mode  = GPIO_MODE_INPUT;
     g.Pull  = GPIO_PULLUP;

@@ -45,7 +45,9 @@ void Motor_SetTarget(motor_id_t id, float position, uint8_t speed_percent)
      * motor_l298n only acts on motors actually initialized at boot
      * (those whose pins it claimed). Motors with no L298N attached are
      * still configured as outputs but stay at duty 0. */
+    #ifndef MOTOR_BACKEND_SIM
     Motor_L298N_MoveToAngle(id, safe_position, safe_speed);
+    #endif
 }
 
 void Motor_SetAllTargets(float position, uint8_t speed_percent)
