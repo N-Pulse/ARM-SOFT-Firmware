@@ -2,6 +2,7 @@
 #include "comms_config.h"
 #include "motor_safety.h"
 #include "motor_lock.h"
+#include "hw_test_config.h"
 #include <string.h>
 
 static intent_t intents[COMMS_INTENT_CAPACITY];
@@ -28,6 +29,7 @@ static bool fresh(uint32_t now)
     return enabled && session && !lost &&
            (uint32_t)(now - fresh_ms) <= COMMS_LINK_TIMEOUT_MS;
 }
+bool CommsSession_IsFreshLocked(uint32_t now) { return fresh(now); }
 void CommsSession_PollLocked(uint32_t now)
 {
     if (enabled && session && !lost && !fresh(now)) {
@@ -76,7 +78,7 @@ bool CommsSession_OnMessage(const rx_result_t *msg, uint32_t ms,
         if (started) *started = begin;
         Motor_Unlock(key); return true;
     }
-    if (msg->type != RX_TYPE_ACTION || msg->data.action_id > ACTION_ROTATE_WRIST_L ||
+    if (N_PULSE_HW_SINGLE_MOTOR_TEST || msg->type != RX_TYPE_ACTION || msg->data.action_id > ACTION_ROTATE_WRIST_L ||
         !fresh(now) || !MotorSafety_CanArmLocked()) {
         ++diag.rejected; Motor_Unlock(key); return false;
     }

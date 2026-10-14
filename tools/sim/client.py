@@ -28,11 +28,15 @@ def submit_command(peer, text):
         return peer.request(p.ENABLE,bytes((mask,)))
     if command=='target' and len(words)==4:
         return peer.request(p.TARGET,p.targets([(int(words[1]),float(words[2]),int(words[3]))]))
-    raise ValueError('config [force_mask] | recover | arm | enable mask | target ID rad limit | stop')
+    if command=='intent' and len(words)==2:
+        actions=('OPEN_HAND','CLOSE_HAND','PINCH','ROTATE_WRIST_R','ROTATE_WRIST_L')
+        if words[1] not in actions: raise ValueError('one of the five existing public intentions required')
+        return peer.request(p.INTENT,bytes((actions.index(words[1]),)))
+    raise ValueError('config [force_mask] | recover | arm | enable mask | target ID rad limit | intent NAME | stop')
 
 class SerialWorker:
     def __init__(self,port,*,transport=None,on_state=None,clock=milliseconds):
-        self.peer=Peer(); self.clock=clock; self.on_state=on_state
+        self.peer=Peer(continuous_clock=getattr(transport,'continuous_clock',False)); self.clock=clock; self.on_state=on_state
         self.transport=transport; self.port=port; self.running=False; self.error=None
         self.thread=None
     def start(self):
@@ -60,7 +64,7 @@ class SerialWorker:
                     frame=pending.popleft()
                     if self.transport.write(frame)!=len(frame):
                         raise OSError('partial serial write')
-                    available=now+len(frame)*10000/p.BAUD
+                    available=now+len(frame)*10000/p.BAUD if getattr(self.transport,'baud_limited',True) else now
                 time.sleep(0.001)
         except Exception as exc:
             self.error=exc

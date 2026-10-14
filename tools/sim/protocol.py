@@ -5,6 +5,7 @@ import struct
 VERSION = 2
 MAX_PAYLOAD = 144
 HELLO, HEARTBEAT, CONFIG, RECOVER, ARM, ENABLE, TARGET, STOP, FEEDBACK = range(1, 10)
+INTENT = 10
 HELLO_ACK, STATUS, OUTPUT = 0x81, 0x82, 0x83
 POSITION, VELOCITY, FORCE, APPLIED = 1, 2, 4, 8
 NAMES = ('thumb', 'index', 'middle', 'ring', 'little', 'rotor_5', 'rotor_6', 'palm')

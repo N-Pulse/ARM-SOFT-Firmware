@@ -1,2 +1,1 @@
-#include <stdbool.h>
-bool ADC_DMA_BSP_Init(void);
+#include "../../../fw/bsp/adc_dma/adc_dma_bsp.h"

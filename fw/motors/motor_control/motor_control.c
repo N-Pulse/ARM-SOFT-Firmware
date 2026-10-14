@@ -8,6 +8,10 @@
 #include "motor_pid_config.h"
 #include "drv8848.h"
 #include "motor_backend_state.h"
+#include "hw_test_config.h"
+#if N_PULSE_HW_SINGLE_MOTOR_TEST
+#include "hw_commission.h"
+#endif
 #ifdef MOTOR_BACKEND_SIM
 #include "motor_sim_config.h"
 #endif
@@ -92,7 +96,7 @@ void Motor_ServiceStop(void)
 
 bool Motor_OutputAllowedLocked(motor_id_t id)
 {
-    return (uint32_t)id < MOTOR_COUNT && s_motors[id].enabled &&
+    return (uint32_t)id < MOTOR_COUNT && HWTest_MotorAllowed(id) && s_motors[id].enabled &&
            MotorSafety_CanArmLocked() && MotorBackend_IsArmed();
 }
 
@@ -214,7 +218,10 @@ void Motor_Update(void)
 
 bool Motor_Enable(motor_id_t id)
 {
-    if ((uint32_t)id >= MOTOR_COUNT) return false;
+    if ((uint32_t)id >= MOTOR_COUNT || !HWTest_MotorAllowed(id)) return false;
+#if N_PULSE_HW_SINGLE_MOTOR_TEST
+    if (!HWCommission_Ready()) return false;
+#endif
     MotorSafety_Poll();
     uint32_t key = Motor_Lock();
     uint32_t now = HAL_GetTick();
@@ -225,6 +232,9 @@ bool Motor_Enable(motor_id_t id)
                    MotorSafety_CanEnableLocked(id, now);
     if (allowed) {
         motor_state_t *motor = &s_motors[id];
+#if N_PULSE_HW_SINGLE_MOTOR_TEST
+        motor->max_reference_rate = HWCommission_ReferenceRate();
+#endif
         motor->reference_position = motor->measured_position;
         motor->target_position = motor->measured_position;
         motor->pwm_limit = 0.0f; /* An explicit new command is required AFTER enable. */
@@ -308,7 +318,7 @@ bool Motor_RecoverFromFault(void)
 
 void Motor_SetTarget(motor_id_t id, float position, uint8_t speed_percent)
 {
-    if ((uint32_t)id >= MOTOR_COUNT) return;
+    if ((uint32_t)id >= MOTOR_COUNT || !HWTest_MotorAllowed(id)) return;
     if (!isfinite(position)) {
         MotorSafety_RequestStopCause(MOTOR_STOP_PID, id);
         return;
@@ -316,6 +326,11 @@ void Motor_SetTarget(motor_id_t id, float position, uint8_t speed_percent)
     float safe_position = position;
     uint8_t safe_speed = speed_percent;
     uint32_t key = Motor_Lock();
+#if N_PULSE_HW_SINGLE_MOTOR_TEST
+    if (!s_motors[id].enabled || !HWCommission_FilterTarget(position, &safe_speed)) {
+        Motor_Unlock(key); return;
+    }
+#endif
     if (MotorSafety_FilterCommand(id, &safe_position, &safe_speed)) {
         s_motors[id].target_position = safe_position;
         s_motors[id].pwm_limit = safe_speed > 100U ? 100U : safe_speed;
@@ -367,6 +382,10 @@ void Motor_OnPositionFeedbackAtTime(motor_id_t id, float position_rad, float vel
     s_motors[id].measured_position = position_rad;
     s_motors[id].feedback_ms = ms;
     s_motors[id].feedback_valid = true;
+#if N_PULSE_HW_SINGLE_MOTOR_TEST
+    if(s_motors[id].enabled && !HWCommission_MeasurementAllowed(position_rad))
+        MotorSafety_RequestStopCauseLocked(MOTOR_STOP_FEEDBACK,id);
+#endif
     Motor_Unlock(key);
 }
 

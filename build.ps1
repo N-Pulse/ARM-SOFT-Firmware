@@ -24,7 +24,7 @@ $target = if ($Rebuild) { 'rebuild' } else { 'all' }
 Write-Host "Compilation N-Pulse: $Mode, acquisition courant desactivee."
 Push-Location $projectRoot
 try {
-    & $makePath $target "SIM_MODE=$simMode" 'CURRENT_ACQUISITION=0'
+    & $makePath $target "SIM_MODE=$simMode" 'CURRENT_ACQUISITION=0' 'HW_SINGLE_MOTOR_TEST=0'
     if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 } finally {
     Pop-Location

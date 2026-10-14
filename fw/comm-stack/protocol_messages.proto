@@ -9,6 +9,9 @@ message DeviceMessage {
   oneof message {
     Hello hello = 1;
     Data data = 2;
+    CommissionCommand commission = 3;
+    StopRequest stop = 4;
+    DiagnosticRequest diagnostic = 5;
   }
 }
 
@@ -44,6 +47,8 @@ message ProsthesisMessage {
   oneof message {
     Config config = 1;
     Error error = 2;
+    MotorDiagnostic diagnostic = 3;
+    CommandReply reply = 4;
   }
 }
 
@@ -76,5 +81,65 @@ message LogisticRegressionParams {
 
 message Error {
   uint32 reason = 1;
+}
+
+// STOP is supported in every HW build, without Hello, epoch or prerequisites.
+message StopRequest {}
+message DiagnosticRequest { uint32 motor_id = 1; }
+// No persistent storage; operator must re-establish verified parameters on boot.
+message CommissionCommand {
+  enum Operation { UNSPECIFIED = 0; LIMITS = 1; CALIBRATE = 2; ZERO = 3;
+    RECOVER = 4; ARM = 5; ENABLE = 6; TARGET = 7; DISABLE = 8;
+    ESTIMATOR_RESET = 9; ESTIMATOR_STOP = 10; }
+  uint32 request_id = 1;
+  uint32 epoch = 2; // latest diagnostic epoch; STOP/recovery invalidate old work
+  Operation operation = 3;
+  uint32 motor_id = 4;
+  uint32 cpr = 5;
+  uint32 quadrature = 6;
+  float gear_ratio = 7;
+  sint32 direction = 8;
+  sint64 zero_offset = 9;
+  float minimum_rad = 10;
+  float maximum_rad = 11;
+  float maximum_step_rad = 12;
+  uint32 pwm_percent = 13;
+  float target_rad = 14;
+  float reference_rate_rad_s = 15;
+  bool stationary_reference_verified = 16;
+}
+message CommandReply {
+  enum Result { OK = 0; PRODUCTION = 1; SESSION = 2; STALE = 3; WRONG_MOTOR = 4;
+    PARAMETERS = 5; DISABLE_FIRST = 6; CALIBRATION = 7; FEEDBACK = 8;
+    FAULT = 9; ARM_FIRST = 10; ENABLE_FIRST = 11; REJECTED = 12; }
+  uint32 request_id = 1;
+  Result result = 2;
+  uint32 epoch = 3;
+  uint32 faults = 4;
+}
+// Single motor, bounded <128 byte payload even with all fields present.
+// flags: enabled=1, armed=2, encoder fresh=4, calibration=8, test image=16,
+// limits configured=32, ADC active=64. NAN means unavailable float.
+message MotorDiagnostic {
+  uint32 timestamp_ms = 1;
+  uint32 motor_id = 2;
+  uint32 epoch = 3;
+  uint32 flags = 4;
+  uint32 faults = 5;
+  float target_rad = 6;
+  float reference_rad = 7;
+  sint64 raw_count = 8;
+  float encoder_rad = 9;
+  float velocity_rad_s = 10;
+  float pwm_percent = 11;
+  uint32 adc_raw = 12;
+  float adc_voltage = 13;
+  float current_a = 14;
+  uint32 adc_state = 15;
+  uint32 adc_error = 16;
+  uint32 adc_age_ms = 17;
+  float kalman_rad = 18;
+  float kalman_velocity_rad_s = 19;
+  uint32 kalman_status = 20;
 }
 

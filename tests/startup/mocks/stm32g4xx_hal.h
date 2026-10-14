@@ -20,8 +20,9 @@ typedef struct {
 typedef struct { TIM_TypeDef *Instance; TIM_Base_InitTypeDef Init; } TIM_HandleTypeDef;
 typedef struct { TIM_TypeDef *Instance; } LPTIM_HandleTypeDef;
 typedef struct { uint32_t APB1CLKDivider; } RCC_ClkInitTypeDef;
-typedef struct { uint32_t interrupts; } DMA_HandleTypeDef;
-typedef struct { DMA_HandleTypeDef *DMA_Handle; } ADC_HandleTypeDef;
+typedef struct { uint32_t interrupts; struct { uint32_t Mode; } Init; } DMA_HandleTypeDef;
+typedef struct { DMA_HandleTypeDef *DMA_Handle; uint32_t ErrorCode;
+    struct { uint32_t ContinuousConvMode, DMAContinuousRequests; } Init; } ADC_HandleTypeDef;
 typedef struct { uint32_t unused; } OPAMP_HandleTypeDef;
 typedef enum { TIM6_DAC_IRQn, DMA1_Channel8_IRQn, DMA1_Channel2_IRQn,
     DMA1_Channel4_IRQn, DMA1_Channel5_IRQn, DMA1_Channel3_IRQn } IRQn_Type;
@@ -38,6 +39,11 @@ typedef enum { TIM6_DAC_IRQn, DMA1_Channel8_IRQn, DMA1_Channel2_IRQn,
 #define DMA_IT_HT 1U
 #define DMA_IT_TC 2U
 #define DMA_IT_TE 4U
+#define DISABLE 0U
+#define DMA_NORMAL 0U
+#define ADC_SINGLE_ENDED 0U
+#define ADC_FLAG_OVR 1U
+#define __HAL_ADC_GET_FLAG(h,f) ((void)(h),(void)(f),0)
 #define __HAL_RCC_TIM6_CLK_ENABLE() ((void)0)
 #define __HAL_TIM_DISABLE_IT(h, bits) ((h)->Instance->DIER &= ~(bits))
 #define __HAL_TIM_ENABLE_IT(h, bits) ((h)->Instance->DIER |= (bits))
@@ -60,6 +66,11 @@ HAL_StatusTypeDef HAL_TIM_Encoder_Start(TIM_HandleTypeDef *, uint32_t);
 HAL_StatusTypeDef HAL_LPTIM_Encoder_Start(LPTIM_HandleTypeDef *, uint32_t);
 HAL_StatusTypeDef HAL_ADC_Start_DMA(ADC_HandleTypeDef *, uint32_t *, uint32_t);
 HAL_StatusTypeDef HAL_ADC_Stop_DMA(ADC_HandleTypeDef *);
+HAL_StatusTypeDef HAL_ADC_Init(ADC_HandleTypeDef *);
+HAL_StatusTypeDef HAL_DMA_Init(DMA_HandleTypeDef *);
+HAL_StatusTypeDef HAL_ADCEx_Calibration_Start(ADC_HandleTypeDef *,uint32_t);
+void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef *);
+void HAL_ADC_ErrorCallback(ADC_HandleTypeDef *);
 HAL_StatusTypeDef HAL_OPAMP_Start(OPAMP_HandleTypeDef *);
 HAL_StatusTypeDef HAL_OPAMP_Stop(OPAMP_HandleTypeDef *);
 void HAL_IncTick(void);

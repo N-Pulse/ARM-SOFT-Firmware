@@ -4,6 +4,7 @@
 #include <stdint.h>
 #include <stddef.h>
 #include <stdbool.h>
+#include "hw_commission.h"
 
 
 #define RX_BUFFER_SIZE 128
@@ -14,7 +15,10 @@ typedef enum {
     RX_TYPE_ACTION,
     RX_TYPE_HELLO,
     RX_TYPE_CONFIG,
-    RX_TYPE_ERROR
+    RX_TYPE_ERROR,
+    RX_TYPE_COMMISSION,
+    RX_TYPE_STOP,
+    RX_TYPE_DIAGNOSTIC
 } rx_msg_type_t;
 
 typedef struct {
@@ -26,6 +30,7 @@ typedef struct {
         uint32_t error_code;
         uint32_t mode;
     } data;
+    hw_command_t command;
 } rx_result_t;
 
 #ifdef __cplusplus

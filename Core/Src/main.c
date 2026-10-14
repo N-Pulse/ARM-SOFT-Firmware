@@ -31,6 +31,9 @@
 #include "comm.h"
 #include "board_link.h"
 #include "encoder_bsp.h"
+#include "hw_telemetry.h"
+#include "adc_dma_bsp.h"
+#include "motor_estimation.h"
 
 /* ============================================================
  *  MODES DE BRING-UP (décommenter UN seul, ou aucun = build normal)
@@ -2529,7 +2532,7 @@ static void CreateTasks(void)
   status = xTaskCreate(SafetyTask, "safe", 256, NULL, tskIDLE_PRIORITY + 5, &sSafetyTaskHandle);
   configASSERT(status == pdPASS);
 
-  status = xTaskCreate(TelemetryTask, "tele", 256, NULL, tskIDLE_PRIORITY + 1, &sTelemetryTaskHandle);
+  status = xTaskCreate(TelemetryTask, "tele", 768, NULL, tskIDLE_PRIORITY + 1, &sTelemetryTaskHandle);
   configASSERT(status == pdPASS);
 
 #ifdef MOTOR_CALIB_MODE
@@ -2591,10 +2594,21 @@ static void SafetyTask(void *argument)
 static void TelemetryTask(void *argument)
 {
   (void)argument;
-  const TickType_t period = pdMS_TO_TICKS(1000);
+  const TickType_t period = pdMS_TO_TICKS(10);
+  uint32_t last_telemetry = HAL_GetTick();
 
   while (1)
   {
+#ifndef MOTOR_BACKEND_SIM
+    ADC_DMA_BSP_Service();
+    if ((uint32_t)(HAL_GetTick()-last_telemetry) >= N_PULSE_TELEMETRY_PERIOD_MS) {
+      last_telemetry = HAL_GetTick();
+      HWTelemetry_Service();
+    }
+#else
+    (void)last_telemetry;
+#endif
+    MotorEstimation_Service();
     vTaskDelay(period);
   }
 }

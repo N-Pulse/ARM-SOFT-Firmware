@@ -1,5 +1,12 @@
 # N-Pulse — Changements du firmware et guide de prise en main
 
+> Mise à jour du 13 octobre 2026 : Patch 7 est implémenté dans l'arbre de travail.
+> Voir [PATCH7_BRINGUP_ADC_SIM_KALMAN.md](docs/PATCH7_BRINGUP_ADC_SIM_KALMAN.md)
+> pour le mode de commissioning explicite, l'ADC horodaté, le terminal UART4,
+> le transport SIM natif et l'estimateur en observation. Le compte rendu du
+> 9 octobre ci-dessous reste historique ; ses limites ne décrivent pas toutes
+> les nouvelles capacités. Aucun essai moteur physique ni Gazebo n'est revendiqué.
+
 Comparaison du code fourni avec le commit `4178e15df62c1cdb3c61ac73d6e086e08bb00020` (`Modified code with first version implementation of PID closed-loop control`). L’archive de référence correspond à ce commit, après normalisation des fins de ligne. État examiné le 9 octobre 2026.
 
 Ce document décrit le comportement du code examiné, les commandes à utiliser et les limites observées. Les chemins sont relatifs à la racine du dépôt. Il distingue les tests relancés sur PC des résultats de compilation enregistrés dans l’archive et des essais matériels restant à réaliser.
