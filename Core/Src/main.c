@@ -40,7 +40,7 @@
  *      → utiliser le script tools motor_calib.py
  * ============================================================ */
 /* #define WRIST_ENCODER_TEST */
-#define MOTOR_CALIB_MODE
+/* #define MOTOR_CALIB_MODE */
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/

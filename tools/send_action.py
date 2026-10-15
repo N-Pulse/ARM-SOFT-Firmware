@@ -10,6 +10,7 @@ Use:
     python tools/send_action.py --port COM3 --action close
     python tools/send_action.py --port COM3 --action open
     python tools/send_action.py --port COM3 --hello
+    python tools/send_action.py --port COM3 --raw 11    # debug: one motor (MOTOR_SINGLE_TEST)
 
 Pre-req:
     pip install pyserial protobuf
@@ -50,10 +51,12 @@ ACTION_MAP = {
 }
 
 
-def build_action_frame(action_name: str) -> bytes:
-    """Build [0xAA][len][DeviceMessage{data:{instruction:{action}}}]."""
+def build_action_frame(action) -> bytes:
+    """Build [0xAA][len][DeviceMessage{data:{instruction:{action}}}].
+
+    `action` is either a name from ACTION_MAP or a raw int (debug, e.g. 11)."""
     cls = pb.ClassificationData()
-    cls.action = ACTION_MAP[action_name]
+    cls.action = action if isinstance(action, int) else ACTION_MAP[action]
 
     data = pb.Data()
     data.instruction.CopyFrom(cls)
@@ -104,6 +107,7 @@ def main() -> int:
     g = p.add_mutually_exclusive_group(required=True)
     g.add_argument("--action", choices=ACTION_MAP.keys(), help="Send a ClassificationData action")
     g.add_argument("--hello", action="store_true", help="Send a Hello handshake message")
+    g.add_argument("--raw", type=int, help="Send a raw action number (debug, e.g. 11 = index to 30 deg, 21 = index back to 0)")
     p.add_argument("--device-id", type=int, default=1, help="device_id for Hello (default 1)")
     p.add_argument("--listen", type=float, default=1.0, help="Seconds to listen after sending (default 1.0)")
     args = p.parse_args()
@@ -111,6 +115,9 @@ def main() -> int:
     if args.hello:
         frame = build_hello_frame(device_id=args.device_id)
         label = f"Hello(device_id={args.device_id})"
+    elif args.raw is not None:
+        frame = build_action_frame(args.raw)
+        label = f"RawAction({args.raw})"
     else:
         frame = build_action_frame(args.action)
         label = f"Action({args.action.upper()})"
@@ -120,16 +127,18 @@ def main() -> int:
 
     try:
         with serial.Serial(args.port, args.baud, timeout=0.05) as ser:
-            # Drain anything stale already on the line (boot beacons, leftover
-            # bytes from previous runs) so the response we capture below is
-            # only what the chip emitted IN REPLY to our message.
+            # Drain stale boot beacons and replies before sending. Wait for
+            # a quiet interval, with a hard limit so continuous telemetry
+            # cannot postpone TX forever.
+            print("[..] waiting for RX to settle (maximum 1 s)...", flush=True)
             pre_drain = bytearray()
-            t_end = time.time() + 1.0
-            while time.time() < t_end:
+            drain_deadline = time.monotonic() + 1.0
+            quiet_deadline = drain_deadline
+            while time.monotonic() < min(drain_deadline, quiet_deadline):
                 b = ser.read(64)
                 if b:
                     pre_drain.extend(b)
-                    t_end = time.time() + 0.3   # extend window if more bytes flowing
+                    quiet_deadline = time.monotonic() + 0.3
             if pre_drain:
                 print(f"[..] drained {len(pre_drain)} stale bytes:  {hex_dump(pre_drain)}")
 
