@@ -42,7 +42,18 @@ void IntentRouter_Handle(const intent_t *intent)
         /* Rotation pure : les 2 moteurs du poignet dans le même sens. */
         case ACTION_ROTATE_WRIST_R: drive_wrist( 1.57f, 0.0f, 100, intent->epoch); break;
         case ACTION_ROTATE_WRIST_L: drive_wrist(-1.57f, 0.0f, 100, intent->epoch); break;
-
+        case ACTION_THUMB_OPEN:      apply_full_pose(MOTOR_THUMB_OPEN, intent->epoch); break;
+        case ACTION_THUMB_CLOSE:      apply_full_pose(MOTOR_THUMB_CLOSE, intent->epoch); break;
+        case ACTION_INDEX_OPEN:      apply_full_pose(MOTOR_INDEX_OPEN, intent->epoch); break;
+        case ACTION_INDEX_CLOSE:      apply_full_pose(MOTOR_INDEX_CLOSE, intent->epoch); break;
+        case ACTION_MIDDLE_OPEN:      apply_full_pose(MOTOR_MIDDLE_OPEN, intent->epoch); break;
+        case ACTION_MIDDLE_CLOSE:      apply_full_pose(MOTOR_MIDDLE_CLOSE, intent->epoch); break;
+        case ACTION_RING_OPEN:      apply_full_pose(MOTOR_RING_OPEN, intent->epoch); break;
+        case ACTION_RING_CLOSE:      apply_full_pose(MOTOR_RING_CLOSE, intent->epoch); break;
+        case ACTION_LITTLE_OPEN:      apply_full_pose(MOTOR_LITTLE_OPEN, intent->epoch); break;
+        case ACTION_LITTLE_CLOSE:      apply_full_pose(MOTOR_LITTLE_CLOSE, intent->epoch); break;
+        case ACTION_WRIST_PALM:      apply_full_pose(MOTOR_WRIST_PALMARFLEXION, intent->epoch); break;
+        case ACTION_WRIST_DORSI:      apply_full_pose(MOTOR_WRIST_DORSIFLEXION, intent->epoch); break;
         case ACTION_UNKNOWN:
         default:
             /* Safety fallback (link timeout or unrecognised intent). */

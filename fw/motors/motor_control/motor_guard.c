@@ -83,6 +83,12 @@ uint32_t MotorGuard_Poll(void)
         ++s_sample_revision[i];
         uint32_t now = HAL_GetTick();
         uint32_t bit = 1U << i;
+        motor_state_t motor;
+        bool holding=Motor_GetSnapshot(id,&motor) && motor.enabled && motor.feedback_valid &&
+            (uint32_t)(now-motor.feedback_ms)<=MOTOR_FEEDBACK_TIMEOUT_MS &&
+            isfinite(motor.measured_position) && isfinite(motor.target_position) &&
+            fabsf(motor.target_position-motor.measured_position)<=MOTOR_GUARD_HOLD_TOLERANCE_RAD &&
+            fabsf(motor.target_position-motor.reference_position)<=MOTOR_GUARD_HOLD_TOLERANCE_RAD;
         if (s_tripped & bit) {
             /* Stop remains latched. Movement is only evidence for a later
              * explicit recovery; zero drive after a stop proves nothing. */
@@ -92,7 +98,7 @@ uint32_t MotorGuard_Poll(void)
             s_tripped |= bit;
             newly_tripped |= bit;
             MotorSafety_RequestStopCauseLocked(MOTOR_STOP_GUARD, id);
-        } else if (Motor_DRV8848_DrivingDir(id) == 0) {
+        } else if (Motor_DRV8848_DrivingDir(id) == 0 || holding) {
             s_reference[i] = count;
             s_last_motion_ms[i] = now;
             s_driving[i] = false;

@@ -22,6 +22,8 @@ bool UART4Transport_RxGenerationMatches(uint32_t generation);
 bool UART4Transport_QueueFrame(const uint8_t *frame, size_t length);
 bool UART4Transport_QueueFrameAtEpoch(const uint8_t *frame, size_t length, uint32_t epoch);
 bool UART4Transport_QueuePayload(const uint8_t *payload, size_t length);
+/* Only immutable SafetyEvent records; survives later actuator epoch changes. */
+bool UART4Transport_QueueSafetyPayload(const uint8_t *payload, size_t length);
 #ifdef MOTOR_BACKEND_SIM
 /* Three bounded replaceable mailboxes: latest output, status/reply, urgent STOP.
  * A successful offer is never a delivery acknowledgement. */

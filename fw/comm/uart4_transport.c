@@ -14,7 +14,7 @@
 #endif
 
 typedef struct {
-    uint16_t length; uint32_t epoch;
+    uint16_t length; uint32_t epoch; bool safety_record;
 #ifdef MOTOR_BACKEND_SIM
     uint32_t offered_ms; uint8_t slot;
 #endif
@@ -173,6 +173,13 @@ bool UART4Transport_QueuePayload(const uint8_t *payload, size_t length)
     memcpy(frame + 2U, payload, length);
     return UART4Transport_QueueFrame(frame, length + 2U);
 }
+bool UART4Transport_QueueSafetyPayload(const uint8_t *payload,size_t length) {
+    if(!payload || !length || length>COMMS_PAYLOAD_MAX || !tx_queue || __get_PRIMASK() || __get_IPSR()) return false;
+    tx_frame_t frame={.length=(uint16_t)(length+2),.safety_record=true};
+    frame.bytes[0]=0xaa; frame.bytes[1]=(uint8_t)length; memcpy(frame.bytes+2,payload,length);
+    bool ok=xQueueSend(tx_queue,&frame,0)==pdPASS;
+    uint32_t k=Motor_Lock(); if(ok) ++diag.tx_queued; else ++diag.tx_full; Motor_Unlock(k); return ok;
+}
 #ifdef MOTOR_BACKEND_SIM
 void UART4Transport_DiscardSimOutputLocked(void) { sim_pending[0]=false; }
 bool UART4Transport_QueueSimFrame(const uint8_t *bytes,size_t size,uint32_t epoch,uint32_t ms,uint8_t slot)
@@ -214,7 +221,7 @@ bool UART4Transport_TxOnce(TickType_t wait)
     /* RTOS operations precede commitment and remain outside PRIMASK. */
     ulTaskNotifyTake(pdTRUE, 0U);
     uint32_t key = Motor_Lock();
-    if (transmitting.epoch != MotorSafety_EpochLocked()) {
+    if (!transmitting.safety_record && transmitting.epoch != MotorSafety_EpochLocked()) {
         ++diag.tx_stale;
         Motor_Unlock(key);
         return false;
@@ -253,7 +260,12 @@ bool UART4Transport_TxOnce(TickType_t wait)
         }
         key = Motor_Lock(); ++diag.tx_timeouts; Motor_Unlock(key);
     }
-    key = Motor_Lock(); tx_active = false; Motor_Unlock(key);
+    key = Motor_Lock(); tx_active = false;
+    CommsSession_TransportErrorLocked();
+#ifdef MOTOR_BACKEND_SIM
+    SimSession_TransportErrorLocked();
+#endif
+    Motor_Unlock(key);
     /* Outside lock: even an unexpected DMA configuration cannot wait under
      * interlock. Failed abort quarantines the buffer/owner instead of reuse. */
     if (HAL_UART_AbortTransmit(BoardUART_GetHandle()) != HAL_OK) {

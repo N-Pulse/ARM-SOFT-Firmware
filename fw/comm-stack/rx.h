@@ -4,6 +4,7 @@
 #include <stdint.h>
 #include <stddef.h>
 #include <stdbool.h>
+#include "lifecycle_protocol.h"
 
 
 #define RX_BUFFER_SIZE 128
@@ -14,12 +15,14 @@ typedef enum {
     RX_TYPE_ACTION,
     RX_TYPE_HELLO,
     RX_TYPE_CONFIG,
-    RX_TYPE_ERROR
+    RX_TYPE_ERROR,
+    RX_TYPE_CONTROL
 } rx_msg_type_t;
 
 typedef struct {
     rx_msg_type_t type;
     uint32_t proto_version;
+    lifecycle_control_t control;
     union {
         uint32_t action_id;
         uint32_t device_id;

@@ -31,6 +31,54 @@ static const float s_pose_table[MOTOR_POSE_COUNT][MOTOR_COUNT] = {
         DEG2RAD(10.0f),  DEG2RAD(10.0f),  DEG2RAD(10.0f),  DEG2RAD(10.0f),
         DEG2RAD(10.0f),  DEG2RAD(0.0f),   DEG2RAD(0.0f),   DEG2RAD(0.0f),
     },
+    [MOTOR_THUMB_OPEN] = {
+        DEG2RAD(0.0f),  DEG2RAD(10.0f),  DEG2RAD(10.0f),  DEG2RAD(10.0f),
+        DEG2RAD(10.0f),  DEG2RAD(0.0f),   DEG2RAD(0.0f),   DEG2RAD(0.0f),
+    },
+    [MOTOR_THUMB_CLOSE] = {
+        DEG2RAD(42.5f),   DEG2RAD(10.0f),   DEG2RAD(10.0f),   DEG2RAD(10.0f),
+        DEG2RAD(10.0f),   DEG2RAD(0.0f),   DEG2RAD(0.0f),   DEG2RAD(0.0f),
+    },
+    [MOTOR_INDEX_OPEN] = {
+        DEG2RAD(10.0f),  DEG2RAD(0.0f),  DEG2RAD(10.0f),  DEG2RAD(10.0f),
+        DEG2RAD(10.0f),  DEG2RAD(0.0f),   DEG2RAD(0.0f),   DEG2RAD(0.0f),
+    },
+    [MOTOR_INDEX_CLOSE] = {
+        DEG2RAD(10.0f),   DEG2RAD(42.5f),   DEG2RAD(10.0f),   DEG2RAD(10.0f),
+        DEG2RAD(10.0f),   DEG2RAD(0.0f),   DEG2RAD(0.0f),   DEG2RAD(0.0f),
+    },
+    [MOTOR_MIDDLE_OPEN] = {
+        DEG2RAD(10.0f),  DEG2RAD(10.0f),  DEG2RAD(0.0f),  DEG2RAD(10.0f),
+        DEG2RAD(10.0f),  DEG2RAD(0.0f),   DEG2RAD(0.0f),   DEG2RAD(0.0f),
+    },
+    [MOTOR_MIDDLE_CLOSE] = {
+        DEG2RAD(10.0f),   DEG2RAD(10.0f),   DEG2RAD(42.5f),   DEG2RAD(10.0f),
+        DEG2RAD(10.0f),   DEG2RAD(0.0f),   DEG2RAD(0.0f),   DEG2RAD(0.0f),
+    },
+    [MOTOR_RING_OPEN] = {
+        DEG2RAD(10.0f),  DEG2RAD(10.0f),  DEG2RAD(10.0f),  DEG2RAD(0.0f),
+        DEG2RAD(10.0f),  DEG2RAD(0.0f),   DEG2RAD(0.0f),   DEG2RAD(0.0f),
+    },
+    [MOTOR_RING_CLOSE] = {
+        DEG2RAD(10.0f),   DEG2RAD(10.0f),   DEG2RAD(10.0f),   DEG2RAD(40.0f),
+        DEG2RAD(10.0f),   DEG2RAD(0.0f),   DEG2RAD(0.0f),   DEG2RAD(0.0f),
+    },
+    [MOTOR_LITTLE_OPEN] = {
+        DEG2RAD(10.0f),  DEG2RAD(10.0f),  DEG2RAD(10.0f),  DEG2RAD(10.0f),
+        DEG2RAD(0.0f),  DEG2RAD(0.0f),   DEG2RAD(0.0f),   DEG2RAD(0.0f),
+    },
+    [MOTOR_LITTLE_CLOSE] = {
+        DEG2RAD(10.0f),   DEG2RAD(10.0f),   DEG2RAD(10.0f),   DEG2RAD(10.0f),
+        DEG2RAD(37.5f),   DEG2RAD(0.0f),   DEG2RAD(0.0f),   DEG2RAD(0.0f),
+    },
+    [MOTOR_WRIST_PALMARFLEXION] = {
+        DEG2RAD(10.0f),  DEG2RAD(10.0f),  DEG2RAD(10.0f),  DEG2RAD(10.0f),
+        DEG2RAD(10.0f),  DEG2RAD(30.0f),   DEG2RAD(30.0f),   DEG2RAD(0.0f),
+    },
+    [MOTOR_WRIST_DORSIFLEXION] = {
+        DEG2RAD(10.0f),  DEG2RAD(10.0f),  DEG2RAD(10.0f),  DEG2RAD(10.0f),
+        DEG2RAD(10.0f),  DEG2RAD(-30.0f),   DEG2RAD(-30.0f),   DEG2RAD(0.0f),
+    }
 };
 
 float MotorMap_GetPose(motor_pose_id_t pose, motor_id_t id)

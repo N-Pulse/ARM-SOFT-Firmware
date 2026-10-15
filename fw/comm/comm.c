@@ -20,9 +20,47 @@ static sim_parser_t parser;
 static comms_parser_t parser;
 #endif
 static uint32_t current_generation;
+#ifndef MOTOR_BACKEND_SIM
+static uint32_t last_status_ms, last_hello_ms, sent_revision;
+static bool have_sent_status;
+static bool send_boot_hello(void) {
+    uint8_t p[24]; size_t n=Lifecycle_EncodeHello(p,sizeof(p));
+    return n && UART4Transport_QueuePayload(p,n);
+}
+static void service_lifecycle(void) {
+    uint8_t payload[96]; uint32_t now=HAL_GetTick();
+    if(!CommsSession_HasSession() && (uint32_t)(now-last_hello_ms)>=500U) {
+        if(send_boot_hello()) last_hello_ms=now;
+    }
+    lifecycle_control_t probe;
+    if(CommsSession_GetProbe(&probe)) {
+        size_t n=Lifecycle_EncodeProbe(payload,sizeof(payload),&probe);
+        if(!n || !UART4Transport_QueuePayload(payload,n)) {
+            uint32_t k=Motor_Lock(); CommsSession_TransportErrorLocked(); Motor_Unlock(k);
+        }
+    }
+    /* One safety record per iteration, only removed after a successful offer. */
+    motor_safety_event_t event;
+    if(MotorSafety_PeekEvent(&event)) {
+        size_t n=Lifecycle_EncodeSafety(payload,sizeof(payload),event.ms,event.cause,
+                                        event.motor_mask,event.epoch,event.state);
+        if(n && UART4Transport_QueueSafetyPayload(payload,n)) MotorSafety_ConsumeEvent(event.sequence);
+    }
+    lifecycle_status_t status; CommsSession_GetStatus(&status);
+    if(!have_sent_status || (status.revision!=sent_revision && (uint32_t)(now-last_status_ms)>=100U) || (uint32_t)(now-last_status_ms)>=1000U) {
+        size_t n=Lifecycle_EncodeStatus(payload,sizeof(payload),&status);
+        if(n && UART4Transport_QueuePayload(payload,n)) {
+            sent_revision=status.revision; last_status_ms=now; have_sent_status=true;
+        }
+    }
+}
+#endif
 
 void Comms_Init(void)
 {
+#ifndef MOTOR_BACKEND_SIM
+    last_status_ms=last_hello_ms=sent_revision=0; have_sent_status=false;
+#endif
 #ifdef MOTOR_BACKEND_SIM
     CommsSession_Init(false);
 #else
@@ -48,7 +86,7 @@ static bool frame_received(const uint8_t *bytes, size_t length, uint32_t ms,
     if (UART4Transport_RxGenerationMatches(current_generation))
         CommsSession_OnMessage(&result, ms, epoch, &started);
     Motor_Unlock(key);
-    if (started) SendHelloMessage(); /* Complete framed message; zero-wait offer. */
+    if (started) send_boot_hello(); /* Complete framed message; zero-wait offer. */
     return result.type != RX_TYPE_NONE;
 }
 #else
@@ -85,6 +123,7 @@ void Comms_ProcessRxOnce(TickType_t wait)
     SimSession_Service();
 #else
     CommsParser_Poll(&parser, HAL_GetTick());
+    service_lifecycle();
 #endif
 }
 static void Comms_Task(void *unused)

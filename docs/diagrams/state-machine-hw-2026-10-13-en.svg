@@ -1,0 +1,174 @@
+<?xml version='1.0' encoding='utf-8'?>
+<svg xmlns="http://www.w3.org/2000/svg" width="3600" height="2800" viewBox="0 0 3600 2800"><defs>
+<marker id="blue" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto" markerUnits="userSpaceOnUse"><path d="M0,0 L12,6 L0,12 Z" fill="#2563eb" /></marker>
+<marker id="teal" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto" markerUnits="userSpaceOnUse"><path d="M0,0 L12,6 L0,12 Z" fill="#0f8b86" /></marker>
+<marker id="orange" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto" markerUnits="userSpaceOnUse"><path d="M0,0 L12,6 L0,12 Z" fill="#dc8b0b" /></marker>
+<marker id="red" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto" markerUnits="userSpaceOnUse"><path d="M0,0 L12,6 L0,12 Z" fill="#dc354b" /></marker>
+<marker id="ink" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto" markerUnits="userSpaceOnUse"><path d="M0,0 L12,6 L0,12 Z" fill="#172b46" /></marker>
+<marker id="muted" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto" markerUnits="userSpaceOnUse"><path d="M0,0 L12,6 L0,12 Z" fill="#52657d" /></marker>
+</defs><rect width="3600" height="2800" fill="#f7f9fd" /><style>text{font-family:'PingFang SC','Noto Sans CJK SC','Arial',sans-serif;fill:#172b46} .mono{font-family:'Menlo','DejaVu Sans Mono','PingFang SC',monospace}</style>
+<text x="1800" y="90" font-size="65" font-weight="800" text-anchor="middle" style="fill:#172b46" class="">N-Pulse Prosthetic Hand State Machine</text>
+<text x="1800" y="143" font-size="31" font-weight="400" text-anchor="middle" style="fill:#52657d" class="">Current HW firmware · States, transitions and function operations · 2026-10-13</text>
+<rect x="100" y="185" width="3400" height="105" rx="20" fill="#eef3fc" stroke="#d6e0ee" stroke-width="3" />
+<text x="145" y="226" font-size="31" font-weight="650" text-anchor="start" style="fill:#172b46" class="">Power-on: all joints are assumed to be physically OPEN (the position origin for this boot)</text>
+<text x="145" y="268" font-size="29" font-weight="400" text-anchor="start" style="fill:#52657d" class="mono">App_Init() → Motor_InitAll() / Comms_Init(): prepare safe outputs, feedback and communication, then wait for the handshake.</text>
+<rect x="100" y="345" width="920" height="1420" rx="24" fill="#fff" stroke="#2563eb" stroke-width="3" />
+<text x="128" y="397" font-size="35" font-weight="700" text-anchor="start" style="fill:#2563eb" class="">INIT / READY  Initialization and permission</text>
+<rect x="1170" y="920" width="1090" height="720" rx="24" fill="#fff" stroke="#0f8b86" stroke-width="3" />
+<text x="1198" y="972" font-size="35" font-weight="700" text-anchor="start" style="fill:#0f8b86" class="">WORK  Continuous closed-loop control</text>
+<rect x="2470" y="525" width="1010" height="675" rx="24" fill="#fff" stroke="#dc8b0b" stroke-width="3" />
+<text x="2498" y="577" font-size="35" font-weight="700" text-anchor="start" style="fill:#dc8b0b" class="">Normal stop: return first, then disable outputs</text>
+<rect x="145" y="410" width="820" height="220" rx="18" fill="#fff" stroke="#2563eb" stroke-width="4" />
+<rect x="145" y="410" width="820" height="62" rx="16" fill="#2563eb" stroke="#2563eb" stroke-width="0" />
+<text x="169" y="453" font-size="36" font-weight="800" text-anchor="start" style="fill:#fff" class="">0</text>
+<text x="228" y="453" font-size="32" font-weight="650" text-anchor="start" style="fill:#fff" class="">INIT_HANDSHAKE | Wait for handshake</text>
+<text x="171" y="513" font-size="28" font-weight="400" text-anchor="start" style="fill:#172b46" class="mono">CommsSession_HasSession()</text>
+<text x="171" y="550" font-size="28" font-weight="400" text-anchor="start" style="fill:#172b46" class="mono">send_boot_hello()</text>
+<text x="171" y="587" font-size="28" font-weight="400" text-anchor="start" style="fill:#172b46" class="">Driver disabled; wait for a valid Hello</text>
+<rect x="145" y="700" width="820" height="235" rx="18" fill="#fff" stroke="#2563eb" stroke-width="4" />
+<rect x="145" y="700" width="820" height="62" rx="16" fill="#2563eb" stroke="#2563eb" stroke-width="0" />
+<text x="169" y="743" font-size="36" font-weight="800" text-anchor="start" style="fill:#fff" class="">1</text>
+<text x="228" y="743" font-size="32" font-weight="650" text-anchor="start" style="fill:#fff" class="">INIT_MODULES | Prepare modules</text>
+<text x="171" y="803" font-size="28" font-weight="400" text-anchor="start" style="fill:#172b46" class="mono">Encoder_BSP_SetCalibration()</text>
+<text x="171" y="840" font-size="28" font-weight="400" text-anchor="start" style="fill:#172b46" class="mono">all_feedback_ready()</text>
+<text x="171" y="877" font-size="28" font-weight="400" text-anchor="start" style="fill:#172b46" class="mono">Motor_DRV8848_Arm() / Motor_Enable()</text>
+<text x="171" y="914" font-size="28" font-weight="400" text-anchor="start" style="fill:#172b46" class="mono">set_default(): set OPEN targets</text>
+<rect x="145" y="1000" width="820" height="220" rx="18" fill="#fff" stroke="#2563eb" stroke-width="4" />
+<rect x="145" y="1000" width="820" height="62" rx="16" fill="#2563eb" stroke="#2563eb" stroke-width="0" />
+<text x="169" y="1043" font-size="36" font-weight="800" text-anchor="start" style="fill:#fff" class="">2</text>
+<text x="228" y="1043" font-size="32" font-weight="650" text-anchor="start" style="fill:#fff" class="">INIT_RETURN | Confirm initial pose</text>
+<text x="171" y="1103" font-size="28" font-weight="400" text-anchor="start" style="fill:#172b46" class="mono">motion_complete()</text>
+<text x="171" y="1140" font-size="28" font-weight="400" text-anchor="start" style="fill:#172b46" class="mono" textLength="772" lengthAdjust="spacingAndGlyphs">Motor_Update(): continuous closed-loop control</text>
+<text x="171" y="1177" font-size="28" font-weight="400" text-anchor="start" style="fill:#172b46" class="">Enter READY after OPEN is continuously settled</text>
+<rect x="145" y="1300" width="820" height="220" rx="18" fill="#fff" stroke="#0f8b86" stroke-width="4" />
+<rect x="145" y="1300" width="820" height="62" rx="16" fill="#0f8b86" stroke="#0f8b86" stroke-width="0" />
+<text x="169" y="1343" font-size="36" font-weight="800" text-anchor="start" style="fill:#fff" class="">3</text>
+<text x="228" y="1343" font-size="32" font-weight="650" text-anchor="start" style="fill:#fff" class="">READY | Initialization complete</text>
+<text x="171" y="1403" font-size="28" font-weight="400" text-anchor="start" style="fill:#172b46" class="mono">CommsSession_Report() / status reporting</text>
+<text x="171" y="1440" font-size="28" font-weight="400" text-anchor="start" style="fill:#172b46" class="mono">service_lifecycle(): maintain communication</text>
+<text x="171" y="1477" font-size="28" font-weight="400" text-anchor="start" style="fill:#172b46" class="" textLength="772" lengthAdjust="spacingAndGlyphs">PID holds initial pose; wait for start permission</text>
+<rect x="1220" y="990" width="990" height="250" rx="18" fill="#fff" stroke="#0f8b86" stroke-width="4" />
+<rect x="1220" y="990" width="990" height="62" rx="16" fill="#0f8b86" stroke="#0f8b86" stroke-width="0" />
+<text x="1244" y="1033" font-size="36" font-weight="800" text-anchor="start" style="fill:#fff" class="">4</text>
+<text x="1303" y="1033" font-size="32" font-weight="650" text-anchor="start" style="fill:#fff" class="">WORK_WAIT | Wait for an intent</text>
+<text x="1246" y="1093" font-size="28" font-weight="400" text-anchor="start" style="fill:#172b46" class="mono">Comms_GetNextIntent(): dequeue only in this state</text>
+<text x="1246" y="1130" font-size="28" font-weight="400" text-anchor="start" style="fill:#172b46" class="mono">Intent received → IntentRouter_Handle()</text>
+<text x="1246" y="1167" font-size="28" font-weight="400" text-anchor="start" style="fill:#172b46" class="mono">begin_motion(false) / ActionStarted</text>
+<text x="1246" y="1204" font-size="28" font-weight="400" text-anchor="start" style="fill:#172b46" class="">Queue empty: retain targets and PID hold</text>
+<rect x="1220" y="1330" width="990" height="230" rx="18" fill="#fff" stroke="#0f8b86" stroke-width="4" />
+<rect x="1220" y="1330" width="990" height="62" rx="16" fill="#0f8b86" stroke="#0f8b86" stroke-width="0" />
+<text x="1244" y="1373" font-size="36" font-weight="800" text-anchor="start" style="fill:#fff" class="">5</text>
+<text x="1303" y="1373" font-size="32" font-weight="650" text-anchor="start" style="fill:#fff" class="">WORK_EXECUTING | Execute action</text>
+<text x="1246" y="1433" font-size="28" font-weight="400" text-anchor="start" style="fill:#172b46" class="mono">Motor_Update() / motion_complete()</text>
+<text x="1246" y="1470" font-size="28" font-weight="400" text-anchor="start" style="fill:#172b46" class="" textLength="941" lengthAdjust="spacingAndGlyphs">No next-intent dequeue; communication and safety stay active</text>
+<text x="1246" y="1507" font-size="28" font-weight="400" text-anchor="start" style="fill:#172b46" class="mono">Complete → CommsSession_ActionCompleted()</text>
+<rect x="2510" y="610" width="920" height="245" rx="18" fill="#fff" stroke="#dc8b0b" stroke-width="4" />
+<rect x="2510" y="610" width="920" height="62" rx="16" fill="#dc8b0b" stroke="#dc8b0b" stroke-width="0" />
+<text x="2534" y="653" font-size="36" font-weight="800" text-anchor="start" style="fill:#fff" class="">6</text>
+<text x="2593" y="653" font-size="32" font-weight="650" text-anchor="start" style="fill:#fff" class="">STOPPING | Return before stopping</text>
+<text x="2536" y="713" font-size="28" font-weight="400" text-anchor="start" style="fill:#172b46" class="mono">MotorSafety_CancelCommandsLocked()</text>
+<text x="2536" y="750" font-size="28" font-weight="400" text-anchor="start" style="fill:#172b46" class="" textLength="871" lengthAdjust="spacingAndGlyphs">Cancel old action, clear queue, invalidate old command epoch</text>
+<text x="2536" y="787" font-size="28" font-weight="400" text-anchor="start" style="fill:#172b46" class="mono">set_default() / motion_complete()</text>
+<text x="2536" y="824" font-size="28" font-weight="400" text-anchor="start" style="fill:#172b46" class="mono">Return settled → Motor_StopAll()</text>
+<rect x="2510" y="970" width="920" height="205" rx="18" fill="#fff" stroke="#dc8b0b" stroke-width="4" />
+<rect x="2510" y="970" width="920" height="62" rx="16" fill="#dc8b0b" stroke="#dc8b0b" stroke-width="0" />
+<text x="2534" y="1013" font-size="36" font-weight="800" text-anchor="start" style="fill:#fff" class="">7</text>
+<text x="2593" y="1013" font-size="32" font-weight="650" text-anchor="start" style="fill:#fff" class="">STOPPED | Stopped</text>
+<text x="2536" y="1073" font-size="28" font-weight="400" text-anchor="start" style="fill:#172b46" class="">Outputs disabled; PID reset; no intent dequeue</text>
+<text x="2536" y="1110" font-size="28" font-weight="400" text-anchor="start" style="fill:#172b46" class="mono">Motor_ServiceStop(): finish deferred cleanup</text>
+<text x="2536" y="1147" font-size="28" font-weight="400" text-anchor="start" style="fill:#172b46" class="">Only RESTART can request recovery</text>
+<rect x="2510" y="1400" width="920" height="245" rx="18" fill="#fff" stroke="#dc354b" stroke-width="4" />
+<rect x="2510" y="1400" width="920" height="62" rx="16" fill="#dc354b" stroke="#dc354b" stroke-width="0" />
+<text x="2534" y="1443" font-size="36" font-weight="800" text-anchor="start" style="fill:#fff" class="">8</text>
+<text x="2593" y="1443" font-size="32" font-weight="650" text-anchor="start" style="fill:#fff" class="">FAULT | Fault stop</text>
+<text x="2536" y="1503" font-size="28" font-weight="400" text-anchor="start" style="fill:#172b46" class="mono">MotorSafety_RequestStopCauseLocked()</text>
+<text x="2536" y="1540" font-size="28" font-weight="400" text-anchor="start" style="fill:#172b46" class="">Immediately inhibit outputs, reset PID, clear queue</text>
+<text x="2536" y="1577" font-size="28" font-weight="400" text-anchor="start" style="fill:#172b46" class="mono">Motor_ServiceStop() / deferred safety logging</text>
+<text x="2536" y="1614" font-size="28" font-weight="400" text-anchor="start" style="fill:#172b46" class="">Fault latched; no automatic return</text>
+<path d="M555 290 V410" fill="none" stroke="#2563eb" stroke-width="6" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#blue)" />
+<path d="M555 630 V700" fill="none" stroke="#2563eb" stroke-width="6" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#blue)" />
+<text x="585" y="676" font-size="22" font-weight="400" text-anchor="start" style="fill:#2563eb" class="" textLength="440" lengthAdjust="spacingAndGlyphs">Valid Hello: proto=1, matching peer</text>
+<path d="M555 935 V1000" fill="none" stroke="#2563eb" stroke-width="6" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#blue)" />
+<text x="585" y="976" font-size="22" font-weight="400" text-anchor="start" style="fill:#2563eb" class="" textLength="440" lengthAdjust="spacingAndGlyphs">Calibration / feedback / activation ready</text>
+<path d="M555 1220 V1300" fill="none" stroke="#2563eb" stroke-width="6" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#blue)" />
+<text x="585" y="1268" font-size="27" font-weight="400" text-anchor="start" style="fill:#2563eb" class="">motion_complete() = true</text>
+<path d="M965 1370 H1090 V1115 H1220" fill="none" stroke="#0f8b86" stroke-width="6" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#teal)" />
+<text x="1060" y="1300" transform="rotate(-90 1060 1300)" font-size="29" font-weight="700" style="fill:#0f8b86">ALLOW_START</text>
+<path d="M875 1520 V1595 H550 V1520" fill="none" stroke="#0f8b86" stroke-width="6" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#teal)" />
+<text x="690" y="1640" font-size="28" font-weight="650" text-anchor="middle" style="fill:#0f8b86" class="">DENY_START: remain in READY</text>
+<path d="M2115 1240 V1330" fill="none" stroke="#0f8b86" stroke-width="6" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#teal)" />
+<text x="2050" y="1273" font-size="27" font-weight="650" text-anchor="end" style="fill:#0f8b86" class="">Queue nonempty; valid intent</text>
+<text x="2050" y="1310" font-size="27" font-weight="400" text-anchor="end" style="fill:#0f8b86" class="">Set targets → execute</text>
+<path d="M1290 1330 V1240" fill="none" stroke="#0f8b86" stroke-width="6" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#teal)" />
+<text x="1335" y="1290" font-size="29" font-weight="650" text-anchor="start" style="fill:#0f8b86" class="">Action complete</text>
+<text x="1715" y="1607" font-size="27" font-weight="500" text-anchor="middle" style="fill:#0f8b86" class="" textLength="1020" lengthAdjust="spacingAndGlyphs">Queue still nonempty → dequeue next intent in the same App_Task() cycle</text>
+<path d="M965 1100 H1035 V880 H2350" fill="none" stroke="#dc8b0b" stroke-width="6" stroke-linecap="round" stroke-linejoin="round" />
+<text x="1590" y="856" font-size="28" font-weight="650" text-anchor="middle" style="fill:#dc8b0b" class="">STOP: cancel action and queue, then return to OPEN</text>
+<path d="M2210 1100 H2350" fill="none" stroke="#dc8b0b" stroke-width="6" stroke-linecap="round" stroke-linejoin="round" />
+<text x="2275" y="1080" font-size="25" font-weight="650" text-anchor="middle" style="fill:#dc8b0b" class="">STOP</text>
+<path d="M2210 1425 H2350" fill="none" stroke="#dc8b0b" stroke-width="6" stroke-linecap="round" stroke-linejoin="round" />
+<text x="2275" y="1405" font-size="25" font-weight="650" text-anchor="middle" style="fill:#dc8b0b" class="">STOP</text>
+<path d="M965 1460 H1110 V1695 H2350" fill="none" stroke="#dc8b0b" stroke-width="6" stroke-linecap="round" stroke-linejoin="round" />
+<text x="1600" y="1739" font-size="28" font-weight="650" text-anchor="middle" style="fill:#dc8b0b" class="">STOP received in READY</text>
+<path d="M2350 1695 V725 H2510" fill="none" stroke="#dc8b0b" stroke-width="6" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#orange)" />
+<circle cx="2350" cy="880" r="8" fill="#dc8b0b" />
+<circle cx="2350" cy="1100" r="8" fill="#dc8b0b" />
+<circle cx="2350" cy="1425" r="8" fill="#dc8b0b" />
+<path d="M2965 855 V970" fill="none" stroke="#dc8b0b" stroke-width="6" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#orange)" />
+<text x="3000" y="898" font-size="28" font-weight="650" text-anchor="start" style="fill:#dc8b0b" class="">Return continuously settled</text>
+<text x="3000" y="935" font-size="28" font-weight="400" text-anchor="start" style="fill:#dc8b0b" class="">Disable motors and PID</text>
+<path d="M965 785 H1060 V450 H3500 V1065 H3430" fill="none" stroke="#dc8b0b" stroke-width="6" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#orange)" stroke-dasharray="14 10" />
+<rect x="1460" y="402" width="1690" height="77" rx="10" fill="#f7f9fd" stroke="#f7f9fd" stroke-width="0" />
+<text x="2300" y="446" font-size="29" font-weight="650" text-anchor="middle" style="fill:#dc8b0b" class="">STOP in INIT_MODULES: no motion yet; go directly to STOPPED</text>
+<rect x="2470" y="1250" width="1010" height="104" rx="20" fill="#fff0f2" stroke="#f6bdc5" stroke-width="3" />
+<text x="2510" y="1295" font-size="34" font-weight="750" text-anchor="start" style="fill:#dc354b" class="">Safety fault in any state / ESTOP</text>
+<text x="2510" y="1333" font-size="28" font-weight="600" text-anchor="start" style="fill:#dc354b" class="">Stop immediately; bypass STOPPING; do not return</text>
+<path d="M2965 1354 V1400" fill="none" stroke="#dc354b" stroke-width="6" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#red)" />
+<text x="2510" y="1705" font-size="27" font-weight="600" text-anchor="start" style="fill:#dc354b" class="">Recovery conditions unmet: RECOVERY_DENIED; remain in FAULT</text>
+<path d="M3430 1100 H3550 V1840" fill="none" stroke="#2563eb" stroke-width="6" stroke-linecap="round" stroke-linejoin="round" />
+<path d="M3430 1590 H3550 V1840 H65 V520 H145" fill="none" stroke="#2563eb" stroke-width="6" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#blue)" />
+<text x="1770" y="1810" font-size="31" font-weight="700" text-anchor="middle" style="fill:#2563eb" class="">RESTART + successful Motor_RecoverFromFault(): STOPPED / FAULT → INIT_HANDSHAKE</text>
+<text x="1770" y="1892" font-size="30" font-weight="500" text-anchor="middle" style="fill:#2563eb" class="">Keep the origin from this boot → handshake and initialize again → READY still requires a new ALLOW_START</text>
+<rect x="100" y="1970" width="1030" height="695" rx="22" fill="#fff" stroke="#d8e3ef" stroke-width="3" />
+<rect x="100" y="1970" width="1030" height="65" rx="18" fill="#2563eb" stroke="#2563eb" stroke-width="0" />
+<text x="125" y="2016" font-size="34" font-weight="750" text-anchor="start" style="fill:#fff" class="">Action completion criteria</text>
+<text x="128" y="2080" font-size="27" font-weight="400" text-anchor="start" style="fill:#172b46" class="">• Valid, fresh feedback for all enabled motors</text>
+<text x="128" y="2131" font-size="27" font-weight="400" text-anchor="start" style="fill:#172b46" class="">• |Measured position − final target| ≤ 0.035 rad</text>
+<text x="128" y="2182" font-size="27" font-weight="400" text-anchor="start" style="fill:#172b46" class="">• |Ramped reference − final target| ≤ 0.035 rad</text>
+<text x="128" y="2233" font-size="27" font-weight="400" text-anchor="start" style="fill:#172b46" class="">• Both hold continuously for 250 ms (about 2° tolerance)</text>
+<text x="128" y="2284" font-size="27" font-weight="400" text-anchor="start" style="fill:#172b46" class="">• Either error exceeds tolerance: restart settling timer</text>
+<text x="128" y="2335" font-size="27" font-weight="400" text-anchor="start" style="fill:#172b46" class="">• Compare new targets with previously accepted targets</text>
+<text x="128" y="2386" font-size="27" font-weight="400" text-anchor="start" style="fill:#172b46" class="">• Check drift in unchanged joints; do not skip validation</text>
+<text x="128" y="2437" font-size="27" font-weight="400" text-anchor="start" style="fill:#172b46" class="">• Same criteria for initialization and STOP return</text>
+<text x="128" y="2488" font-size="27" font-weight="400" text-anchor="start" style="fill:#172b46" class="">• Action / return &gt; 15 s → MOTION_TIMEOUT</text>
+<text x="128" y="2539" font-size="27" font-weight="400" text-anchor="start" style="fill:#172b46" class="">• Timeout means FAULT, not successful completion</text>
+<rect x="1200" y="1970" width="1030" height="695" rx="22" fill="#fff" stroke="#d8e3ef" stroke-width="3" />
+<rect x="1200" y="1970" width="1030" height="65" rx="18" fill="#dc354b" stroke="#dc354b" stroke-width="0" />
+<text x="1225" y="2016" font-size="31" font-weight="750" text-anchor="start" style="fill:#fff" class="">Communication and safety in all states</text>
+<text x="1228" y="2080" font-size="27" font-weight="400" text-anchor="start" style="fill:#172b46" class="">• Initial handshake &gt; 10 s → FAULT</text>
+<text x="1228" y="2131" font-size="27" font-weight="400" text-anchor="start" style="fill:#172b46" class="">• Module wait for valid feedback &gt; 10 s → FAULT</text>
+<text x="1228" y="2182" font-size="27" font-weight="400" text-anchor="start" style="fill:#172b46" class="">• No valid message for 500 ms, or 1 s since last probe</text>
+<text x="1228" y="2233" font-size="27" font-weight="400" text-anchor="start" style="fill:#172b46" class="mono">  → CommsSession_GetProbe() / PING</text>
+<text x="1228" y="2284" font-size="27" font-weight="400" text-anchor="start" style="fill:#172b46" class="">• No valid message for 2 s, or no matching PONG</text>
+<text x="1228" y="2335" font-size="27" font-weight="400" text-anchor="start" style="fill:#172b46" class="">  within 2 s after PING → LINK fault (also in work / return)</text>
+<text x="1228" y="2386" font-size="27" font-weight="400" text-anchor="start" style="fill:#172b46" class="">• Restoring communication with Hello does not resume motion</text>
+<text x="1228" y="2437" font-size="27" font-weight="400" text-anchor="start" style="fill:#172b46" class="">• Faults: link loss, invalid feedback, stall, force limit,</text>
+<text x="1228" y="2488" font-size="27" font-weight="400" text-anchor="start" style="fill:#172b46" class="">  driver / PID error, control delay, action timeout</text>
+<text x="1228" y="2539" font-size="27" font-weight="400" text-anchor="start" style="fill:#172b46" class="">• Inhibit outputs first; log cause and motors asynchronously</text>
+<rect x="2320" y="1970" width="1160" height="695" rx="22" fill="#fff" stroke="#d8e3ef" stroke-width="3" />
+<rect x="2320" y="1970" width="1160" height="65" rx="18" fill="#0f8b86" stroke="#0f8b86" stroke-width="0" />
+<text x="2345" y="2016" font-size="34" font-weight="750" text-anchor="start" style="fill:#fff" class="">Background tasks and control events</text>
+<text x="2348" y="2080" font-size="27" font-weight="400" text-anchor="start" style="fill:#172b46" class="">• ControlTask every 10 ms:</text>
+<text x="2348" y="2131" font-size="27" font-weight="400" text-anchor="start" style="fill:#172b46" class="mono">  App_Task() → Motor_Update()</text>
+<text x="2348" y="2182" font-size="27" font-weight="400" text-anchor="start" style="fill:#172b46" class="">• SafetyTask every 20 ms:</text>
+<text x="2348" y="2233" font-size="27" font-weight="400" text-anchor="start" style="fill:#172b46" class="mono">  MotorSafety_Poll() → Motor_ServiceStop()</text>
+<text x="2348" y="2284" font-size="27" font-weight="400" text-anchor="start" style="fill:#172b46" class="mono">• Comms_ProcessRxOnce(): continuous reception</text>
+<text x="2348" y="2335" font-size="27" font-weight="400" text-anchor="start" style="fill:#172b46" class="mono">  service_lifecycle(): probes / status / safety logs</text>
+<text x="2348" y="2386" font-size="27" font-weight="400" text-anchor="start" style="fill:#172b46" class="mono">• MotorGuard_Poll(): independent stall supervision</text>
+<text x="2348" y="2437" font-size="27" font-weight="400" text-anchor="start" style="fill:#172b46" class="">• STOP / RESTART / start permission bypass intent_queue</text>
+<text x="2348" y="2488" font-size="27" font-weight="400" text-anchor="start" style="fill:#172b46" class="">• Intent capacity 8: drop new intents when full; report</text>
+<text x="2348" y="2539" font-size="27" font-weight="400" text-anchor="start" style="fill:#172b46" class="">  QUEUE_FULL; reject RESTART / DENY_START during work</text>
+<text x="2348" y="2590" font-size="27" font-weight="400" text-anchor="start" style="fill:#172b46" class="">• Loops continue after stop; disabled motors do not drive</text>
+<text x="100" y="2720" font-size="27" font-weight="400" text-anchor="start" style="fill:#52657d" class="">Based on current HW source; function names match the implementation. SIM v2 is separate. OPEN at power-on is an assumption, not automatic homing.</text>
+<text x="100" y="2763" font-size="26" font-weight="400" text-anchor="start" style="fill:#52657d" class="">ActionStarted = CommsSession_ActionStarted(). Calibration follows the first handshake; RESTART does not call App_Init() or reset encoders. Values are current software defaults.</text>
+</svg>

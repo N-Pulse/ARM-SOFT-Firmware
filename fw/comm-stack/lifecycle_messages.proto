@@ -1,0 +1,41 @@
+syntax = "proto3";
+import "protocol_messages.proto";
+// Additive envelopes. Existing Hello/Data and Config/Error wire tags are preserved.
+// Existing generated protocol_messages.h remains used for legacy fields.
+// lifecycle_protocol.c is the bounded wire codec for the new fields.
+message LifecycleDeviceMessage {
+  oneof message { Hello hello = 1; Data data = 2; LifecycleControl control = 3; }
+}
+message LifecycleControl {
+  enum Command { UNSPECIFIED = 0; ALLOW_START = 1; DENY_START = 2; STOP = 3;
+    RESTART = 4; PING = 5; PONG = 6; QUERY = 7; ESTOP = 8; }
+  Command command = 1;
+  uint32 request_id = 2; // Nonzero, increasing for host commands; echo PING ID for PONG.
+  uint32 peer_id = 3; // Must match the Hello device_id.
+}
+message LifecycleProsthesisMessage {
+  oneof message { Config config = 1; Error error = 2;
+    LifecycleStatus status = 3; SafetyEvent safety = 4;
+    LifecycleControl control = 5; Hello hello = 6; }
+}
+message LifecycleStatus {
+  enum State { INIT_HANDSHAKE = 0; INIT_MODULES = 1; INIT_RETURN = 2;
+    READY = 3; WORK_WAIT = 4; WORK_EXECUTING = 5; STOPPING = 6;
+    STOPPED = 7; FAULT = 8; }
+  State state = 1;
+  uint32 result = 2;
+  uint32 request_id = 3;
+  uint32 queue_depth = 4;
+  uint32 dropped = 5;
+  uint32 stop_causes = 6;
+  uint32 action_sequence = 7;
+  bool action_done = 8;
+  uint32 detail = 9;
+}
+message SafetyEvent {
+  uint32 time_ms = 1;
+  uint32 cause = 2;
+  uint32 motor_mask = 3;
+  uint32 stop_epoch = 4;
+  uint32 previous_state = 5;
+}

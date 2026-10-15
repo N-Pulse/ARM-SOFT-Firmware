@@ -5,6 +5,7 @@ No serial port is opened. Sanitizers are probed locally; none are installed.
 from pathlib import Path
 import os
 import shutil
+import sys
 import subprocess
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -28,7 +29,7 @@ def main():
     sources = [CTRL / (s+'.c') for s in ('motor_control', 'motor_safety', 'motor_guard',
         'motor_feedback', 'drv8848', 'motor_outputs', 'motor_pid', 'motor_pid_config')]
     sources += [COMM / (s+'.c') for s in ('comm', 'comms_parser', 'comms_session',
-        'uart4_transport', 'board_uart_compat')]
+        'uart4_transport', 'board_uart_compat', 'lifecycle_protocol')]
     sources += [ROOT / 'fw/app/intent_router.c', ROOT / 'fw/motors/motor_map/motor_map.c',
                 HERE / 'test_comms.c']
     objects = []
@@ -67,7 +68,7 @@ def main():
     print(result); (OUT / 'sanitizer-result.txt').write_text(result + '\n')
     # SIM v1 TX semantics were deliberately replaced by v2. Test actual staging,
     # priority STOP, late output rejection and native closed loop in lot 6.
-    run(['python', ROOT / 'tools/run_simulation.py', '--case',
+    run([sys.executable, ROOT / 'tools/run_simulation.py', '--case',
          'stop_saturation,inflight_stop,tx_timeout', '--no-sanitizers'])
     # Exercise the new host codec only, without importing pyserial/opening a port.
     import importlib.util

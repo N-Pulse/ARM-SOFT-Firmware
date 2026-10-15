@@ -38,10 +38,38 @@ static uint16_t s_force[MOTOR_COUNT];
 static uint32_t s_force_ms[MOTOR_COUNT];
 static bool s_force_received[MOTOR_COUNT];
 static uint32_t s_causes;
-static uint32_t s_cause_motors[8];
+static uint32_t s_cause_motors[10];
 static uint32_t s_epoch;
 static bool s_stop_pending;
 static bool s_stop_in_progress;
+#define SAFETY_EVENT_CAPACITY 16U
+static motor_safety_event_t events[SAFETY_EVENT_CAPACITY];
+static unsigned event_head, event_count;
+static uint32_t event_sequence, events_dropped;
+bool MotorSafety_PeekEvent(motor_safety_event_t *out) {
+    if (!out) return false;
+    uint32_t k=Motor_Lock(); bool ok=event_count!=0;
+    if(ok) *out=events[event_head];
+    Motor_Unlock(k); return ok;
+}
+void MotorSafety_ConsumeEvent(uint32_t sequence) {
+    uint32_t k=Motor_Lock();
+    if(event_count && events[event_head].sequence==sequence) {
+        event_head=(event_head+1U)%SAFETY_EVENT_CAPACITY; --event_count;
+    }
+    Motor_Unlock(k);
+}
+uint32_t MotorSafety_DroppedEvents(void) {
+    uint32_t k=Motor_Lock(); uint32_t n=events_dropped; Motor_Unlock(k); return n;
+}
+void MotorSafety_CancelCommandsLocked(void) {
+    ++s_epoch;
+    CommsSession_OnStopLocked();
+    Motor_InhibitAllLocked();
+#ifndef MOTOR_BACKEND_SIM
+    Motor_DRV8848_StopAll(); /* Zero registers; keep driver armed for return. */
+#endif
+}
 
 static unsigned cause_index(motor_stop_cause_t cause)
 {
@@ -67,6 +95,7 @@ void MotorSafety_Init(void)
     s_epoch = 0U;
     s_stop_pending = false;
     s_stop_in_progress = false;
+    event_head=event_count=0; event_sequence=events_dropped=0;
     CommsSession_Init(false); /* Comms_Init enables HW session supervision. */
 }
 
@@ -74,11 +103,12 @@ void MotorSafety_RequestStopCauseLocked(motor_stop_cause_t cause, motor_id_t sou
 {
     uint32_t bits = (uint32_t)cause;
     /* This entry accepts one known cause, preserving an unambiguous history. */
-    if (bits == 0U || (bits & (bits - 1U)) != 0U || bits > MOTOR_STOP_LINK) return;
+    if (bits == 0U || (bits & (bits - 1U)) != 0U || bits > MOTOR_STOP_MOTION_TIMEOUT) return;
     unsigned index = cause_index(cause);
     uint32_t mask = (uint32_t)source < MOTOR_COUNT ? (1U << source) :
                     ((1U << MOTOR_COUNT) - 1U);
     if ((s_causes & bits) && (s_cause_motors[index] & mask) == mask) return;
+    app_state_t previous_state=CommsSession_StateLocked();
     s_causes |= bits;
     s_cause_motors[index] |= mask;
     ++s_epoch;
@@ -89,6 +119,13 @@ void MotorSafety_RequestStopCauseLocked(motor_stop_cause_t cause, motor_id_t sou
     MotorBackend_InhibitActuationLocked();
     MotorBackend_InhibitOutputsLocked();
     s_stop_pending = true;
+    /* Inhibition precedes diagnostics. A full log cannot delay a stop. */
+    CommsSession_StateLockedSet(APP_FAULT);
+    if(event_count<SAFETY_EVENT_CAPACITY) {
+        events[(event_head+event_count)%SAFETY_EVENT_CAPACITY]=
+            (motor_safety_event_t){HAL_GetTick(),bits,mask,s_epoch,previous_state,++event_sequence};
+        ++event_count;
+    } else ++events_dropped;
 }
 
 void MotorSafety_RequestStopCause(motor_stop_cause_t cause, motor_id_t source)
@@ -122,7 +159,7 @@ uint32_t MotorSafety_GetStopCauses(void)
 uint32_t MotorSafety_GetCauseMotorMask(motor_stop_cause_t cause)
 {
     uint32_t bits = (uint32_t)cause;
-    if (!bits || (bits & (bits - 1U)) || bits > MOTOR_STOP_LINK) return 0U;
+    if (!bits || (bits & (bits - 1U)) || bits > MOTOR_STOP_MOTION_TIMEOUT) return 0U;
     uint32_t key = Motor_Lock();
     uint32_t result = s_cause_motors[cause_index(cause)];
     Motor_Unlock(key);

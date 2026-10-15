@@ -9,6 +9,11 @@
 #ifndef MOTOR_CONTROL_MAX_ELAPSED_MS
 #define MOTOR_CONTROL_MAX_ELAPSED_MS 50U
 #endif
+/* Settled position hold may produce a small nonzero PID drive. Do not call
+ * that a stall; force/feedback/driver supervision remains active. */
+#ifndef MOTOR_GUARD_HOLD_TOLERANCE_RAD
+#define MOTOR_GUARD_HOLD_TOLERANCE_RAD 0.035f
+#endif
 #ifndef MOTOR_GUARD_PERIOD_MS
 #define MOTOR_GUARD_PERIOD_MS 20U
 #endif

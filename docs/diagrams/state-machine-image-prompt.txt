@@ -1,0 +1,101 @@
+Use case: infographic-diagram.
+Create ONE accurate high-resolution Chinese firmware state-machine infographic for the N-Pulse prosthetic hand. Landscape 3840x2160 if possible, crisp legible Chinese sans-serif and monospaced English function names, white background, flat engineering diagram, no decorative photographs, no watermark. Content precision and readable text outrank decoration. Nine state cards exactly, arrows with explicit conditions, and bottom criteria / task-operation panels. Blue initialization, teal READY/work, amber normal stopping, red FAULT. Spacious clear arrow routing, no crossed ambiguous arrows. All technical identifiers must be spelled exactly as below. Title “N-Pulse 仿生手状态机”, subtitle “当前 HW 固件 · 状态 / 转换条件 / 函数操作”. Show numerical state IDs 0–8. This is actual implementation, not a proposed future architecture.
+
+LAYOUT:
+Top row: a small “上电入口” box followed by 0 INIT_HANDSHAKE → 1 INIT_MODULES → 2 INIT_RETURN → 3 READY. Four state cards large enough for 3–4 function lines each.
+Middle row beneath READY: a teal grouped region WORK containing 4 WORK_WAIT and 5 WORK_EXECUTING, joined with two distinct opposite arrows. Place normal stopping group on the middle-right with 6 STOPPING → 7 STOPPED; red 8 FAULT at lower-right. A recovery line from STOPPED and FAULT runs along the outer margin back to INIT_HANDSHAKE, avoiding central crossings.
+Bottom third: three clean information panels “动作完成标准”, “全程通信与安全”, “后台任务与消息处理”. Include a small scope note along bottom.
+
+EXACT CARD TEXT:
+上电入口:
+“假定物理姿态为 OPEN”
+“App_Init()”
+“Motor_InitAll() / Comms_Init()”
+0 “INIT_HANDSHAKE｜等待握手”
+“CommsSession_HasSession()”
+“send_boot_hello()”
+“驱动器禁用；等待有效 Hello”
+1 “INIT_MODULES｜模块准备”
+“Encoder_BSP_SetCalibration()”
+“all_feedback_ready()”
+“Motor_DRV8848_Arm() / Motor_Enable()”
+“set_default() → OPEN 目标”
+2 “INIT_RETURN｜初始姿态确认”
+“motion_complete()”
+“Motor_Update() 持续闭环”
+“确认 OPEN 稳定到位”
+3 “READY｜初始化完成”
+“CommsSession_Report()”
+“service_lifecycle() 上报状态”
+“PID 保持；等待工作许可”
+4 “WORK_WAIT｜等待指令”
+“Comms_GetNextIntent()”
+“队列为空：保持目标与 PID”
+“取到指令：IntentRouter_Handle()”
+“begin_motion(false) / CommsSession_ActionStarted()”
+5 “WORK_EXECUTING｜执行动作”
+“Motor_Update() / motion_complete()”
+“禁止取下一条 intent”
+“完成：CommsSession_ActionCompleted()”
+6 “STOPPING｜正常回位停止”
+“MotorSafety_CancelCommandsLocked()”
+“清队列、取消旧目标与代次”
+“set_default() / motion_complete()”
+“到位后 Motor_StopAll()”
+7 “STOPPED｜已停止”
+“电机输出禁用；PID 已重置”
+“Motor_ServiceStop() 完成清理”
+“仅 RESTART 可请求恢复”
+8 “FAULT｜故障停止”
+“MotorSafety_RequestStopCauseLocked()”
+“立即抑制输出、重置 PID、清队列”
+“Motor_ServiceStop() / 异步安全日志”
+“禁止自动回位；故障原因锁存”
+
+TRANSITIONS, ARROWS AND NOTES:
+Entrance → INIT_HANDSHAKE.
+INIT_HANDSHAKE → INIT_MODULES label “有效 Hello：proto=1，peer 匹配”.
+INIT_MODULES → INIT_RETURN label “标定成功 + 反馈新鲜 + 驱动器激活”.
+INIT_RETURN → READY label “motion_complete() = true”.
+READY → WORK_WAIT label “ALLOW_START”.
+A small READY self-loop label “DENY_START：保持 READY”.
+WORK_WAIT → WORK_EXECUTING label “intent_queue 非空且指令有效；设置目标”.
+WORK_EXECUTING → WORK_WAIT label “动作完成”.
+Under the two work arrows say “若队列仍非空：同一 App_Task() 周期取下一条，继续执行”.
+Normal STOP collector arrow from READY, WORK_WAIT, WORK_EXECUTING and INIT_RETURN to STOPPING label “STOP：优先取消当前动作，再回 OPEN”.
+STOPPING → STOPPED label “回位连续稳定到位；关闭电机与 PID”.
+A thin auxiliary arrow from INIT_MODULES to STOPPED label “初始化尚未运动时 STOP：直接安全停止”.
+A red global-fault strip above FAULT with an arrow into FAULT: “任何状态：通信失联 / 反馈失效 / 堵转 / 力超限 / 驱动或 PID 异常 / 执行超时 → FAULT”.
+Separate ESTOP arrow into FAULT labeled “ESTOP：立即停止，不回位”.
+Recovery path from STOPPED and FAULT back to INIT_HANDSHAKE labeled “RESTART + Motor_RecoverFromFault() 成功 → 重新握手与初始化”.
+A self-loop or short side note by FAULT: “恢复条件不满足：RECOVERY_DENIED，保持停止”.
+Recovery footnote “保留本次上电零点；恢复后仍需新的 ALLOW_START”.
+
+BOTTOM PANELS, EXACT CONTENT:
+“动作完成标准”
+“所有启用电机反馈有效、新鲜”
+“|实测位置 − 最终目标| ≤ 0.035 rad（约 2°）”
+“|渐变参考 − 最终目标| ≤ 0.035 rad”
+“以上连续保持 250 ms；超界则稳定计时重置”
+“目标变化相对上一个目标判断；未变化关节也检查漂移”
+“动作 / 回位 > 15 s → FAULT”
+
+“全程通信与安全”
+“初始握手 > 10 s → FAULT；模块等待反馈 > 10 s → FAULT”
+“500 ms 无有效消息，或距上次探测 1 s → PING”
+“2 s 无有效消息，或 PING 后 2 s 无匹配 PONG → FAULT”
+“Hello 恢复通信不等于恢复运动”
+“正常 STOP 回位；FAULT / ESTOP 立即停机”
+
+“后台任务与消息处理”
+“ControlTask 每 10 ms：App_Task() → Motor_Update()”
+“SafetyTask 每 20 ms：MotorSafety_Poll() → Motor_ServiceStop()”
+“Comms_ProcessRxOnce()：持续接收；service_lifecycle() 发探测、状态与日志”
+“MotorGuard_Poll()：独立监测堵转；到位保持不误判”
+“STOP / RESTART / 许可走独立控制事件，不排入 intent_queue”
+“intent 队列容量 8；满则丢新指令，报告 QUEUE_FULL”
+“STOPPED / FAULT 中控制循环仍在，禁用电机不计算驱动输出”
+
+BOTTOM SMALL NOTE:
+“依据当前源码绘制，仅适用于 HW 生命周期；上电零位为使用前提，不代表自动 homing。参数为当前软件默认值。”
+Do not add nonexistent states, do not imply RESTART or DENY_START is accepted while working, do not show FAULT returning to zero automatically. Make arrow conditions and function labels fully readable; balance diagram with rule panels.

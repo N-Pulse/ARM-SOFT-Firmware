@@ -32,6 +32,18 @@ message ClassificationData {
     PINCH = 2;
     ROTATE_WRIST_R = 3;
     ROTATE_WRIST_L = 4;
+    THUMB_OPEN     = 5;
+    THUMB_CLOSE    = 6;
+    INDEX_OPEN     = 7;
+    INDEX_CLOSE    = 8;
+    MIDDLE_OPEN    = 9;
+    MIDDLE_CLOSE   = 10;
+    RING_OPEN      = 11;
+    RING_CLOSE     = 12;
+    LITTLE_OPEN    = 13;
+    LITTLE_CLOSE   = 14;
+    WRIST_PALM     = 15;
+    WRIST_DORSI    = 16;
   }
   Action action = 1;
 }

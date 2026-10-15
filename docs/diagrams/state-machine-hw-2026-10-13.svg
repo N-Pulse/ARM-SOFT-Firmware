@@ -1,0 +1,173 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="3600" height="2800" viewBox="0 0 3600 2800"><defs>
+<marker id="blue" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto" markerUnits="userSpaceOnUse"><path d="M0,0 L12,6 L0,12 Z" fill="#2563eb"/></marker>
+<marker id="teal" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto" markerUnits="userSpaceOnUse"><path d="M0,0 L12,6 L0,12 Z" fill="#0f8b86"/></marker>
+<marker id="orange" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto" markerUnits="userSpaceOnUse"><path d="M0,0 L12,6 L0,12 Z" fill="#dc8b0b"/></marker>
+<marker id="red" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto" markerUnits="userSpaceOnUse"><path d="M0,0 L12,6 L0,12 Z" fill="#dc354b"/></marker>
+<marker id="ink" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto" markerUnits="userSpaceOnUse"><path d="M0,0 L12,6 L0,12 Z" fill="#172b46"/></marker>
+<marker id="muted" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto" markerUnits="userSpaceOnUse"><path d="M0,0 L12,6 L0,12 Z" fill="#52657d"/></marker>
+</defs><rect width="3600" height="2800" fill="#f7f9fd"/><style>text{font-family:'PingFang SC','Noto Sans CJK SC','Arial',sans-serif;fill:#172b46} .mono{font-family:'Menlo','DejaVu Sans Mono','PingFang SC',monospace}</style>
+<text x="1800" y="90" font-size="65" font-weight="800" text-anchor="middle" style="fill:#172b46" class="">N-Pulse 仿生手状态机</text>
+<text x="1800" y="143" font-size="31" font-weight="400" text-anchor="middle" style="fill:#52657d" class="">当前 HW 源码 · 状态、转换条件与函数操作 · 2026-10-13</text>
+<rect x="100" y="185" width="3400" height="105" rx="20" fill="#eef3fc" stroke="#d6e0ee" stroke-width="3"/>
+<text x="145" y="226" font-size="31" font-weight="650" text-anchor="start" style="fill:#172b46" class="">上电入口：假定所有关节物理姿态为 OPEN（本次位置零点）</text>
+<text x="145" y="268" font-size="29" font-weight="400" text-anchor="start" style="fill:#52657d" class="mono">App_Init() → Motor_InitAll() / Comms_Init()；先准备安全输出、反馈采集及通信，再等待握手。</text>
+<rect x="100" y="345" width="920" height="1420" rx="24" fill="#fff" stroke="#2563eb" stroke-width="3"/>
+<text x="128" y="397" font-size="35" font-weight="700" text-anchor="start" style="fill:#2563eb" class="">INIT / READY  初始化与许可</text>
+<rect x="1170" y="920" width="1090" height="720" rx="24" fill="#fff" stroke="#0f8b86" stroke-width="3"/>
+<text x="1198" y="972" font-size="35" font-weight="700" text-anchor="start" style="fill:#0f8b86" class="">WORK  工作状态（持续闭环）</text>
+<rect x="2470" y="525" width="1010" height="675" rx="24" fill="#fff" stroke="#dc8b0b" stroke-width="3"/>
+<text x="2498" y="577" font-size="35" font-weight="700" text-anchor="start" style="fill:#dc8b0b" class="">正常停止：先回位，再关输出</text>
+<rect x="145" y="410" width="820" height="220" rx="18" fill="#fff" stroke="#2563eb" stroke-width="4"/>
+<rect x="145" y="410" width="820" height="62" rx="16" fill="#2563eb" stroke="#2563eb" stroke-width="0"/>
+<text x="169" y="453" font-size="36" font-weight="800" text-anchor="start" style="fill:#fff" class="">0</text>
+<text x="228" y="453" font-size="32" font-weight="650" text-anchor="start" style="fill:#fff" class="">INIT_HANDSHAKE｜等待握手</text>
+<text x="171" y="513" font-size="28" font-weight="400" text-anchor="start" style="fill:#172b46" class="mono">CommsSession_HasSession()</text>
+<text x="171" y="550" font-size="28" font-weight="400" text-anchor="start" style="fill:#172b46" class="mono">send_boot_hello()</text>
+<text x="171" y="587" font-size="28" font-weight="400" text-anchor="start" style="fill:#172b46" class="">驱动器禁用；等待有效 Hello</text>
+<rect x="145" y="700" width="820" height="235" rx="18" fill="#fff" stroke="#2563eb" stroke-width="4"/>
+<rect x="145" y="700" width="820" height="62" rx="16" fill="#2563eb" stroke="#2563eb" stroke-width="0"/>
+<text x="169" y="743" font-size="36" font-weight="800" text-anchor="start" style="fill:#fff" class="">1</text>
+<text x="228" y="743" font-size="32" font-weight="650" text-anchor="start" style="fill:#fff" class="">INIT_MODULES｜模块准备</text>
+<text x="171" y="803" font-size="28" font-weight="400" text-anchor="start" style="fill:#172b46" class="mono">Encoder_BSP_SetCalibration()</text>
+<text x="171" y="840" font-size="28" font-weight="400" text-anchor="start" style="fill:#172b46" class="mono">all_feedback_ready()</text>
+<text x="171" y="877" font-size="28" font-weight="400" text-anchor="start" style="fill:#172b46" class="mono">Motor_DRV8848_Arm() / Motor_Enable()</text>
+<text x="171" y="914" font-size="28" font-weight="400" text-anchor="start" style="fill:#172b46" class="mono">set_default()：设置 OPEN 目标</text>
+<rect x="145" y="1000" width="820" height="220" rx="18" fill="#fff" stroke="#2563eb" stroke-width="4"/>
+<rect x="145" y="1000" width="820" height="62" rx="16" fill="#2563eb" stroke="#2563eb" stroke-width="0"/>
+<text x="169" y="1043" font-size="36" font-weight="800" text-anchor="start" style="fill:#fff" class="">2</text>
+<text x="228" y="1043" font-size="32" font-weight="650" text-anchor="start" style="fill:#fff" class="">INIT_RETURN｜初始姿态确认</text>
+<text x="171" y="1103" font-size="28" font-weight="400" text-anchor="start" style="fill:#172b46" class="mono">motion_complete()</text>
+<text x="171" y="1140" font-size="28" font-weight="400" text-anchor="start" style="fill:#172b46" class="mono">Motor_Update() 持续闭环</text>
+<text x="171" y="1177" font-size="28" font-weight="400" text-anchor="start" style="fill:#172b46" class="">OPEN 连续稳定到位后进入 READY</text>
+<rect x="145" y="1300" width="820" height="220" rx="18" fill="#fff" stroke="#0f8b86" stroke-width="4"/>
+<rect x="145" y="1300" width="820" height="62" rx="16" fill="#0f8b86" stroke="#0f8b86" stroke-width="0"/>
+<text x="169" y="1343" font-size="36" font-weight="800" text-anchor="start" style="fill:#fff" class="">3</text>
+<text x="228" y="1343" font-size="32" font-weight="650" text-anchor="start" style="fill:#fff" class="">READY｜初始化完成</text>
+<text x="171" y="1403" font-size="28" font-weight="400" text-anchor="start" style="fill:#172b46" class="mono">CommsSession_Report() / 状态上报</text>
+<text x="171" y="1440" font-size="28" font-weight="400" text-anchor="start" style="fill:#172b46" class="mono">service_lifecycle() 持续通信</text>
+<text x="171" y="1477" font-size="28" font-weight="400" text-anchor="start" style="fill:#172b46" class="">PID 保持初始姿态；等待允许开始</text>
+<rect x="1220" y="990" width="990" height="250" rx="18" fill="#fff" stroke="#0f8b86" stroke-width="4"/>
+<rect x="1220" y="990" width="990" height="62" rx="16" fill="#0f8b86" stroke="#0f8b86" stroke-width="0"/>
+<text x="1244" y="1033" font-size="36" font-weight="800" text-anchor="start" style="fill:#fff" class="">4</text>
+<text x="1303" y="1033" font-size="32" font-weight="650" text-anchor="start" style="fill:#fff" class="">WORK_WAIT｜等待指令</text>
+<text x="1246" y="1093" font-size="28" font-weight="400" text-anchor="start" style="fill:#172b46" class="mono">Comms_GetNextIntent()：仅在本状态取队列</text>
+<text x="1246" y="1130" font-size="28" font-weight="400" text-anchor="start" style="fill:#172b46" class="mono">取到指令 → IntentRouter_Handle()</text>
+<text x="1246" y="1167" font-size="28" font-weight="400" text-anchor="start" style="fill:#172b46" class="mono">begin_motion(false) / ActionStarted</text>
+<text x="1246" y="1204" font-size="28" font-weight="400" text-anchor="start" style="fill:#172b46" class="">队列为空：维持目标，PID 继续保持</text>
+<rect x="1220" y="1330" width="990" height="230" rx="18" fill="#fff" stroke="#0f8b86" stroke-width="4"/>
+<rect x="1220" y="1330" width="990" height="62" rx="16" fill="#0f8b86" stroke="#0f8b86" stroke-width="0"/>
+<text x="1244" y="1373" font-size="36" font-weight="800" text-anchor="start" style="fill:#fff" class="">5</text>
+<text x="1303" y="1373" font-size="32" font-weight="650" text-anchor="start" style="fill:#fff" class="">WORK_EXECUTING｜执行动作</text>
+<text x="1246" y="1433" font-size="28" font-weight="400" text-anchor="start" style="fill:#172b46" class="mono">Motor_Update() / motion_complete()</text>
+<text x="1246" y="1470" font-size="28" font-weight="400" text-anchor="start" style="fill:#172b46" class="">不取下一条 intent；通信与安全监测不停</text>
+<text x="1246" y="1507" font-size="28" font-weight="400" text-anchor="start" style="fill:#172b46" class="mono">完成 → CommsSession_ActionCompleted()</text>
+<rect x="2510" y="610" width="920" height="245" rx="18" fill="#fff" stroke="#dc8b0b" stroke-width="4"/>
+<rect x="2510" y="610" width="920" height="62" rx="16" fill="#dc8b0b" stroke="#dc8b0b" stroke-width="0"/>
+<text x="2534" y="653" font-size="36" font-weight="800" text-anchor="start" style="fill:#fff" class="">6</text>
+<text x="2593" y="653" font-size="32" font-weight="650" text-anchor="start" style="fill:#fff" class="">STOPPING｜正常回位停止</text>
+<text x="2536" y="713" font-size="28" font-weight="400" text-anchor="start" style="fill:#172b46" class="mono">MotorSafety_CancelCommandsLocked()</text>
+<text x="2536" y="750" font-size="28" font-weight="400" text-anchor="start" style="fill:#172b46" class="">取消旧动作、清队列、使旧代次指令失效</text>
+<text x="2536" y="787" font-size="28" font-weight="400" text-anchor="start" style="fill:#172b46" class="mono">set_default() / motion_complete()</text>
+<text x="2536" y="824" font-size="28" font-weight="400" text-anchor="start" style="fill:#172b46" class="mono">回位稳定后 → Motor_StopAll()</text>
+<rect x="2510" y="970" width="920" height="205" rx="18" fill="#fff" stroke="#dc8b0b" stroke-width="4"/>
+<rect x="2510" y="970" width="920" height="62" rx="16" fill="#dc8b0b" stroke="#dc8b0b" stroke-width="0"/>
+<text x="2534" y="1013" font-size="36" font-weight="800" text-anchor="start" style="fill:#fff" class="">7</text>
+<text x="2593" y="1013" font-size="32" font-weight="650" text-anchor="start" style="fill:#fff" class="">STOPPED｜已停止</text>
+<text x="2536" y="1073" font-size="28" font-weight="400" text-anchor="start" style="fill:#172b46" class="">输出禁用；PID 已重置；不取动作队列</text>
+<text x="2536" y="1110" font-size="28" font-weight="400" text-anchor="start" style="fill:#172b46" class="mono">Motor_ServiceStop() 完成后台清理</text>
+<text x="2536" y="1147" font-size="28" font-weight="400" text-anchor="start" style="fill:#172b46" class="">仅 RESTART 可请求恢复</text>
+<rect x="2510" y="1400" width="920" height="245" rx="18" fill="#fff" stroke="#dc354b" stroke-width="4"/>
+<rect x="2510" y="1400" width="920" height="62" rx="16" fill="#dc354b" stroke="#dc354b" stroke-width="0"/>
+<text x="2534" y="1443" font-size="36" font-weight="800" text-anchor="start" style="fill:#fff" class="">8</text>
+<text x="2593" y="1443" font-size="32" font-weight="650" text-anchor="start" style="fill:#fff" class="">FAULT｜故障停止</text>
+<text x="2536" y="1503" font-size="28" font-weight="400" text-anchor="start" style="fill:#172b46" class="mono">MotorSafety_RequestStopCauseLocked()</text>
+<text x="2536" y="1540" font-size="28" font-weight="400" text-anchor="start" style="fill:#172b46" class="">立即抑制输出、重置 PID、清空队列</text>
+<text x="2536" y="1577" font-size="28" font-weight="400" text-anchor="start" style="fill:#172b46" class="mono">Motor_ServiceStop() / 异步安全日志</text>
+<text x="2536" y="1614" font-size="28" font-weight="400" text-anchor="start" style="fill:#172b46" class="">故障锁存；不自动回位</text>
+<path d="M555 290 V410" fill="none" stroke="#2563eb" stroke-width="6" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#blue)" />
+<path d="M555 630 V700" fill="none" stroke="#2563eb" stroke-width="6" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#blue)" />
+<text x="585" y="676" font-size="27" font-weight="400" text-anchor="start" style="fill:#2563eb" class="">有效 Hello：proto=1，peer 匹配</text>
+<path d="M555 935 V1000" fill="none" stroke="#2563eb" stroke-width="6" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#blue)" />
+<text x="585" y="976" font-size="27" font-weight="400" text-anchor="start" style="fill:#2563eb" class="">标定 / 反馈 / 激活成功</text>
+<path d="M555 1220 V1300" fill="none" stroke="#2563eb" stroke-width="6" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#blue)" />
+<text x="585" y="1268" font-size="27" font-weight="400" text-anchor="start" style="fill:#2563eb" class="">motion_complete() = true</text>
+<path d="M965 1370 H1090 V1115 H1220" fill="none" stroke="#0f8b86" stroke-width="6" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#teal)" />
+<text x="1060" y="1300" transform="rotate(-90 1060 1300)" font-size="29" font-weight="700" style="fill:#0f8b86">ALLOW_START</text>
+<path d="M875 1520 V1595 H550 V1520" fill="none" stroke="#0f8b86" stroke-width="6" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#teal)" />
+<text x="690" y="1640" font-size="28" font-weight="650" text-anchor="middle" style="fill:#0f8b86" class="">DENY_START：保持 READY</text>
+<path d="M2115 1240 V1330" fill="none" stroke="#0f8b86" stroke-width="6" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#teal)" />
+<text x="2050" y="1273" font-size="27" font-weight="650" text-anchor="end" style="fill:#0f8b86" class="">队列非空且有效</text>
+<text x="2050" y="1310" font-size="27" font-weight="400" text-anchor="end" style="fill:#0f8b86" class="">设置目标 → 执行</text>
+<path d="M1290 1330 V1240" fill="none" stroke="#0f8b86" stroke-width="6" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#teal)" />
+<text x="1335" y="1290" font-size="29" font-weight="650" text-anchor="start" style="fill:#0f8b86" class="">动作完成</text>
+<text x="1715" y="1607" font-size="27" font-weight="500" text-anchor="middle" style="fill:#0f8b86" class="">完成后若队列仍非空：同一 App_Task() 周期取下一条</text>
+<path d="M965 1100 H1035 V880 H2350" fill="none" stroke="#dc8b0b" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"  />
+<text x="1590" y="856" font-size="30" font-weight="650" text-anchor="middle" style="fill:#dc8b0b" class="">STOP：取消动作与队列，再回 OPEN</text>
+<path d="M2210 1100 H2350" fill="none" stroke="#dc8b0b" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"  />
+<text x="2275" y="1080" font-size="25" font-weight="650" text-anchor="middle" style="fill:#dc8b0b" class="">STOP</text>
+<path d="M2210 1425 H2350" fill="none" stroke="#dc8b0b" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"  />
+<text x="2275" y="1405" font-size="25" font-weight="650" text-anchor="middle" style="fill:#dc8b0b" class="">STOP</text>
+<path d="M965 1460 H1110 V1695 H2350" fill="none" stroke="#dc8b0b" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"  />
+<text x="1600" y="1739" font-size="28" font-weight="650" text-anchor="middle" style="fill:#dc8b0b" class="">READY 收到 STOP</text>
+<path d="M2350 1695 V725 H2510" fill="none" stroke="#dc8b0b" stroke-width="6" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#orange)" />
+<circle cx="2350" cy="880" r="8" fill="#dc8b0b"/>
+<circle cx="2350" cy="1100" r="8" fill="#dc8b0b"/>
+<circle cx="2350" cy="1425" r="8" fill="#dc8b0b"/>
+<path d="M2965 855 V970" fill="none" stroke="#dc8b0b" stroke-width="6" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#orange)" />
+<text x="3000" y="898" font-size="28" font-weight="650" text-anchor="start" style="fill:#dc8b0b" class="">回位稳定到位</text>
+<text x="3000" y="935" font-size="28" font-weight="400" text-anchor="start" style="fill:#dc8b0b" class="">关闭电机与 PID</text>
+<path d="M965 785 H1060 V450 H3500 V1065 H3430" fill="none" stroke="#dc8b0b" stroke-width="6" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#orange)" stroke-dasharray="14 10"/>
+<rect x="1460" y="402" width="1690" height="77" rx="10" fill="#f7f9fd" stroke="#f7f9fd" stroke-width="0"/>
+<text x="2300" y="446" font-size="29" font-weight="650" text-anchor="middle" style="fill:#dc8b0b" class="">INIT_MODULES 中 STOP：尚未运动，直接进入 STOPPED</text>
+<rect x="2470" y="1250" width="1010" height="104" rx="20" fill="#fff0f2" stroke="#f6bdc5" stroke-width="3"/>
+<text x="2510" y="1295" font-size="34" font-weight="750" text-anchor="start" style="fill:#dc354b" class="">任何状态的安全故障 / ESTOP</text>
+<text x="2510" y="1333" font-size="28" font-weight="600" text-anchor="start" style="fill:#dc354b" class="">立即停止，不经过 STOPPING、不回位</text>
+<path d="M2965 1354 V1400" fill="none" stroke="#dc354b" stroke-width="6" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#red)" />
+<text x="2510" y="1705" font-size="27" font-weight="600" text-anchor="start" style="fill:#dc354b" class="">恢复条件未满足：RECOVERY_DENIED，保持 FAULT</text>
+<path d="M3430 1100 H3550 V1840" fill="none" stroke="#2563eb" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"  />
+<path d="M3430 1590 H3550 V1840 H65 V520 H145" fill="none" stroke="#2563eb" stroke-width="6" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#blue)" />
+<text x="1770" y="1810" font-size="31" font-weight="700" text-anchor="middle" style="fill:#2563eb" class="">RESTART + Motor_RecoverFromFault() 成功：来自 STOPPED / FAULT，返回 INIT_HANDSHAKE</text>
+<text x="1770" y="1892" font-size="30" font-weight="500" text-anchor="middle" style="fill:#2563eb" class="">保留本次上电零点 → 重新握手与初始化 → READY 后仍需新的 ALLOW_START</text>
+<rect x="100" y="1970" width="1030" height="695" rx="22" fill="#fff" stroke="#d8e3ef" stroke-width="3"/>
+<rect x="100" y="1970" width="1030" height="65" rx="18" fill="#2563eb" stroke="#2563eb" stroke-width="0"/>
+<text x="125" y="2016" font-size="34" font-weight="750" text-anchor="start" style="fill:#fff" class="">动作完成标准</text>
+<text x="128" y="2080" font-size="27" font-weight="400" text-anchor="start" style="fill:#172b46" class="">• 所有启用电机反馈有效、新鲜</text>
+<text x="128" y="2131" font-size="27" font-weight="400" text-anchor="start" style="fill:#172b46" class="">• |实测位置 − 最终目标| ≤ 0.035 rad</text>
+<text x="128" y="2182" font-size="27" font-weight="400" text-anchor="start" style="fill:#172b46" class="">• |渐变参考 − 最终目标| ≤ 0.035 rad</text>
+<text x="128" y="2233" font-size="27" font-weight="400" text-anchor="start" style="fill:#172b46" class="">• 两项均连续满足 250 ms（约 2° 容差）</text>
+<text x="128" y="2284" font-size="27" font-weight="400" text-anchor="start" style="fill:#172b46" class="">• 任一误差越界：稳定计时重新开始</text>
+<text x="128" y="2335" font-size="27" font-weight="400" text-anchor="start" style="fill:#172b46" class="">• 新目标与上一个实际接受目标比较</text>
+<text x="128" y="2386" font-size="27" font-weight="400" text-anchor="start" style="fill:#172b46" class="">• 未变化关节也检查漂移，不能跳过判定</text>
+<text x="128" y="2437" font-size="27" font-weight="400" text-anchor="start" style="fill:#172b46" class="">• 初始化回位与 STOP 回位使用同一标准</text>
+<text x="128" y="2488" font-size="27" font-weight="400" text-anchor="start" style="fill:#172b46" class="">• 动作 / 回位 &gt; 15 s → MOTION_TIMEOUT</text>
+<text x="128" y="2539" font-size="27" font-weight="400" text-anchor="start" style="fill:#172b46" class="">• 超时进入 FAULT；不是“动作成功”</text>
+<rect x="1200" y="1970" width="1030" height="695" rx="22" fill="#fff" stroke="#d8e3ef" stroke-width="3"/>
+<rect x="1200" y="1970" width="1030" height="65" rx="18" fill="#dc354b" stroke="#dc354b" stroke-width="0"/>
+<text x="1225" y="2016" font-size="34" font-weight="750" text-anchor="start" style="fill:#fff" class="">全程通信与安全</text>
+<text x="1228" y="2080" font-size="27" font-weight="400" text-anchor="start" style="fill:#172b46" class="">• 初始握手 &gt; 10 s → FAULT</text>
+<text x="1228" y="2131" font-size="27" font-weight="400" text-anchor="start" style="fill:#172b46" class="">• 模块等待有效反馈 &gt; 10 s → FAULT</text>
+<text x="1228" y="2182" font-size="27" font-weight="400" text-anchor="start" style="fill:#172b46" class="">• 500 ms 无有效消息，或距上次探测 1 s</text>
+<text x="1228" y="2233" font-size="27" font-weight="400" text-anchor="start" style="fill:#172b46" class="mono">  → CommsSession_GetProbe() / PING</text>
+<text x="1228" y="2284" font-size="27" font-weight="400" text-anchor="start" style="fill:#172b46" class="">• 2 s 无有效消息，或 PING 后 2 s 无匹配</text>
+<text x="1228" y="2335" font-size="27" font-weight="400" text-anchor="start" style="fill:#172b46" class="">  PONG → LINK 故障（含工作 / 回位状态）</text>
+<text x="1228" y="2386" font-size="27" font-weight="400" text-anchor="start" style="fill:#172b46" class="">• Hello 恢复通信 ≠ 恢复运动</text>
+<text x="1228" y="2437" font-size="27" font-weight="400" text-anchor="start" style="fill:#172b46" class="">• 安全故障：失联、反馈失效、堵转、力超限</text>
+<text x="1228" y="2488" font-size="27" font-weight="400" text-anchor="start" style="fill:#172b46" class="">  驱动器 / PID 异常、控制延迟、执行超时</text>
+<text x="1228" y="2539" font-size="27" font-weight="400" text-anchor="start" style="fill:#172b46" class="">• 故障先抑制输出，再异步记录原因与电机</text>
+<rect x="2320" y="1970" width="1160" height="695" rx="22" fill="#fff" stroke="#d8e3ef" stroke-width="3"/>
+<rect x="2320" y="1970" width="1160" height="65" rx="18" fill="#0f8b86" stroke="#0f8b86" stroke-width="0"/>
+<text x="2345" y="2016" font-size="34" font-weight="750" text-anchor="start" style="fill:#fff" class="">后台任务与控制事件</text>
+<text x="2348" y="2080" font-size="27" font-weight="400" text-anchor="start" style="fill:#172b46" class="">• ControlTask 每 10 ms：</text>
+<text x="2348" y="2131" font-size="27" font-weight="400" text-anchor="start" style="fill:#172b46" class="mono">  App_Task() → Motor_Update()</text>
+<text x="2348" y="2182" font-size="27" font-weight="400" text-anchor="start" style="fill:#172b46" class="">• SafetyTask 每 20 ms：</text>
+<text x="2348" y="2233" font-size="27" font-weight="400" text-anchor="start" style="fill:#172b46" class="mono">  MotorSafety_Poll() → Motor_ServiceStop()</text>
+<text x="2348" y="2284" font-size="27" font-weight="400" text-anchor="start" style="fill:#172b46" class="mono">• Comms_ProcessRxOnce() 持续接收</text>
+<text x="2348" y="2335" font-size="27" font-weight="400" text-anchor="start" style="fill:#172b46" class="mono">  service_lifecycle()：探测 / 状态 / 安全日志</text>
+<text x="2348" y="2386" font-size="27" font-weight="400" text-anchor="start" style="fill:#172b46" class="mono">• MotorGuard_Poll() 独立监测堵转</text>
+<text x="2348" y="2437" font-size="27" font-weight="400" text-anchor="start" style="fill:#172b46" class="">• STOP / RESTART / 许可不排入 intent_queue</text>
+<text x="2348" y="2488" font-size="27" font-weight="400" text-anchor="start" style="fill:#172b46" class="">• intent 容量 8：满则丢新指令并报告</text>
+<text x="2348" y="2539" font-size="27" font-weight="400" text-anchor="start" style="fill:#172b46" class="">  QUEUE_FULL；工作状态拒绝 RESTART / DENY</text>
+<text x="2348" y="2590" font-size="27" font-weight="400" text-anchor="start" style="fill:#172b46" class="">• 停止后循环仍在；已禁用电机不输出驱动</text>
+<text x="100" y="2720" font-size="27" font-weight="400" text-anchor="start" style="fill:#52657d" class="">说明：依据当前 HW 源码绘制；图中函数名沿用实现。SIM v2 协议独立。上电 OPEN 是使用前提，不代表自动 homing。</text>
+<text x="100" y="2763" font-size="26" font-weight="400" text-anchor="start" style="fill:#52657d" class="">ActionStarted 指 CommsSession_ActionStarted()。首次握手后标定；RESTART 不调用 App_Init()，也不清零编码器。参数为当前软件默认值。</text>
+</svg>

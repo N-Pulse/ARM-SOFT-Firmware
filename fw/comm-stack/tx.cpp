@@ -19,7 +19,7 @@ bool SendHelloMessage(void)
 }
 bool SendClassificationData(uint8_t action)
 {
-    if (action > 4U) return false;
+    if (action > 16U) return false;
     ClassificationData classification;
     classification.set_action(static_cast<ClassificationData::Action>(action));
     Data data; data.set_instruction(classification);

@@ -1,3 +1,5 @@
+> **状态机更新版：** HW 模式现在需要 Hello → READY → ALLOW_START，正常 STOP 回位后关闭 PID，FAULT 立即停止，RESTART 仅在停止/故障状态接受。请先阅读 [状态机与上位机协议说明](docs/STATE_MACHINE_CN.md)。旧 Hello/action 客户端不能直接启动本版，使用 `tools/lifecycle_client.py`。SIM v2 保持独立。
+
 # N-Pulse — firmware mono-carte STM32G474QET6
 
 État maintenu au **9 octobre 2026, lot 6**. Le banc PC exécute maintenant une

@@ -123,10 +123,16 @@ static void fixture(void)
     tx_auto_complete = true; tx_fail = rx_fail = abort_fail = false;
     tx_injection=0; stop_at_notify=stop_pending_irq=recover_injection=late_wakeup=false;
     huart4.gState=HAL_UART_STATE_READY; huart4.TxXferCount=0U;
-    Comms_Init(); Comms_TaskCreate();
+    Comms_Init(); CommsSession_SetState(APP_WORK_WAIT); Comms_TaskCreate();
     assert(UART4Transport_StartRx((void *)2));
 }
-static void session(void) { inject(hello, sizeof(hello)); drain(); }
+static void session(void) {
+    inject(hello, sizeof(hello)); drain();
+#ifndef TEST_LIFECYCLE_FIXTURE
+    /* Legacy parser/interlock bench explicitly grants work, separate from app tests. */
+    CommsSession_SetState(APP_WORK_WAIT);
+#endif
+}
 static uint32_t epoch(void)
 { uint32_t key = Motor_Lock(); uint32_t n = MotorSafety_EpochLocked(); Motor_Unlock(key); return n; }
 static void silent_for(uint32_t ms)
@@ -227,7 +233,7 @@ static void loss_tests(void)
 
     fixture(); clock_ms = UINT32_MAX - 1000U; Motor_Update(); step(10U, true);
     /* Remove the deliberate time jump cause, then begin a session near wrap. */
-    assert(Motor_RecoverFromFault()); session();
+    session(); assert(Motor_RecoverFromFault());
     silent_for(2000U); assert(!(MotorSafety_GetStopCauses() & MOTOR_STOP_LINK));
     step(10U, true); assert(MotorSafety_GetStopCauses() & MOTOR_STOP_LINK);
     report("session timeout uses unsigned elapsed time across HAL millisecond wrap");
@@ -306,7 +312,11 @@ static void tx_tests(void)
     assert(d.tx_full == 1U && d.tx_timeouts == 1U && d.tx_errors == 1U && d.tx_stale == 1U);
     report("TX failure and completion timeout are bounded RTOS waits; old queued TX generation discarded");
 }
+#ifdef TEST_LIFECYCLE_FIXTURE
+int legacy_comms_suite(void)
+#else
 int main(void)
+#endif
 {
     scenarios = 0U;
     parser_and_rx_tests(); loss_tests(); tx_tests(); parser_time_tests();
@@ -319,6 +329,10 @@ int main(void)
     report("STOP during notification drain rejects frame before commitment");
     for (unsigned phase=1;phase<=4;++phase) for(unsigned recovery=0;recovery<=1;++recovery) {
         fixture(); current_task=1U; recover_injection=recovery;
+        if(recovery) {
+            rx_result_t h={.type=RX_TYPE_HELLO,.proto_version=1,.data.device_id=1}; bool started;
+            assert(CommsSession_OnMessage(&h,clock_ms,epoch(),&started));
+        }
         assert(UART4Transport_QueuePayload(close_hand+2U,6U));
         if(phase==2) stop_at_notify=true; else tx_injection=phase;
         bool complete=UART4Transport_TxOnce(0U);

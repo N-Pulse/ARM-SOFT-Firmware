@@ -12,9 +12,19 @@ typedef enum {
     MOTOR_STOP_FORCE         = 1U << 4,
     MOTOR_STOP_DRIVER        = 1U << 5,
     MOTOR_STOP_PID           = 1U << 6,
-    MOTOR_STOP_LINK          = 1U << 7
+    MOTOR_STOP_LINK          = 1U << 7,
+    MOTOR_STOP_INIT          = 1U << 8,
+    MOTOR_STOP_MOTION_TIMEOUT= 1U << 9
 } motor_stop_cause_t;
 
+typedef struct {
+    uint32_t ms, cause, motor_mask, epoch, state, sequence;
+} motor_safety_event_t;
+/* Bounded deferred diagnostics: never UART/printf from safety or an ISR. */
+bool MotorSafety_PeekEvent(motor_safety_event_t *out);
+void MotorSafety_ConsumeEvent(uint32_t sequence);
+uint32_t MotorSafety_DroppedEvents(void);
+void MotorSafety_CancelCommandsLocked(void);
 void MotorSafety_Init(void);
 bool MotorSafety_FilterCommand(motor_id_t id, float *position, uint8_t *speed_percent);
 void MotorSafety_OnFeedback(const motor_feedback_t *feedback);

@@ -61,7 +61,7 @@ C_SOURCES := Core/Src/main.c Core/Src/stm32g4xx_hal_msp.c \
  $(RTOS_DIR)/portable/GCC/ARM_CM4F/port.c $(RTOS_DIR)/portable/MemMang/heap_4.c \
  fw/app/app.c fw/app/intent_router.c fw/comm/comm.c fw/comm/board_link.c \
  fw/comm/board_uart_compat.c fw/comm/uart4_transport.c fw/comm/comms_parser.c \
- fw/comm/comms_session.c fw/comm/sim_protocol.c fw/comm/sim_session.c fw/bsp/encoder/encoder_bsp.c fw/bsp/adc_dma/adc_dma_bsp.c \
+ fw/comm/comms_session.c fw/comm/lifecycle_protocol.c fw/comm/sim_protocol.c fw/comm/sim_session.c fw/bsp/encoder/encoder_bsp.c fw/bsp/adc_dma/adc_dma_bsp.c \
  fw/motors/motor_map/motor_map.c fw/motors/motor_control/motor_backend_hw.c \
  fw/motors/motor_control/motor_backend_sim.c fw/motors/motor_control/motor_control.c \
  fw/motors/motor_control/motor_safety.c fw/motors/motor_control/motor_guard.c \
