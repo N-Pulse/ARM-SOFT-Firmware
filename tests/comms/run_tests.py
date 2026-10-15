@@ -69,6 +69,9 @@ def main():
          HERE / 'test_sim_bounds.c', '-o', sim, '-lm']); run([sim])
     result = 'ASan+UBSan SIM bounds passed' if chosen else 'ASan/UBSan unavailable locally; SIM bounds tested without sanitizers'
     print(result); (OUT / 'sanitizer-result.txt').write_text(result + '\n')
+    if '--firmware-only' in sys.argv:
+        print('Local firmware-only communication checks complete; optional host/network scenarios not requested.')
+        return
     # SIM v1 TX semantics were deliberately replaced by v2. Test actual staging,
     # priority STOP, late output rejection and native closed loop in lot 6.
     run([sys.executable, ROOT / 'tools/run_simulation.py', '--case',

@@ -22,6 +22,10 @@ A normal STOP means **return to the initial pose, then stop**. Send ESTOP when a
 
 Low-level clocks, peripherals, safe outputs, feedback acquisition, and communication buffers must be initialized before the handshake can take place. Motion permission, motor driver activation, and the return motion occur after the handshake; not all hardware initialization is deferred until then.
 
+### Dedicated Commissioning Mode
+
+With `N_PULSE_HW_SINGLE_MOTOR_TEST=1`, the existing commissioning workflow owns motor activation and targets. App_Task does not run lifecycle initialization, automatic calibration, multi-axis return, or normal intent execution. The existing host monitor continues using Hello for link supervision; it does not need to answer lifecycle PING/PONG. The original commissioned motor selection, limits, explicit reference verification, and immediate STOP behavior are retained.
+
 ## Position Origin and Hardware Parameters
 
 The hand is assumed to be physically in the OPEN initial pose at power-on. The startup origin of the software's accumulated encoder count defines the coordinate origin for that boot. This version configures encoder calibration after the first handshake but does not perform automatic homing.
@@ -52,15 +56,28 @@ Exceeding the maximum execution duration causes a MOTION_TIMEOUT fault; this doe
 
 ## Communication Protocol
 
+See [Lifecycle Protocol Migration](STATE_MACHINE_PROTOCOL_MIGRATION.md) for the compatibility contract and verification results.
+
 Serial interface: UART4 at 115200 baud. Frame format: `AA + payload_length:u8 + protobuf_payload`. The maximum payload is 128 bytes.
 
-The original Hello/Data fields are unchanged. The extended protocol is defined in `fw/comm-stack/lifecycle_messages.proto`, which imports the original `protocol_messages.proto`. The firmware continues using the original generated header. New fields are encoded and decoded by the bounded codec in `fw/comm/lifecycle_protocol.c`, without modifying the old generated files. To generate host bindings, provide both .proto files and use LifecycleDeviceMessage/LifecycleProsthesisMessage.
+The original Hello/Data and commissioning fields are unchanged. The extended protocol is defined in `fw/comm-stack/lifecycle_messages.proto`, which imports the original `protocol_messages.proto`. The firmware continues using the original generated header. New fields are encoded and decoded by the bounded codec in `fw/comm/lifecycle_protocol.c`, without modifying the old generated files. To generate host bindings, provide both .proto files and use LifecycleDeviceMessage/LifecycleProsthesisMessage.
+
+The existing `protocol_messages.proto`, generated C++/Python bindings, CommissionCommand fields, operation IDs, and result codes are unchanged by this migration. The extended envelopes in `lifecycle_messages.proto` retain all legacy fields and allocate unused field numbers for lifecycle messages.
+
+| Direction | Preserved legacy fields | New lifecycle fields |
+|---|---|---|
+| Host → firmware | Hello=1, Data=2, Commission=3, Stop=4, Diagnostic=5 | Control=6 |
+| Firmware → host | Config=1, Error=2, MotorDiagnostic=3, CommandReply=4 | Status=5, SafetyEvent=6, Control/PING=7, Hello=8 |
+
+The decoder routes legacy fields 1..5 to the existing generated DeviceMessage decoder. It decodes lifecycle field 6 separately and rejects malformed or mixed envelopes. The lifecycle client ignores legacy diagnostic/reply frames before interpreting their payloads, which can contain floating-point fields.
+
+**Migration:** update the lifecycle client together with the firmware. The old lifecycle Control=3 layout conflicts with Commission and is not accepted as lifecycle control anymore. No compatibility fallback guesses message types from payload shape. Existing commissioning clients and their wire fields remain unchanged.
 
 The host sends `LifecycleDeviceMessage`:
 
 - Hello: field 1; device_id must be nonzero and proto_ver must be 1.
 - Data/ClassificationData: field 2; existing action IDs 0..4.
-- Control: field 3; its fields are command=1, request_id=2, and peer_id=3.
+- Control: field 6; its fields are command=1, request_id=2, and peer_id=3.
 
 | Command | ID | Accepted State / Purpose |
 |---|---|---|
@@ -77,10 +94,10 @@ peer_id must match the device_id in Hello. Except for PONG, control request_id v
 
 The firmware sends `LifecycleProsthesisMessage`:
 
-- status: field 3; reports state, result, request_id, queue_depth, cumulative dropped count, stop_causes, action_sequence, action_done, and detail.
-- safety: field 4; records time_ms, cause, motor_mask, stop_epoch, and previous_state.
-- control: field 5; carries the PING command, request_id, and peer_id.
-- hello: field 6; a startup handshake invitation or a reply to a valid Hello.
+- status: field 5; reports state, result, request_id, queue_depth, cumulative dropped count, stop_causes, action_sequence, action_done, and detail.
+- safety: field 6; records time_ms, cause, motor_mask, stop_epoch, and previous_state.
+- control: field 7; carries the PING command, request_id, and peer_id.
+- hello: field 8; a startup handshake invitation or a reply to a valid Hello.
 
 An old client that sends only Hello and intents cannot start this firmware or answer the new probes. Use the new client or update the host software.
 
@@ -135,9 +152,13 @@ Use the maintained root Makefile. The new C file has been added to tools/firmwar
 ```bash
 make PYTHON=python3 SIM_MODE=0
 python3 tests/lifecycle/run_tests.py --sanitize
+python3 tests/lifecycle/run_tests.py --commissioning --sanitize
 python3 tests/safety/run_tests.py
 python3 tests/startup/run_tests.py
-python3 tests/comms/run_tests.py
+python3 tests/comms/run_tests.py --firmware-only
+python3 tests/patch7/run_tests.py
 ```
+
+`tools/generate_protocol.py` also generates Python bindings for lifecycle_messages.proto when its documented grpcio-tools/EmbeddedProto generator dependencies are installed. Runtime lifecycle communication uses the bounded C codec and the dependency-light Python client; no new generated C++ lifecycle header is required.
 
 The delivered package contains source and tests only, without old ELF files, Debug outputs, or Git history. A full STM32 build requires the arm-none-eabi toolchain. Local mocked tests do not validate real hardware feedback, mechanical return motion, or electrical wiring.

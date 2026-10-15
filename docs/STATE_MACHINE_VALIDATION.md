@@ -22,3 +22,8 @@
 The state machine is implemented in `fw/app/app.c`, control messages and session management in `fw/comm/comms_session.c`, and protocol extensions in `fw/comm/lifecycle_protocol.*`. Safety events are recorded in `motor_safety.c` and transmitted asynchronously in `comm.c`. MotorGuard now recognizes settled position hold, and UART transmit failures trigger LINK protection.
 
 The original ZIP was not modified. The delivered `state-machine.patch` can be compared against the extracted original ZIP. The source package excludes Git history, old Debug/build outputs, and Python caches to prevent accidental use of an old ELF. See STATE_MACHINE_CN.md for the complete state and protocol guide.
+
+
+## Protocol Coexistence Update (2026-10-15)
+
+The lifecycle protocol has been moved to unused field numbers while preserving the existing commissioning protocol and generated bindings. The new tests pass for lifecycle operation, legacy message decoding, immediate STOP, and dedicated commissioning mode. See [Lifecycle Protocol Migration](STATE_MACHINE_PROTOCOL_MIGRATION.md) for the exact field map, current checks, and remaining hardware/build limitations.

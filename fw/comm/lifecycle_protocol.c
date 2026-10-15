@@ -13,9 +13,9 @@ static bool read_var(const uint8_t *p,size_t n,size_t *i,uint32_t *v) {
 int Lifecycle_DecodeDevice(const uint8_t *p,size_t n,lifecycle_control_t *out) {
     if(!p || !n || !out) return -1;
     size_t i=0; uint32_t tag,len;
-    if(!read_var(p,n,&i,&tag) || (tag!=10 && tag!=18 && tag!=26) ||
+    if(!read_var(p,n,&i,&tag) || ((tag&7U)!=2U || (tag>>3U)<1U || (tag>>3U)>LIFECYCLE_DEVICE_CONTROL_FIELD) ||
        !read_var(p,n,&i,&len) || len!=n-i) return -1;
-    if(tag!=26) return 0;
+    if((tag>>3U)!=LIFECYCLE_DEVICE_CONTROL_FIELD) return 0;
     lifecycle_control_t c={0}; unsigned seen=0;
     while(i<n) {
         uint32_t key,v;
@@ -44,20 +44,20 @@ static size_t envelope(uint8_t *out,size_t capacity,unsigned field,const uint32_
 }
 size_t Lifecycle_EncodeControl(uint8_t *p,size_t n,const lifecycle_control_t *c) {
     if(!c) return 0;
-    uint32_t v[]={c->command,c->request_id,c->peer_id}; return envelope(p,n,3,v,3);
+    uint32_t v[]={c->command,c->request_id,c->peer_id}; return envelope(p,n,LIFECYCLE_DEVICE_CONTROL_FIELD,v,3);
 }
 size_t Lifecycle_EncodeProbe(uint8_t *p,size_t n,const lifecycle_control_t *c) {
     if(!c) return 0;
-    uint32_t v[]={c->command,c->request_id,c->peer_id}; return envelope(p,n,5,v,3);
+    uint32_t v[]={c->command,c->request_id,c->peer_id}; return envelope(p,n,LIFECYCLE_PROBE_FIELD,v,3);
 }
 size_t Lifecycle_EncodeHello(uint8_t *p,size_t n) {
-    uint32_t v[]={1,1,1}; return envelope(p,n,6,v,3);
+    uint32_t v[]={1,1,1}; return envelope(p,n,LIFECYCLE_HELLO_FIELD,v,3);
 }
 size_t Lifecycle_EncodeStatus(uint8_t *p,size_t n,const lifecycle_status_t *s) {
     if(!s) return 0;
     uint32_t v[]={s->state,s->result,s->request_id,s->queue_depth,s->dropped,s->causes,
-                  s->action_sequence,s->action_done,s->detail}; return envelope(p,n,3,v,9);
+                  s->action_sequence,s->action_done,s->detail}; return envelope(p,n,LIFECYCLE_STATUS_FIELD,v,9);
 }
 size_t Lifecycle_EncodeSafety(uint8_t *p,size_t n,uint32_t ms,uint32_t cause,uint32_t mask,uint32_t epoch,uint32_t state) {
-    uint32_t v[]={ms,cause,mask,epoch,state}; return envelope(p,n,4,v,5);
+    uint32_t v[]={ms,cause,mask,epoch,state}; return envelope(p,n,LIFECYCLE_SAFETY_FIELD,v,5);
 }

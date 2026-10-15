@@ -9,6 +9,12 @@ bool Encoder_BSP_SetCalibration(motor_id_t id,const encoder_calibration_t *cal) 
     if(calibration_fail || Motor_IsEnabled(id) || !cal->counts_per_revolution) return false;
     calibrated[id]=true; Motor_InvalidatePositionFeedback(id); return true;
 }
+#ifdef TEST_COMMISSION_APP
+bool Encoder_BSP_Reset(motor_id_t id) {
+    if(Motor_IsEnabled(id)) return false;
+    raw[id]=0; positions[id]=0; Motor_InvalidatePositionFeedback(id); return true;
+}
+#endif
 static void tx_drain(void) {
     current_task=1; while(UART4Transport_TxOnce(0)) {} current_task=2;
 }
@@ -44,9 +50,9 @@ static void decoder_tests(void) {
     assert(Lifecycle_DecodeDevice(b,n,&decoded)==1 && decoded.command==CONTROL_STOP);
     assert(Lifecycle_DecodeDevice(b,n-1,&decoded)==-1);
     b[n]=10; b[n+1]=0; assert(Lifecycle_DecodeDevice(b,n+2,&decoded)==-1);
-    uint8_t duplicate[]={26,8,8,3,16,1,24,1,8,3};
+    uint8_t duplicate[]={50,8,8,3,16,1,24,1,8,3};
     assert(Lifecycle_DecodeDevice(duplicate,sizeof(duplicate),&decoded)==-1);
-    uint8_t omitted[]={26,4,8,3,24,1};
+    uint8_t omitted[]={50,4,8,3,24,1};
     assert(Lifecycle_DecodeDevice(omitted,sizeof(omitted),&decoded)==-1);
     report("control wire codec rejects truncation, mixed oneof, duplicate and missing identity fields");
 }
@@ -172,13 +178,60 @@ static void diagnostic_tests(void) {
     uint8_t p[64]; size_t n=Lifecycle_EncodeSafety(p,sizeof(p),clock_ms,MOTOR_STOP_GUARD,2,epoch(),APP_WORK_EXECUTING);
     assert(UART4Transport_QueueSafetyPayload(p,n));
     Motor_StopAll();
-    assert(UART4Transport_TxOnce(0)); assert(wire[2]==0x22);
+    assert(UART4Transport_TxOnce(0)); assert(wire[2]==0x32);
     motor_safety_event_t e; assert(MotorSafety_PeekEvent(&e));
     assert(e.cause==MOTOR_STOP_MANUAL && e.motor_mask==255);
     MotorSafety_ConsumeEvent(e.sequence); assert(!MotorSafety_PeekEvent(&e));
     report("deferred safety records survive later stop epochs and preserve cause/motor context");
 }
-int main(void) {
-    setbuf(stdout,NULL); scenarios=0; decoder_tests(); workflow_tests(); stop_priority_tests(); fault_tests(); watchdog_tests(); return_and_settle_tests(); additional_fault_tests(); diagnostic_tests();
+static void protocol_coexistence_tests(void) {
+    /* Same three scalar fields that used to be mistaken for lifecycle STOP. */
+    const uint8_t commission[]={0x1a,6,8,3,16,7,24,1};
+    const uint8_t stop[]={0x22,0};
+    const uint8_t diagnostic[]={0x2a,2,8,1};
+    lifecycle_control_t control_message={0};
+    assert(Lifecycle_DecodeDevice(commission,sizeof(commission),&control_message)==0);
+    assert(Lifecycle_DecodeDevice(stop,sizeof(stop),&control_message)==0);
+    assert(Lifecycle_DecodeDevice(diagnostic,sizeof(diagnostic),&control_message)==0);
+    rx_result_t r=HandleDeviceMessage(commission,sizeof(commission));
+    assert(r.type==RX_TYPE_COMMISSION && r.command.request_id==3 && r.command.epoch==7 && r.command.operation==1);
+    r=HandleDeviceMessage(stop,sizeof(stop)); assert(r.type==RX_TYPE_STOP);
+    r=HandleDeviceMessage(diagnostic,sizeof(diagnostic)); assert(r.type==RX_TYPE_DIAGNOSTIC && r.data.mode==1);
+    uint8_t payload[96]; lifecycle_control_t c={CONTROL_STOP,7,1};
+    size_t n=Lifecycle_EncodeControl(payload,sizeof(payload),&c);
+    assert(payload[0]==0x32);
+    r=HandleDeviceMessage(payload,n); assert(r.type==RX_TYPE_CONTROL && r.control.command==CONTROL_STOP);
+    lifecycle_status_t st={0};
+    assert(Lifecycle_EncodeStatus(payload,sizeof(payload),&st) && payload[0]==0x2a);
+    assert(Lifecycle_EncodeSafety(payload,sizeof(payload),1,2,3,4,5) && payload[0]==0x32);
+    assert(Lifecycle_EncodeProbe(payload,sizeof(payload),&c) && payload[0]==0x3a);
+    assert(Lifecycle_EncodeHello(payload,sizeof(payload)) && payload[0]==0x42);
+    ready(); uint8_t framed_stop[]={0xaa,2,0x22,0};
+    inject(framed_stop,sizeof(framed_stop)); drain();
+    assert(CommsSession_GetState()==APP_FAULT && (MotorSafety_GetStopCauses()&MOTOR_STOP_MANUAL));
+    assert_stopped();
+    report("legacy Commission/Stop/Diagnostic keep tags 3/4/5; lifecycle uses distinct tags; legacy STOP remains immediate");
+}
+int lifecycle_regression_suite(void) {
+    setbuf(stdout,NULL); scenarios=0; decoder_tests(); workflow_tests(); stop_priority_tests(); fault_tests(); watchdog_tests(); return_and_settle_tests(); additional_fault_tests(); diagnostic_tests(); protocol_coexistence_tests();
     printf("Lifecycle: %u scenarios passed\n",scenarios); return 0;
+}
+
+int main(void) {
+#ifdef TEST_COMMISSION_APP
+    boot(); ticks(1100,true);
+    assert(!MotorSafety_IsFaultActive()); assert_stopped();
+    session(); tx_drain(); ticks(30,true); assert_stopped();
+    assert(CommsSession_GetState()==APP_INIT_HANDSHAKE);
+    lifecycle_control_t p; assert(!CommsSession_GetProbe(&p));
+    control(CONTROL_ALLOW_START); tick(true); assert_stopped();
+    inject(close_hand,sizeof(close_hand)); drain(); tx_drain();
+    intent_t intent; assert(!Comms_GetNextIntent(&intent));
+    uint8_t stop[]={0xaa,2,0x22,0}; inject(stop,sizeof(stop)); drain();
+    assert(MotorSafety_GetStopCauses()&MOTOR_STOP_MANUAL); assert_stopped();
+    puts("PASS dedicated commissioning App: no automatic calibration/arm/return, no lifecycle PONG requirement, ordinary actions rejected, legacy STOP immediate");
+    return 0;
+#else
+    return lifecycle_regression_suite();
+#endif
 }

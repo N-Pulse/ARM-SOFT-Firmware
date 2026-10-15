@@ -5,6 +5,11 @@ only with an explicit --command allow-start and/or --action option.
 """
 import argparse
 import time
+DEVICE_CONTROL_FIELD=6
+STATUS_FIELD=5
+SAFETY_FIELD=6
+PROBE_FIELD=7
+HELLO_FIELD=8
 COMMANDS={'allow-start':1,'deny-start':2,'stop':3,'restart':4,'query':7,'estop':8}
 STATES=['INIT_HANDSHAKE','INIT_MODULES','INIT_RETURN','READY','WORK_WAIT','WORK_EXECUTING','STOPPING','STOPPED','FAULT']
 CAUSES=['MANUAL/ESTOP','GUARD_STALL','POSITION_OR_FORCE_FEEDBACK','CONTROL_DELAY','FORCE_LIMIT','DRIVER','PID','LINK','INIT','MOTION_TIMEOUT']
@@ -31,7 +36,7 @@ def message(field,values):
     return b'\xaa'+bytes([len(payload)])+payload
 
 def hello_frame(peer=1): return message(1,{1:peer,2:1,3:1})
-def control_frame(command,request_id,peer=1): return message(3,{1:command,2:request_id,3:peer})
+def control_frame(command,request_id,peer=1): return message(DEVICE_CONTROL_FIELD,{1:command,2:request_id,3:peer})
 def action_frame(action):
     if action not in range(17): raise ValueError('unknown action')
     # DeviceMessage.Data.ClassificationData, including proto3 zero omission.
@@ -43,6 +48,8 @@ def action_frame(action):
 def decode(payload):
     tag,i=read_varint(payload,0); n,i=read_varint(payload,i)
     if tag&7!=2 or n!=len(payload)-i: raise ValueError('invalid envelope')
+    if tag//8 not in (STATUS_FIELD,SAFETY_FIELD,PROBE_FIELD,HELLO_FIELD):
+        return tag//8,{}
     fields={}
     while i<len(payload):
         key,i=read_varint(payload,i)
@@ -52,12 +59,12 @@ def decode(payload):
 
 def state_name(value): return STATES[value] if value<len(STATES) else str(value)
 def describe(tag,f):
-    if tag==3: # Status has queue_depth even when zero; Control only 1..3.
+    if tag==STATUS_FIELD:
         result=f.get(2,0)
         return (f"state={state_name(f.get(1,0))} result={RESULTS[result] if result<len(RESULTS) else result} "
                 f"request={f.get(3,0)} queue={f.get(4,0)} dropped={f.get(5,0)} "
                 f"causes=0x{f.get(6,0):x} action={f.get(7,0)} done={bool(f.get(8,0))} detail={f.get(9,0)}")
-    if tag==4:
+    if tag==SAFETY_FIELD:
         causes=','.join(name for i,name in enumerate(CAUSES) if f.get(2,0)&(1<<i))
         motors=','.join(name for i,name in enumerate(MOTORS) if f.get(3,0)&(1<<i))
         return f"SAFETY t={f.get(1,0)}ms cause={causes} motors={motors} from={state_name(f.get(5,0))} epoch={f.get(4,0)}; outputs inhibited, PID reset"
@@ -93,11 +100,13 @@ def main():
                 payload=bytes(rx[2:n+2]); del rx[:n+2]
                 try: tag,f=decode(payload)
                 except ValueError as e: print('RX rejected:',e); continue
-                if tag==5 and f.get(1)==5:
+                if tag not in (STATUS_FIELD,SAFETY_FIELD,PROBE_FIELD,HELLO_FIELD):
+                    continue
+                if tag==PROBE_FIELD and f.get(1)==5:
                     if f.get(3)!=args.peer_id: raise RuntimeError('PING peer mismatch')
                     send(control_frame(6,f[2],args.peer_id)); continue
                 print(describe(tag,f),flush=True)
-                if tag!=3: continue
+                if tag!=STATUS_FIELD: continue
                 state=f.get(1,0)
                 admissible=(pending in ('allow-start','deny-start') and state==3 or
                             pending=='restart' and state in (7,8) or

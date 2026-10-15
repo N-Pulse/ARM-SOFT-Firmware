@@ -8,6 +8,8 @@ rx_result_t HandleDeviceMessage(const uint8_t *bytes, size_t length)
     rx_result_t result = {};
     if (!bytes || !length || length > RX_BUFFER_SIZE) return result;
     lifecycle_control_t control = {};
+    /* Classify the envelope first. Legacy Commission/Stop/Diagnostic fields
+     * keep their original tags and are decoded by DeviceMessage below. */
     int envelope = Lifecycle_DecodeDevice(bytes, length, &control);
     if (envelope < 0) return result;
     if (envelope == 1) { result.type = RX_TYPE_CONTROL; result.control = control; return result; }

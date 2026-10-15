@@ -9,6 +9,7 @@
 #include "uart4_transport.h"
 #include "motor_lock.h"
 #include "motor_safety.h"
+#include "hw_test_config.h"
 #ifndef MOTOR_BACKEND_SIM
 #include "rx.h"
 #include "tx.h"
@@ -30,6 +31,7 @@ static bool send_boot_hello(void) {
     return n && UART4Transport_QueuePayload(p,n);
 }
 static void service_lifecycle(void) {
+    if(N_PULSE_HW_SINGLE_MOTOR_TEST) return; /* Existing monitor needs no lifecycle PONG. */
     uint8_t payload[96]; uint32_t now=HAL_GetTick();
     if(!CommsSession_HasSession() && (uint32_t)(now-last_hello_ms)>=500U) {
         if(send_boot_hello()) last_hello_ms=now;
@@ -103,7 +105,10 @@ static bool frame_received(const uint8_t *bytes, size_t length, uint32_t ms,
     if (UART4Transport_RxGenerationMatches(current_generation))
         CommsSession_OnMessage(&result, ms, epoch, &started);
     Motor_Unlock(key);
-    if (started) send_boot_hello(); /* Complete framed message; zero-wait offer. */
+    if (started) {
+        if(N_PULSE_HW_SINGLE_MOTOR_TEST) SendHelloMessage();
+        else send_boot_hello();
+    } /* Complete framed message; zero-wait offer. */
     return result.type != RX_TYPE_NONE;
 }
 #else

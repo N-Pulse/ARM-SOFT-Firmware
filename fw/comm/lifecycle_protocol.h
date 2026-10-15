@@ -3,6 +3,14 @@
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
+/* Wire field numbers: legacy commissioning fields are never reused. */
+enum {
+    LIFECYCLE_DEVICE_CONTROL_FIELD=6,
+    LIFECYCLE_STATUS_FIELD=5,
+    LIFECYCLE_SAFETY_FIELD=6,
+    LIFECYCLE_PROBE_FIELD=7,
+    LIFECYCLE_HELLO_FIELD=8
+};
 typedef enum {
     APP_INIT_HANDSHAKE=0, APP_INIT_MODULES=1, APP_INIT_RETURN=2,
     APP_READY=3, APP_WORK_WAIT=4, APP_WORK_EXECUTING=5,
@@ -25,7 +33,7 @@ typedef struct {
     uint32_t state, result, request_id, queue_depth, dropped, causes,
              action_sequence, action_done, detail, revision;
 } lifecycle_status_t;
-/* -1 invalid, 0 legacy Hello/Data envelope, 1 Control envelope.
+/* -1 invalid, 0 legacy Hello/Data/Commission/Stop/Diagnostic envelope, 1 Control envelope.
  * Reject ambiguous/mixed oneofs and noncanonical varints. */
 #ifdef __cplusplus
 extern "C" {

@@ -22,7 +22,7 @@ def main():
         f'--python_out={out / "EmbeddedProto"}', 'embedded_proto_options.proto']) == 0
     schema = ROOT/'fw/comm-stack'
     assert protoc.main(['protoc', f'-I{schema}', f'--descriptor_set_out={out / "schema.pb"}',
-        '--include_imports', f'--python_out={schema / "PyUART"}', 'protocol_messages.proto']) == 0
+        '--include_imports', f'--python_out={schema / "PyUART"}', 'protocol_messages.proto', 'lifecycle_messages.proto']) == 0
     sys.path.insert(0, str(out))
     from EmbeddedProto.main import generate_code
     descriptor = descriptor_pb2.FileDescriptorSet.FromString((out/'schema.pb').read_bytes())
@@ -35,6 +35,8 @@ def main():
         (schema/file.name).write_text('\n'.join(line.rstrip() for line in file.content.splitlines())+'\n',encoding='utf-8')
     shutil.copy2(schema/'PyUART/protocol_messages_pb2.py',
         schema/'comm_ws/src/bmi_gateway/bmi_gateway/protocol_messages_pb2.py')
-    print('Regenerated EmbeddedProto and both Python bindings')
+    shutil.copy2(schema/'PyUART/lifecycle_messages_pb2.py',
+        schema/'comm_ws/src/bmi_gateway/bmi_gateway/lifecycle_messages_pb2.py')
+    print('Regenerated legacy EmbeddedProto and legacy/lifecycle Python bindings')
 
 if __name__ == '__main__': main()

@@ -1,10 +1,17 @@
 syntax = "proto3";
 import "protocol_messages.proto";
-// Additive envelopes. Existing Hello/Data and Config/Error wire tags are preserved.
-// Existing generated protocol_messages.h remains used for legacy fields.
-// lifecycle_protocol.c is the bounded wire codec for the new fields.
+// Wire-compatible extensions of the existing commissioning envelopes.
+// Legacy field numbers and nested message definitions must not change.
+// lifecycle_protocol.c handles the new fields; generated legacy code handles 1..5.
 message LifecycleDeviceMessage {
-  oneof message { Hello hello = 1; Data data = 2; LifecycleControl control = 3; }
+  oneof message {
+    Hello hello = 1;
+    Data data = 2;
+    CommissionCommand commission = 3;
+    StopRequest stop = 4;
+    DiagnosticRequest diagnostic = 5;
+    LifecycleControl control = 6;
+  }
 }
 message LifecycleControl {
   enum Command { UNSPECIFIED = 0; ALLOW_START = 1; DENY_START = 2; STOP = 3;
@@ -14,9 +21,16 @@ message LifecycleControl {
   uint32 peer_id = 3; // Must match the Hello device_id.
 }
 message LifecycleProsthesisMessage {
-  oneof message { Config config = 1; Error error = 2;
-    LifecycleStatus status = 3; SafetyEvent safety = 4;
-    LifecycleControl control = 5; Hello hello = 6; }
+  oneof message {
+    Config config = 1;
+    Error error = 2;
+    MotorDiagnostic diagnostic = 3;
+    CommandReply reply = 4;
+    LifecycleStatus status = 5;
+    SafetyEvent safety = 6;
+    LifecycleControl control = 7;
+    Hello hello = 8;
+  }
 }
 message LifecycleStatus {
   enum State { INIT_HANDSHAKE = 0; INIT_MODULES = 1; INIT_RETURN = 2;
