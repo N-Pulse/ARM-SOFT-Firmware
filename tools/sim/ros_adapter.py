@@ -3,6 +3,22 @@ The ROS wrapper requires an effort controller and a controller-side watchdog.
 """
 from . import protocol as p
 
+class SourceClock:
+    """ROS source timestamps are translated to monotonic wall time at 1x only.
+    Pauses, repeats or time jumps require STOP and a fresh bridge instance.
+    """
+    def __init__(self): self.stamps={}; self.anchor=None
+    def capture(self,stamp_ns,ros_now_ns,wall_ms,source):
+        age=(ros_now_ns-stamp_ns)//1000000
+        if stamp_ns<=0 or not 0<=age<=50: raise ValueError('missing/stale model source timestamp')
+        if stamp_ns<=self.stamps.get(source,0): raise ValueError('repeated/backward model source timestamp')
+        if self.anchor is None: self.anchor=(stamp_ns,wall_ms)
+        ros_origin,wall_origin=self.anchor
+        if abs((stamp_ns-ros_origin)//1000000-(wall_ms-wall_origin))>50:
+            raise ValueError('ROS source time paused/jumped or is not at wall-clock rate; restart bridge after resynchronization')
+        self.stamps[source]=stamp_ns
+        return wall_ms-age
+
 class EffortAdapter:
     def __init__(self,peer,joint_names,effort_scales,publish):
         if len(joint_names)!=8 or len(set(joint_names))!=8 or len(effort_scales)!=8:

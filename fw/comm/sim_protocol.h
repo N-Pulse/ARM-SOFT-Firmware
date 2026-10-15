@@ -11,7 +11,7 @@
 #define SIM_FRAME_TIMEOUT_MS 50U
 #define SIM_INTERBYTE_TIMEOUT_MS 15U
 enum { SIM_HELLO=1, SIM_HEARTBEAT, SIM_CONFIG, SIM_RECOVER, SIM_ARM,
-       SIM_ENABLE, SIM_TARGET, SIM_STOP, SIM_FEEDBACK,
+       SIM_ENABLE, SIM_TARGET, SIM_STOP, SIM_FEEDBACK, SIM_INTENT,
        SIM_HELLO_ACK=0x81, SIM_STATUS, SIM_OUTPUT };
 typedef bool (*sim_frame_fn)(uint8_t, const uint8_t *, size_t, uint32_t, uint32_t, void *);
 typedef struct {

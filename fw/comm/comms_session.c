@@ -2,6 +2,7 @@
 #include "comms_config.h"
 #include "motor_safety.h"
 #include "motor_lock.h"
+#include "hw_test_config.h"
 #include <string.h>
 
 static intent_t intents[COMMS_INTENT_CAPACITY];
@@ -47,13 +48,16 @@ void CommsSession_BeginRestartLocked(void) {
 static bool fresh(uint32_t now) {
     return enabled && session && !lost && (uint32_t)(now-fresh_ms)<=COMMS_LINK_TIMEOUT_MS;
 }
+bool CommsSession_IsFreshLocked(uint32_t now){
+    return fresh(now);
+}
 bool CommsSession_HasSession(void) {
     uint32_t k=Motor_Lock(); bool result=fresh(HAL_GetTick()); Motor_Unlock(k); return result;
 }
 void CommsSession_PollLocked(uint32_t now) {
     if(!enabled || lost) return;
-    bool timeout=(!session && (uint32_t)(now-boot_ms)>COMMS_INITIAL_HANDSHAKE_MS) ||
-        (session && (!fresh(now) || (probe_pending && (uint32_t)(now-probe_ms)>COMMS_LINK_TIMEOUT_MS)));
+    bool timeout=(!N_PULSE_HW_SINGLE_MOTOR_TEST && !session && (uint32_t)(now-boot_ms)>COMMS_INITIAL_HANDSHAKE_MS) ||
+        (session && (!fresh(now) || (!N_PULSE_HW_SINGLE_MOTOR_TEST && probe_pending && (uint32_t)(now-probe_ms)>COMMS_LINK_TIMEOUT_MS)));
     if(timeout) {
         lost=true; ++diag.link_timeouts; report_locked(APP_RESULT_LINK_TIMEOUT,0,probe_id);
         MotorSafety_RequestStopCauseLocked(MOTOR_STOP_LINK,MOTOR_COUNT);
@@ -67,9 +71,12 @@ void CommsSession_TransportErrorLocked(void) {
     }
     CommsSession_OnStopLocked();
 }
-bool CommsSession_CanRecoverLocked(uint32_t now) { return !enabled || fresh(now); }
+bool CommsSession_CanRecoverLocked(uint32_t now) { return !enabled || (N_PULSE_HW_SINGLE_MOTOR_TEST && !session) || fresh(now); }
 static bool on_control(const lifecycle_control_t *c,uint32_t ms,uint32_t epoch) {
     app_state_t s=CommsSession_StateLocked();
+    if(N_PULSE_HW_SINGLE_MOTOR_TEST && c->command!=CONTROL_ESTOP && c->command!=CONTROL_QUERY) {
+        ++diag.rejected; report_locked(APP_RESULT_WRONG_STATE,c->request_id,0); return false;
+    }
     if(!fresh(HAL_GetTick()) || c->peer_id!=peer_id) {
         ++diag.rejected; report_locked(APP_RESULT_BAD_SESSION,c->request_id,0); return false;
     }
@@ -138,7 +145,7 @@ bool CommsSession_OnMessage(const rx_result_t *msg,uint32_t ms,uint32_t epoch,bo
     }
     bool result=false;
     if(msg->type==RX_TYPE_CONTROL) result=on_control(&msg->control,ms,epoch);
-    else if(msg->type==RX_TYPE_ACTION && msg->data.action_id<=ACTION_WRIST_DORSI && fresh(now) &&
+    else if(!N_PULSE_HW_SINGLE_MOTOR_TEST && msg->type==RX_TYPE_ACTION && msg->data.action_id<=ACTION_WRIST_DORSI && fresh(now) &&
             MotorSafety_CanArmLocked() && (status.state==APP_WORK_WAIT || status.state==APP_WORK_EXECUTING)) {
         if(count==COMMS_INTENT_CAPACITY) {
             ++diag.queue_full; report_locked(APP_RESULT_QUEUE_FULL,0,msg->data.action_id);
@@ -167,7 +174,7 @@ bool CommsSession_TakeControl(lifecycle_control_t *out,uint32_t *epoch) {
 }
 bool CommsSession_GetProbe(lifecycle_control_t *out) {
     uint32_t k=Motor_Lock(); uint32_t now=HAL_GetTick(); CommsSession_PollLocked(now);
-    if(enabled && fresh(now) && !probe_pending && ((uint32_t)(now-fresh_ms)>=COMMS_PROBE_IDLE_MS ||
+    if(!N_PULSE_HW_SINGLE_MOTOR_TEST && enabled && fresh(now) && !probe_pending && ((uint32_t)(now-fresh_ms)>=COMMS_PROBE_IDLE_MS ||
        (uint32_t)(now-last_probe_ms)>=COMMS_PROBE_PERIOD_MS)) {
         if(++probe_id==0) ++probe_id;
         probe_pending=probe_offer=true; probe_ms=last_probe_ms=now;

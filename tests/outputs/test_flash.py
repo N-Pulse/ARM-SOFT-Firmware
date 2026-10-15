@@ -25,7 +25,7 @@ def main():
     header=bytearray(52); header[:6]=b'\x7fELF\x01\x01'; struct.pack_into('<HH',header,16,2,40)
     def artifact(mode='HW', compile_flags=None):
         elf.write_bytes(header)
-        flags.write_text(compile_flags or '-DN_PULSE_ENABLE_CURRENT_ACQUISITION=0 | test\n')
+        flags.write_text(compile_flags or '-DN_PULSE_ENABLE_CURRENT_ACQUISITION=0 -DN_PULSE_HW_SINGLE_MOTOR_TEST=0 | test\n')
         manifest.write_text(json.dumps({'schema':1,'mode':mode,
             'elf_sha256':hashlib.sha256(elf.read_bytes()).hexdigest(),
             'flags_sha256':hashlib.sha256(flags.read_bytes()).hexdigest()}))
@@ -64,6 +64,10 @@ def main():
     case('tool Error line despite zero exit',False,['-SerialNumber','SNA'],{'FAKE_PROGRAM_ERROR':'1'},program=True)
     case('SIM path refused',False,['-SerialNumber','SNA','-ElfPath',str(FIXTURE/'build/SIM/n-pulse.elf'),'-DryRun'])
     case('legacy alias refused',False,['-SerialNumber','SNA','-ElfPath',str(FIXTURE/'Debug/N-PULSE FIRMWARE.elf'),'-DryRun'])
+    case('commissioning path refused',False,['-SerialNumber','SNA','-ElfPath',str(FIXTURE/'build/HW-single-1/n-pulse.elf'),'-DryRun'])
+    artifact(compile_flags='-DN_PULSE_ENABLE_CURRENT_ACQUISITION=0 -DN_PULSE_HW_SINGLE_MOTOR_TEST=1 | test\n')
+    case('commissioning image at canonical path refused',False,['-SerialNumber','SNA','-DryRun'])
+    artifact()
     elf.write_bytes(b'SIM substituted for HW')
     case('substituted artifact fails digest',False,['-SerialNumber','SNA','-DryRun'])
     artifact(mode='SIM')

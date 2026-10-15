@@ -11,6 +11,7 @@
 #include "motor_guard.h"
 #include "encoder_bsp.h"
 #include "drv8848.h"
+#include "adc_dma_bsp.h"
 
 GPIO_TypeDef mock_gpio[3];
 static TIM_TypeDef timers[3];
@@ -111,6 +112,11 @@ bool Encoder_BSP_GetSnapshot(motor_id_t id, encoder_snapshot_t *out) {
 }
 #endif
 bool ADC_DMA_BSP_Init(void) { return true; }
+bool ADC_DMA_BSP_GetSample(motor_id_t id,adc_current_sample_t *out) {
+    (void)id;
+    *out=(adc_current_sample_t){.current_a=NAN,.voltage_v=NAN,.age_ms=UINT32_MAX};
+    return true;
+}
 #ifndef TEST_HW_BACKEND
 /* I/O fixture only: asynchronous delivery can be withheld independently of
  * time/guard motion. All validation and stop logic are production functions. */

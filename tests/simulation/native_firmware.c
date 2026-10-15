@@ -1,10 +1,16 @@
 /* PC hardware/clock/scheduler boundary ONLY. All control, safety, RX and TX code
  * is linked from production sources. No serial device or physical register. */
+#ifndef _WIN32
+#define _POSIX_C_SOURCE 200809L
+#else
+#define _WIN32_WINNT 0x0601
+#endif
 #include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <inttypes.h>
+#include <stdatomic.h>
 #include "main.h"
 #include "comm.h"
 #include "motor_control.h"
@@ -15,6 +21,54 @@
 #include "uart4_transport.h"
 #include "board_uart_compat.h"
 #include "queue.h"
+#ifdef _WIN32
+#include <windows.h>
+#include <io.h>
+#include <fcntl.h>
+#else
+#include <time.h>
+#include <poll.h>
+#include <unistd.h>
+#include <pthread.h>
+#endif
+static bool realtime;
+/* The PC stdout pipe can block if its reader freezes. Isolate that wait from
+ * the C scheduler, with a bounded SPSC frame queue (no unbounded buffering). */
+typedef struct { unsigned length; uint8_t bytes[256]; } ipc_frame_t;
+static ipc_frame_t ipc_frames[8];
+static atomic_uint ipc_head,ipc_tail;
+static atomic_bool ipc_error;
+static bool ipc_offer(const uint8_t *bytes,unsigned length) {
+    unsigned head=atomic_load(&ipc_head),next=(head+1U)%8U;
+    if(atomic_load(&ipc_error) || next==atomic_load(&ipc_tail)) return false;
+    ipc_frames[head].length=length; memcpy(ipc_frames[head].bytes,bytes,length);
+    atomic_store(&ipc_head,next); return true;
+}
+#ifdef _WIN32
+static DWORD WINAPI ipc_writer(LPVOID unused)
+#else
+static void *ipc_writer(void *unused)
+#endif
+{
+    (void)unused;
+    for(;;) {
+        unsigned tail=atomic_load(&ipc_tail);
+        if(tail!=atomic_load(&ipc_head)) {
+            ipc_frame_t *frame=&ipc_frames[tail];
+            if(fwrite(frame->bytes,1,frame->length,stdout)!=frame->length || fflush(stdout)!=0) {
+                atomic_store(&ipc_error,true); break;
+            }
+            atomic_store(&ipc_tail,(tail+1U)%8U);
+        } else {
+#ifdef _WIN32
+            Sleep(1);
+#else
+            struct timespec delay={.tv_sec=0,.tv_nsec=1000000}; nanosleep(&delay,NULL);
+#endif
+        }
+    }
+    return 0;
+}
 UART_HandleTypeDef huart4;
 static uint32_t clock_ms,rtos_ms,primask,ipsr,current_task=2U,tx_blocked_until;
 static uint8_t *rx_destination,wire[256];
@@ -70,7 +124,10 @@ uint32_t ulTaskNotifyTake(BaseType_t clear,TickType_t wait) {
     (void)clear; assert(!primask && !ipsr);
     if(current_task==1U && wait && tx_started) {
         if(tx_mode==2U || tx_mode==4U) { rtos_ms+=wait; return 0U; }
-        printf("F "); for(unsigned i=0;i<wire_size;++i) printf("%02x",wire[i]); putchar('\n');
+        if(realtime) {
+            if(!ipc_offer(wire,wire_size)) { rtos_ms+=wait; return 0U; }
+        }
+        else { printf("F "); for(unsigned i=0;i<wire_size;++i) printf("%02x",wire[i]); putchar('\n'); }
         tx_started=false; huart4.gState=HAL_UART_STATE_READY; huart4.TxXferCount=0U;
         ipsr=1U; HAL_UART_TxCpltCallback(&huart4); ipsr=0U;
         return 1U;
@@ -104,9 +161,78 @@ static void snapshot(void) {
     printf("D %"PRIu32" %"PRIu32" %"PRIu32" %"PRIu32" %"PRIu32" %"PRIu32" %"PRIu32" %"PRIu32" %u %u\n",d.accepted,d.rejected,d.old,d.malformed,u.tx_replaced,u.tx_expired,u.tx_timeouts,u.rx_overflow,physical_calls,queue_count);
     puts("E"); fflush(stdout);
 }
-int main(void) {
+static uint64_t monotonic_ms(void) {
+#ifdef _WIN32
+    LARGE_INTEGER counter,frequency;
+    assert(QueryPerformanceCounter(&counter) && QueryPerformanceFrequency(&frequency));
+    return (uint64_t)(counter.QuadPart/frequency.QuadPart)*1000U +
+        (uint64_t)(counter.QuadPart%frequency.QuadPart)*1000U/(uint64_t)frequency.QuadPart;
+#else
+    struct timespec now; clock_gettime(CLOCK_MONOTONIC,&now);
+    return (uint64_t)now.tv_sec*1000U+(uint64_t)now.tv_nsec/1000000U;
+#endif
+}
+static int read_pipe(uint8_t *bytes,unsigned capacity) {
+#ifdef _WIN32
+    DWORD available=0;
+    if(!PeekNamedPipe(GetStdHandle(STD_INPUT_HANDLE),NULL,0,NULL,&available,NULL)) return -1;
+    if(!available) return 0;
+    return _read(0,bytes,available<capacity?available:capacity);
+#else
+    struct pollfd fd={.fd=STDIN_FILENO,.events=POLLIN};
+    if(poll(&fd,1,0)<=0) return 0;
+    int n=(int)read(STDIN_FILENO,bytes,capacity); return n==0?-1:n;
+#endif
+}
+static void realtime_loop(void) {
+    uint64_t origin=monotonic_ms(); uint32_t last_control=0,last_safety=0;
+#ifdef _WIN32
+    _setmode(0,_O_BINARY); _setmode(1,_O_BINARY);
+    HANDLE writer=CreateThread(NULL,0,ipc_writer,NULL,0,NULL); assert(writer); CloseHandle(writer);
+#else
+    pthread_t writer; assert(pthread_create(&writer,NULL,ipc_writer,NULL)==0); pthread_detach(writer);
+#endif
+    for(;;) {
+        clock_ms=(uint32_t)(monotonic_ms()-origin); rtos_ms=clock_ms;
+        uint8_t bytes[COMMS_RX_CAPACITY-1U]; bool eof=false;
+        current_task=2U;
+        /* IPC writes whole frames without UART pacing. Drain bounded chunks
+         * between parser calls so a burst cannot overflow the ISR ring or
+         * split a buffered frame across the scheduler's interbyte deadline. */
+        for(unsigned batch=0;batch<4;++batch) {
+            int n=read_pipe(bytes,sizeof(bytes));
+            if(n<0) { eof=true; break; }
+            for(int i=0;i<n;++i) {
+                *rx_destination=bytes[i]; ipsr=1U; HAL_UART_RxCpltCallback(&huart4); ipsr=0U;
+            }
+            Comms_ProcessRxOnce(0U);
+            if(!n) break;
+        }
+        if(eof) break;
+        if((uint32_t)(clock_ms-last_control)>=10U) { last_control=clock_ms; Motor_Update(); }
+        if((uint32_t)(clock_ms-last_safety)>=20U) {
+            last_safety=clock_ms; MotorGuard_Poll(); MotorSafety_Poll(); Motor_ServiceStop();
+        }
+        SimSession_Service(); current_task=1U;
+        if(!tx_blocked || (int32_t)(clock_ms-tx_blocked_until)>=0) {
+            tx_blocked=false;
+            for(unsigned i=0;i<3;++i) if(!UART4Transport_TxOnce(0U)) break;
+        }
+        current_task=2U;
+#ifdef _WIN32
+        Sleep(1);
+#else
+        struct timespec pause={.tv_sec=0,.tv_nsec=1000000}; nanosleep(&pause,NULL);
+#endif
+    }
+    Motor_StopAll(); Motor_ServiceStop();
+}
+int main(int argc,char **argv) {
+    realtime=argc==2 && !strcmp(argv[1],"--realtime");
+    if(argc>1 && !realtime) return 2;
     setvbuf(stdout,NULL,_IOLBF,0); Motor_InitAll(); Comms_Init(); Comms_TaskCreate();
     assert(UART4Transport_StartRx((void *)2));
+    if(realtime) { realtime_loop(); _Exit(0); }
     char line[8192],op[32],arg[8000];
     while(fgets(line,sizeof(line),stdin)) {
         arg[0]='\0'; assert(sscanf(line,"%31s %7999[^\n]",op,arg)>=1);

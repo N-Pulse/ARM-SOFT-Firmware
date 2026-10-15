@@ -34,7 +34,8 @@ def main():
         directory = build_path(source)
         flags = (directory / "compile.flags").read_bytes()
         sim_defined = b"-DMOTOR_BACKEND_SIM=1" in flags
-        if sim_defined != (config == "SIM") or b"-DN_PULSE_ENABLE_CURRENT_ACQUISITION=0" not in flags:
+        if (sim_defined != (config == "SIM") or b"-DN_PULSE_ENABLE_CURRENT_ACQUISITION=0" not in flags
+                or b"-DN_PULSE_HW_SINGLE_MOTOR_TEST=0" not in flags):
             raise ValueError("Refusing inconsistent/default-ADC build publication")
         manifest = {"schema": 1, "mode": config,
                     "elf_sha256": hashlib.sha256((directory / "n-pulse.elf").read_bytes()).hexdigest(),

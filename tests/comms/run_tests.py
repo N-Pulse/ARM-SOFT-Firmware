@@ -24,6 +24,7 @@ def main():
     includes = [HERE / 'mocks', ROOT / 'tests/safety/mocks', CTRL, COMM,
                 ROOT / 'fw/comm-stack', ROOT / 'fw/app', ROOT / 'fw/bsp/encoder',
                 ROOT / 'fw/motors/motor_map', PROTO]
+    includes.append(ROOT / 'fw/motors/estimation')
     flags = ['-Wall', '-Wextra', '-Werror', '-g', '-O0']
     for p in includes: flags += ['-I', p]
     sources = [CTRL / (s+'.c') for s in ('motor_control', 'motor_safety', 'motor_guard',
@@ -31,7 +32,9 @@ def main():
     sources += [COMM / (s+'.c') for s in ('comm', 'comms_parser', 'comms_session',
         'uart4_transport', 'board_uart_compat', 'lifecycle_protocol')]
     sources += [ROOT / 'fw/app/intent_router.c', ROOT / 'fw/motors/motor_map/motor_map.c',
+                ROOT / 'fw/app/hw_commission.c', ROOT / 'fw/app/hw_telemetry.c',
                 HERE / 'test_comms.c']
+    sources += [ROOT / 'fw/motors/estimation/motor_kalman.c', ROOT / 'fw/motors/estimation/motor_estimation.c']
     objects = []
     for index, source in enumerate(sources):
         obj = OUT / f'c{index}.o'

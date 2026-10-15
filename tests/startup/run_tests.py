@@ -26,7 +26,8 @@ def main():
         ("encoder-numeric", "fw/bsp/encoder/encoder_bsp.c", "test_encoder_numeric.c", [], [["product"], ["offset"], ["reset"], ["all"]]),
         ("adc-off", "fw/bsp/adc_dma/adc_dma_bsp.c", "test_adc.c", [], [[]]),
         ("adc-on", "fw/bsp/adc_dma/adc_dma_bsp.c", "test_adc.c",
-         ["-DN_PULSE_ENABLE_CURRENT_ACQUISITION=1"], [[], ["1"], ["2"], ["3"], ["4"], ["5"]]),
+         ["-DN_PULSE_ENABLE_CURRENT_ACQUISITION=1"], [[], *[[str(i)] for i in range(1,6)],
+             *[[f'a{i}'] for i in range(1,7)], *[[f'c{i}'] for i in range(1,6)], *[[f'i{i}'] for i in range(1,6)]]),
     ]
     for name, source, test, flags, arguments in cases:
         binary = OUT / (name + (".exe" if os.name == "nt" else ""))
@@ -35,7 +36,7 @@ def main():
             run([binary, *args])
     from sanitizers import run_sanitized
     run_sanitized(ROOT, OUT, [*common[1:], HERE / "test_encoder_numeric.c", "-lm"], [["product"], ["offset"], ["reset"], ["all"]])
-    print("15 targeted host scenarios passed; HAL and RTOS are mocked.")
+    print("31 targeted host scenarios passed; HAL and RTOS are mocked.")
 
 
 if __name__ == "__main__":

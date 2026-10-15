@@ -11,6 +11,8 @@
 #include "queue.h"
 #include "motor_sim_feedback.h"
 #include "motor_lock.h"
+#include "tx.h"
+#include "hw_telemetry.h"
 
 UART_HandleTypeDef huart4;
 static uint8_t *rx_destination;
@@ -319,6 +321,26 @@ int main(void)
 #endif
 {
     scenarios = 0U;
+    fixture();
+    const uint8_t stop_request[]={0xAA,2,0x22,0};
+    inject(stop_request,sizeof(stop_request)); drain();
+    assert(MotorSafety_GetStopCauses()&MOTOR_STOP_MANUAL); assert_stopped();
+    report("framed HW STOP accepted without Hello, arm, enable or valid previous command state");
+    fixture();
+    const uint8_t commission[]={0xAA,8,0x1a,6,0x08,1,0x18,5,0x20,1};
+    assert(HandleDeviceMessage(commission+2,sizeof(commission)-2).type==RX_TYPE_COMMISSION);
+    hw_command_t c={.operation=5,.motor_id=MOTOR_INDEX};
+    assert(HWCommission_Execute(&c,clock_ms,epoch())==HW_PRODUCTION);
+    inject(commission,sizeof(commission)); drain(); assert_stopped();
+    report("production rejects commissioning protobuf commands and cannot reach arm/enable");
+    fixture(); session();
+    current_task=1U;
+    while(UART4Transport_TxOnce(0)) {}
+    for(unsigned i=0;i<COMMS_TX_CAPACITY+1;++i) HWTelemetry_Service();
+    uart4_diagnostics_t saturated; UART4Transport_GetDiagnostics(&saturated);
+    assert(saturated.tx_full>0);
+    inject(stop_request,sizeof(stop_request)); drain(); assert_stopped();
+    report("saturated diagnostic TX drops zero-wait telemetry; incoming STOP still inhibits all outputs");
     parser_and_rx_tests(); loss_tests(); tx_tests(); parser_time_tests();
     fixture(); current_task = 1U;
     assert(UART4Transport_QueuePayload(close_hand + 2U, 6U));

@@ -29,5 +29,6 @@ void CommsSession_GetDiagnostics(comms_diagnostics_t *out);
 void CommsSession_OnStopLocked(void);
 void CommsSession_PollLocked(uint32_t now);
 bool CommsSession_CanRecoverLocked(uint32_t now);
+bool CommsSession_IsFreshLocked(uint32_t now);
 void CommsSession_TransportErrorLocked(void);
 #endif

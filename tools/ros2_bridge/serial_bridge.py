@@ -8,11 +8,14 @@ from pathlib import Path
 import sys
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
 from sim.client import SerialWorker, submit_command, milliseconds
-from sim.ros_adapter import EffortAdapter
+from sim.ros_adapter import EffortAdapter, SourceClock
 
 def main():
     parser=argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--port',required=True)
+    parser.add_argument('--transport',choices=('serial','native'),default='serial')
+    parser.add_argument('--port')
+    parser.add_argument('--native-binary',help='explicit executable built by tools/build_native_sim.py')
+    parser.add_argument('--use-sim-time',action='store_true',help='use ROS /clock; source time must still advance at wall-clock rate')
     parser.add_argument('--joint-names',nargs=8,required=True)
     parser.add_argument('--effort-per-percent',nargs=8,type=float,required=True)
     parser.add_argument('--effort-topic',required=True)
@@ -21,18 +24,28 @@ def main():
                         help='existing independent model/controller watchdog, <=100 ms; declaration is not verification')
     parser.add_argument('--force-topics',nargs=8,help='optional eight stamped Wrench topics, IDs 0..7; vector norm N converted to mN')
     args=parser.parse_args()
+    if args.transport=='serial' and not args.port: parser.error('--port required for serial')
+    if args.transport=='native' and (not args.native_binary or args.port): parser.error('native requires --native-binary and no --port')
+    if len(set(args.joint_names))!=8 or any(not math.isfinite(x) or x<=0 for x in args.effort_per_percent):
+        parser.error('eight unique coordinates and positive finite effort scales required')
     if not 1<=args.model_watchdog_ms<=100:
         parser.error('an independent effort-controller/model watchdog <=100 ms is required')
     import rclpy
     from rclpy.node import Node
+    from rclpy.parameter import Parameter
     from sensor_msgs.msg import JointState
     from std_msgs.msg import Float64MultiArray, String
     from geometry_msgs.msg import WrenchStamped
     class SerialBridge(Node):
         def __init__(self):
-            super().__init__('n_pulse_sim_v2')
+            super().__init__('n_pulse_sim_v2',parameter_overrides=[Parameter('use_sim_time',Parameter.Type.BOOL,args.use_sim_time)])
+            self.source_clock=SourceClock()
             self.publisher=self.create_publisher(Float64MultiArray,args.effort_topic,1)
-            self.worker=SerialWorker(args.port)
+            transport=None
+            if args.transport=='native':
+                from sim.native_transport import NativeTransport
+                transport=NativeTransport(args.native_binary)
+            self.worker=SerialWorker(args.port,transport=transport)
             self.adapter=EffortAdapter(self.worker.peer,args.joint_names,args.effort_per_percent,self.publish_effort)
             self.worker.on_state=self.adapter.output
             self.create_subscription(JointState,'/joint_states',self.joints,1)
@@ -44,21 +57,19 @@ def main():
             self.worker.start()
         def publish_effort(self,values):
             msg=Float64MultiArray(); msg.data=values; self.publisher.publish(msg)
-        def captured(self,msg):
+        def captured(self,msg,source):
             stamp=msg.header.stamp.sec*1000000000+msg.header.stamp.nanosec
-            age=(self.get_clock().now().nanoseconds-stamp)//1000000
-            if stamp<=0 or not 0<=age<=50: raise ValueError('missing/stale model source timestamp')
-            return milliseconds()-age
+            return self.source_clock.capture(stamp,self.get_clock().now().nanoseconds,milliseconds(),source)
         def joints(self,msg):
-            try: self.adapter.joint_state(list(msg.name),list(msg.position),list(msg.velocity),self.captured(msg),milliseconds())
+            try: self.adapter.joint_state(list(msg.name),list(msg.position),list(msg.velocity),self.captured(msg,'joints'),milliseconds())
             except ValueError as exc: self.worker.peer.request(8); self.get_logger().error(str(exc))
         def applied(self,msg):
-            try: self.adapter.applied_joint_state(list(msg.name),list(msg.effort),self.captured(msg))
+            try: self.adapter.applied_joint_state(list(msg.name),list(msg.effort),self.captured(msg,'applied'))
             except ValueError as exc: self.worker.peer.request(8); self.get_logger().error(str(exc))
         def force(self,mid,msg):
             try:
                 f=msg.wrench.force
-                self.adapter.force_entry(mid,math.sqrt(f.x*f.x+f.y*f.y+f.z*f.z)*1000,self.captured(msg))
+                self.adapter.force_entry(mid,math.sqrt(f.x*f.x+f.y*f.y+f.z*f.z)*1000,self.captured(msg,('force',mid)))
             except ValueError as exc: self.worker.peer.request(8); self.get_logger().error(str(exc))
         def control(self,msg):
             try:

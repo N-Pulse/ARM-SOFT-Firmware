@@ -12,6 +12,8 @@
 #ifndef MOTOR_BACKEND_SIM
 #include "rx.h"
 #include "tx.h"
+#include "hw_commission.h"
+#include "hw_telemetry.h"
 #endif
 
 #ifdef MOTOR_BACKEND_SIM
@@ -81,6 +83,21 @@ static bool frame_received(const uint8_t *bytes, size_t length, uint32_t ms,
 {
     (void)context;
     rx_result_t result = HandleDeviceMessage(bytes, length);
+    if (result.type == RX_TYPE_STOP) {
+        Motor_StopAll();
+        HWTelemetry_Reply(0U, HW_OK);
+        return true;
+    }
+    if (result.type == RX_TYPE_COMMISSION) {
+        uint32_t code = UART4Transport_RxGenerationMatches(current_generation) ?
+            HWCommission_Execute(&result.command, ms, epoch) : HW_STALE;
+        HWTelemetry_Reply(result.command.request_id, code);
+        return code == HW_OK;
+    }
+    if (result.type == RX_TYPE_DIAGNOSTIC) {
+        HWTelemetry_Select(result.data.mode);
+        return true;
+    }
     bool started = false;
     uint32_t key = Motor_Lock();
     if (UART4Transport_RxGenerationMatches(current_generation))

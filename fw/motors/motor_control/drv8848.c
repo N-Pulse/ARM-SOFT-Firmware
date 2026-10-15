@@ -4,6 +4,10 @@
 #include "main.h"
 #include "stm32g4xx_hal.h"
 #include "motor_lock.h"
+#include "hw_test_config.h"
+#if N_PULSE_HW_SINGLE_MOTOR_TEST
+#include "hw_commission.h"
+#endif
 #include "motor_outputs.h"
 #include "motor_safety.h"
 
@@ -127,6 +131,9 @@ static bool arm_current(uint32_t epoch)
 
 bool Motor_DRV8848_Arm(void)
 {
+#if N_PULSE_HW_SINGLE_MOTOR_TEST
+    if (!HWCommission_Ready()) return false;
+#endif
     uint32_t key = Motor_Lock();
     if (s_armed || s_arm_in_progress || !MotorSafety_CanArmLocked() || Motor_DRV8848_FaultActive()) {
         Motor_Unlock(key);
@@ -227,12 +234,20 @@ bool Motor_DRV8848_IsTransitioning(void) { return s_arm_in_progress; }
 void Motor_DRV8848_SetRaw(motor_id_t id, float output_percent)
 {
     if ((uint32_t)id >= MOTOR_COUNT) return;
+#if N_PULSE_HW_SINGLE_MOTOR_TEST
+    if (!HWTest_MotorAllowed(id)) { Motor_DRV8848_Stop(id); return; }
+#endif
     if (!isfinite(output_percent)) {
         MotorSafety_RequestStopCause(MOTOR_STOP_PID, id);
         return;
     }
     if (output_percent > 100.0f) output_percent = 100.0f;
     if (output_percent < -100.0f) output_percent = -100.0f;
+#if N_PULSE_HW_SINGLE_MOTOR_TEST
+    float ceiling=HWCommission_PwmCeiling();
+    if (output_percent > ceiling) output_percent = ceiling;
+    if (output_percent < -ceiling) output_percent = -ceiling;
+#endif
     uint32_t key = Motor_Lock();
     if (Motor_DRV8848_FaultActive())
     {
@@ -285,6 +300,10 @@ void Motor_DRV8848_Stop(motor_id_t id)
 void Motor_DRV8848_Brake(motor_id_t id)
 {
     if ((uint32_t)id >= MOTOR_COUNT) return;
+#if N_PULSE_HW_SINGLE_MOTOR_TEST
+    Motor_DRV8848_Stop(id); /* Commissioning never applies a 100% brake. */
+    return;
+#endif
     uint32_t key = Motor_Lock();
     if (Motor_DRV8848_FaultActive())
         MotorSafety_RequestStopCauseLocked(MOTOR_STOP_DRIVER, MOTOR_COUNT);

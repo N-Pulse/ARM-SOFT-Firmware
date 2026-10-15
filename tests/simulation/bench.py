@@ -18,7 +18,7 @@ COMM = ROOT / 'fw/comm'
 
 def compiler_arguments():
     includes = [ROOT/'tests/comms/mocks', ROOT/'tests/safety/mocks', CTRL, COMM,
-                ROOT/'fw/comm-stack', ROOT/'fw/app', ROOT/'fw/bsp/encoder']
+                ROOT/'fw/comm-stack', ROOT/'fw/app', ROOT/'fw/bsp/encoder', ROOT/'fw/motors/motor_map']
     args = ['-std=c11', '-Wall', '-Wextra', '-Werror', '-g', '-O0', '-DMOTOR_BACKEND_SIM=1']
     for folder in includes:
         args += ['-I', str(folder)]
@@ -26,12 +26,14 @@ def compiler_arguments():
         'motor_feedback','motor_backend_sim','motor_pid')]
     args += [str(COMM/(name+'.c')) for name in ('comm','comms_session','uart4_transport',
         'board_uart_compat','sim_protocol','sim_session')]
-    args += [str(ROOT/'tests/simulation/native_firmware.c'), '-lm']
+    args += [str(ROOT/'fw/app/intent_router.c'),str(ROOT/'fw/motors/motor_map/motor_map.c'),
+             str(ROOT/'tests/simulation/native_firmware.c'), '-lm']
+    if os.name!='nt': args.append('-pthread')
     return args
 
-def build():
+def build(binary_name='firmware'):
     OUT.mkdir(parents=True, exist_ok=True)
-    binary = OUT / ('firmware.exe' if os.name == 'nt' else 'firmware')
+    binary = OUT / (binary_name+('.exe' if os.name=='nt' else ''))
     subprocess.run([os.environ.get('HOST_CC','gcc'), *compiler_arguments(), '-o', str(binary)], cwd=ROOT, check=True)
     return binary
 

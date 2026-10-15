@@ -7,6 +7,17 @@
 
 #pragma once
 #include <stdint.h>
+typedef struct {
+    uint32_t timestamp_ms, motor_id, epoch, flags, faults;
+    float target_rad, reference_rad;
+    int64_t raw_count;
+    float encoder_rad, velocity_rad_s, pwm_percent;
+    uint32_t adc_raw;
+    float adc_voltage, current_a;
+    uint32_t adc_state, adc_error, adc_age_ms;
+    float kalman_rad, kalman_velocity_rad_s;
+    uint32_t kalman_status;
+} hw_diagnostic_t;
 #include <stdbool.h>
 
 #ifndef INC_TX_H_
@@ -18,6 +29,8 @@
 #ifdef __cplusplus
 extern "C" {
 #endif
+bool SendMotorDiagnostic(const hw_diagnostic_t *diagnostic);
+bool SendCommandReply(uint32_t request, uint32_t result, uint32_t epoch, uint32_t faults);
 bool SendHelloMessage(void);
 
 // void SendDataMessage(void);

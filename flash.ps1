@@ -25,9 +25,10 @@ try {
     if ($manifest.schema -ne 1 -or $manifest.mode -cne 'HW' -or
         $flags -match 'MOTOR_BACKEND_SIM' -or
         $flags -notmatch '-DN_PULSE_ENABLE_CURRENT_ACQUISITION=0(?:\s|\|)' -or
+        $flags -notmatch '-DN_PULSE_HW_SINGLE_MOTOR_TEST=0(?:\s|\|)' -or
         $manifest.elf_sha256 -ine (Get-FileHash -LiteralPath $canonical -Algorithm SHA256).Hash -or
         $manifest.flags_sha256 -ine (Get-FileHash -LiteralPath $flagsPath -Algorithm SHA256).Hash) {
-        throw 'Artefact incoherent, SIM, ADC actif ou empreinte obsolete. Reconstruire HW avec build.ps1.'
+        throw 'Artefact incoherent, SIM, commissioning, ADC actif ou empreinte obsolete. Reconstruire HW avec build.ps1.'
     }
     $header = [IO.File]::ReadAllBytes($canonical)
     if ($header.Length -lt 52 -or $header[0] -ne 127 -or $header[1] -ne 69 -or

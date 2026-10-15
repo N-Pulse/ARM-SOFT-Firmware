@@ -2,7 +2,10 @@
 #include "motor_control.h"
 #include "comm.h"
 #include "intent_router.h"
-#ifndef MOTOR_BACKEND_SIM
+#include "motor_estimation.h"
+#include "hw_test_config.h"
+
+#if !defined(MOTOR_BACKEND_SIM) && !N_PULSE_HW_SINGLE_MOTOR_TEST
 #include "comms_session.h"
 #include "encoder_bsp.h"
 #include "motor_map.h"
@@ -108,8 +111,10 @@ static void handle_control(void) {
 #endif
 void App_Init(void) {
     /* Safe output/feedback/UART plumbing must exist before handshake or tasks. */
-    Motor_InitAll(); Comms_Init();
-#ifndef MOTOR_BACKEND_SIM
+    Motor_InitAll();
+    MotorEstimation_Init();
+    Comms_Init();
+#if !defined(MOTOR_BACKEND_SIM) && !N_PULSE_HW_SINGLE_MOTOR_TEST
     calibrated=return_started=settle_started=false; affected_mask=0;
     init_ms=HAL_GetTick();
     for(unsigned i=0;i<MOTOR_COUNT;++i) previous_targets[i]=0;
@@ -118,7 +123,10 @@ void App_Init(void) {
 #endif
 }
 void App_Task(void) {
-#ifdef MOTOR_BACKEND_SIM
+#if N_PULSE_HW_SINGLE_MOTOR_TEST
+    /* Dedicated commissioning owns targets; never initialize/return all axes. */
+    return;
+#elif defined(MOTOR_BACKEND_SIM)
     /* SIM v2 retains its independent CONFIG/ARM/TARGET protocol. */
     intent_t intent;
     if(Comms_GetNextIntent(&intent)) IntentRouter_Handle(&intent);

@@ -6,6 +6,7 @@
 #include "motor_safety_config.h"
 #include "motor_lock.h"
 #include "uart4_transport.h"
+#include "intent_router.h"
 #include <string.h>
 #include <math.h>
 static uint64_t session, high_water;
@@ -72,6 +73,7 @@ static bool validate(uint8_t type,const uint8_t *p,size_t n) {
     case SIM_HELLO: case SIM_HEARTBEAT: case SIM_RECOVER: case SIM_ARM: case SIM_STOP: return n==k;
     case SIM_CONFIG: return n==k+4U && Sim_Read16(p+k)==SIM_MODEL_ROTOR_V1 && p[k+2U]==0xFFU;
     case SIM_ENABLE: return n==k+1U && p[k]!=0U;
+    case SIM_INTENT: return n==k+1U && p[k]<=ACTION_ROTATE_WRIST_L;
     case SIM_TARGET: {
         if(n<k+1U || !p[k] || p[k]>MOTOR_COUNT || n!=k+1U+(size_t)p[k]*6U) return false;
         uint8_t seen=0U;
@@ -167,6 +169,14 @@ bool SimSession_OnFrame(uint8_t type,const uint8_t *p,size_t n,uint32_t ms,uint3
         for(unsigned i=0;i<p[16U] && success;++i) success=Motor_IsEnabled((motor_id_t)p[17U+i*6U]);
         if(success) for(unsigned i=0;i<p[16U];++i) {
             size_t o=17U+i*6U; Motor_SetTargetAtEpoch((motor_id_t)p[o],Sim_ReadFloat(p+o+1U),p[o+5U],MotorSafety_EpochLocked());
+        }
+        break;
+    case SIM_INTENT:
+        /* Full activation required: no partly applied high-level movement. */
+        success=SimSession_IsArmedLocked() && MotorSafety_CanArmLocked() && enabled_mask()==0xFFU;
+        if(success) {
+            intent_t intention={.id=(intent_id_t)p[16U],.epoch=MotorSafety_EpochLocked()};
+            IntentRouter_Handle(&intention);
         }
         break;
     case SIM_FEEDBACK: {

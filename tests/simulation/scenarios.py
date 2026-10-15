@@ -1,4 +1,5 @@
 from pathlib import Path
+import math
 import csv
 import json
 import struct
@@ -306,7 +307,29 @@ def atomic_feedback_reject(b):
     assert not b.fw.state['armed']
     return {'atomic_rejections':len(malformed)}
 
-CASES={'closed_loop':closed_loop,'startup_reconnect':startup_reconnect,'partial_routing':partial_routing,
+def high_level_intents(b):
+    b.connect()
+    b.command(p.INTENT,bytes((0,)),success=False)
+    b.activate()
+    expected=[
+        [0]*8,
+        [42.5,42.5,42.5,40,37.5,7.5,7.5,5],
+        [35,35,12.5,10,10,2.5,2.5,2.5],
+    ]
+    for action in range(5):
+        b.command(p.INTENT,bytes((action,)))
+        if action<3:
+            assert all(abs(m['target']-expected[action][i]*math.pi/180)<1e-6 for i,m in enumerate(b.fw.motors))
+        else:
+            target=1.57 if action==3 else -1.57
+            assert all(abs(b.fw.motors[i]['target']-target)<1e-6 for i in (5,6))
+    before=[m['target'] for m in b.fw.motors]
+    b.raw(p.INTENT,bytes((5,)))
+    assert [m['target'] for m in b.fw.motors]==before
+    b.command(p.STOP); b.stopped()
+    return {'five_authoritative_mappings':True,'all_eight_required':True}
+
+CASES={'high_level_intents':high_level_intents,'closed_loop':closed_loop,'startup_reconnect':startup_reconnect,'partial_routing':partial_routing,
     'feedback_loss':feedback_loss,'firmware_to_host_loss':lambda b:direction_loss(b,'down'),
     'host_to_firmware_loss':lambda b:direction_loss(b,'up'),'complete_cut':lambda b:direction_loss(b,'both'),
     'host_process_pause':host_process_pause,'malformed_packets':malformed_packets,

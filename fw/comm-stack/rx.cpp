@@ -17,6 +17,18 @@ rx_result_t HandleDeviceMessage(const uint8_t *bytes, size_t length)
     DeviceMessage msg;
     uint8_t trailing;
     if (msg.deserialize(in) != EmbeddedProto::Error::NO_ERRORS || in.peek(trailing)) return result;
+    if (msg.get_which_message() == DeviceMessage::FieldNumber::STOP) { result.type=RX_TYPE_STOP; return result; }
+    if (msg.get_which_message() == DeviceMessage::FieldNumber::DIAGNOSTIC) {
+        result.type=RX_TYPE_DIAGNOSTIC; result.data.mode=msg.get_diagnostic().get_motor_id(); return result;
+    }
+    if (msg.get_which_message() == DeviceMessage::FieldNumber::COMMISSION) {
+        const auto &c=msg.get_commission(); result.type=RX_TYPE_COMMISSION;
+        result.command={c.get_request_id(),c.get_epoch(),static_cast<uint32_t>(c.get_operation()),
+            c.get_motor_id(),c.get_cpr(),c.get_quadrature(),c.get_pwm_percent(),c.get_direction(),
+            c.get_zero_offset(),c.get_gear_ratio(),c.get_minimum_rad(),c.get_maximum_rad(),
+            c.get_maximum_step_rad(),c.get_target_rad(),c.get_reference_rate_rad_s(),c.get_stationary_reference_verified()};
+        return result;
+    }
     if (msg.get_which_message() == DeviceMessage::FieldNumber::DATA &&
         msg.get_data().get_which_message() == Data::FieldNumber::INSTRUCTION) {
         uint32_t action = static_cast<uint32_t>(msg.get_data().get_instruction().get_action());

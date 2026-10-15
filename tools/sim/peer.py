@@ -9,7 +9,8 @@ import threading
 from . import protocol as p
 
 class Peer:
-    def __init__(self):
+    def __init__(self,*,continuous_clock=False):
+        self.continuous_clock=continuous_clock
         self.lock = threading.RLock()
         self.parser = p.Parser()
         self.session = self.sequence = self.rx_sequence = 0
@@ -67,7 +68,7 @@ class Peer:
             if kind == p.STOP:
                 self._safe('local stop'); self.commands.clear(); self.latest_feedback = None
                 self.stop_pending = True; return True
-            if kind not in (p.CONFIG, p.RECOVER, p.ARM, p.ENABLE, p.TARGET):
+            if kind not in (p.CONFIG, p.RECOVER, p.ARM, p.ENABLE, p.TARGET, p.INTENT):
                 raise ValueError('explicit command required')
             if not self.live or len(self.commands) == self.commands.maxlen:
                 return False
@@ -108,7 +109,12 @@ class Peer:
                 self.sequence = (self.sequence+1) & 0xffffffff
                 if kind == p.ARM:
                     self.pending_arm = self.sequence
-                frames.append(p.encode(kind, self.session, self.sequence, self.fw_stamp, body))
+                # Native clocks share a rate, but C samples its scheduler tick
+                # before servicing IPC. Keep the existing 80 ms lease strict:
+                # a 20 ms scheduling margin avoids a future-dated wire stamp.
+                stamp=(max(self.clock_fw,self.clock_fw+now-self.clock_local-20)&0xffffffff
+                       if self.continuous_clock else self.fw_stamp)
+                frames.append(p.encode(kind, self.session, self.sequence, stamp, body))
             return frames
 
     def receive(self, data, now):
@@ -143,8 +149,10 @@ class Peer:
                     if kind == p.HELLO_ACK:
                         self.clock_fw = stamp; self.clock_local = now
                     self.live = True; self.configured = bool(config)
+                    changed=run!=self.run or causes!=self.causes
+                    previously_permitted=self.permitted_run is not None or self.enabled!=0
                     self.run, self.epoch, self.causes = run, epoch, causes
-                    if not armed or causes:
+                    if (not armed or causes) and (changed or previously_permitted):
                         self._safe('firmware inhibited')
                     if req == p.ARM and ack == self.pending_arm:
                         if result and armed and not causes:
