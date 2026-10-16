@@ -6,6 +6,7 @@
 #include "comms_session.h"
 #include "motor_guard.h"
 #include "adc_dma_bsp.h"
+#include "thumb_encoder.h"
 #include "../../fw/comm/board_link_runtime.c"
 #ifdef _WIN32
 #define EXPORT __declspec(dllexport)
@@ -15,6 +16,8 @@
 RNG_TypeDef mock_rng;
 static motor_id_t selected=(motor_id_t)N_PULSE_HW_TEST_MOTOR;
 static uint32_t request;
+static uint32_t routed_reply=UINT32_MAX;
+void HWTelemetry_Reply(uint32_t id,uint32_t result) { (void)id; routed_reply=result; }
 bool ADC_DMA_BSP_Init(void) { return true; }
 bool ADC_DMA_BSP_GetSample(motor_id_t id,adc_current_sample_t *out)
 { (void)id; *out=(adc_current_sample_t){.voltage_v=NAN,.current_a=NAN,.state=ADC_CURRENT_INVALID}; return false; }
@@ -75,12 +78,91 @@ EXPORT uint32_t B4_Configure(void)
     return command((hw_command_t){.operation=3});
 }
 EXPORT uint32_t B4_Target(void) { return command((hw_command_t){.operation=7,.target_rad=.02f,.pwm_percent=3}); }
+EXPORT uint32_t B4_Route(uint32_t op)
+{
+    hw_command_t c={.operation=op,.motor_id=selected,.request_id=++request,
+        .epoch=MotorSafety_EpochLocked(),.stationary_reference_verified=true,
+        .minimum_rad=0,.maximum_rad=.3f,.maximum_step_rad=.05f,.reference_rate_rad_s=.1f,
+        .pwm_percent=3,.cpr=1000,.quadrature=4,.gear_ratio=1,.direction=1,.target_rad=.02f};
+#if N_PULSE_HW_FINGER_DIAGNOSTIC
+    c.maximum_rad=.785398163f; c.maximum_step_rad=.087266463f;
+    c.pwm_percent=25; c.reference_rate_rad_s=.785398163f; c.target_rad=.523598776f;
+#endif
+    if(op==100) { c.operation=7; c.motor_id=selected==MOTOR_INDEX?MOTOR_MIDDLE:MOTOR_INDEX; }
+    if(op==101) { c.operation=7; --c.epoch; }
+    if(op==102) { c.operation=7; c.target_rad=.02f; }
+    if(op==103) { c.operation=7; c.target_rad=0.0f; }
+    if(op==104) { c.operation=7; c.target_rad=1.570796327f; }
+    if(op==105) { c.operation=15; c.target_rad=.523598776f; }
+    routed_reply=BoardLink_RouteCommission(&c,now,c.epoch);
+    return routed_reply;
+}
+EXPORT uint32_t B4_Reply(void) { return routed_reply; }
+EXPORT uint32_t B4_Select(uint32_t id) { selected=(motor_id_t)id; return B4_Route(HW_SELECT_FINGER); }
+EXPORT uint32_t B4_Selected(void) { return (uint32_t)HWCommission_SelectedMotor(); }
+EXPORT uint32_t B4_Configured(void) { return HWCommission_Configured(); }
+EXPORT void B4_AdvanceEncoder(int32_t counts) {
+    motor_id_t id=HWCommission_SelectedMotor(); assert(id<5 && BoardLink_IsLocalMotor(id));
+    if(id==MOTOR_THUMB) {
+        static const uint8_t forward[4]={1,3,0,2},reverse[4]={2,0,3,1};
+        for(int32_t n=0;n<(counts<0?-counts:counts);++n) {
+            uint8_t ab=(uint8_t)(((GPIOB->IDR>>13)&2U)|((GPIOB->IDR>>15)&1U));
+            uint8_t next=counts>0?forward[ab]:reverse[ab],changed=ab^next;
+            GPIOB->IDR=(GPIOB->IDR&~(GPIO_PIN_14|GPIO_PIN_15))|((next&2U)<<13)|((next&1U)<<15);
+            EXTI->PR1=((changed&2U)<<13)|((changed&1U)<<15);
+            ThumbEncoder_IRQHandler();
+        }
+        return;
+    }
+    TIM_TypeDef *timer=id==MOTOR_INDEX?TIM2:id==MOTOR_RING?TIM8:TIM3;
+    timer->CNT+=counts;
+}
+EXPORT uint32_t B4_NominalEncoder(void) {
+    /* Common image: local fingers have the legacy scale from power-on,
+     * while remote fingers and wrists receive no fabricated calibration. */
+    for (unsigned i=0;i<MOTOR_COUNT;++i) {
+        motor_id_t id=(motor_id_t)i;
+        bool nominal=N_PULSE_HW_SELECTABLE_FINGER && i<5U && BoardLink_IsLocalMotor(id);
+        assert(Encoder_BSP_IsCalibrated(id)==nominal);
+        if (!nominal) continue;
+        assert(fabsf(Encoder_BSP_GetPosition(id))<1e-7f);
+        if (id==MOTOR_THUMB) continue; /* Its separate IRQ tests exercise quadrature. */
+        TIM_TypeDef *timer=id==MOTOR_INDEX?TIM2:id==MOTOR_RING?TIM8:TIM3;
+        ++timer->CNT;
+        assert(fabsf(Encoder_BSP_GetPosition(id)-6.28318530718f/2928.0f)<1e-7f);
+        assert(fabsf(Encoder_BSP_RadiansPerCount(id)-6.28318530718f/2928.0f)<1e-7f);
+        assert(Encoder_BSP_Init()); /* Reinit never clears the boot reference/counts. */
+        assert(Encoder_BSP_GetRawCount(id)==1);
+        --timer->CNT;
+        assert(fabsf(Encoder_BSP_GetPosition(id))<1e-7f);
+    }
+    return 1;
+}
+EXPORT uint32_t B4_EnabledCount(void) {
+    uint32_t count=0; for(unsigned i=0;i<MOTOR_COUNT;++i) if(Motor_IsEnabled((motor_id_t)i)) ++count; return count;
+}
+EXPORT uint32_t B4_Exclusive(void)
+{
+    motor_id_t permitted=N_PULSE_HW_SELECTABLE_FINGER?HWCommission_SelectedMotor():selected;
+    for(unsigned i=0;i<MOTOR_COUNT;++i) if(i!=(unsigned)permitted &&
+        (Motor_IsEnabled((motor_id_t)i) || Motor_L298N_AppliedPWM((motor_id_t)i)!=0)) return 0;
+    return 1;
+}
 EXPORT uint32_t B4_Fresh(void) { return BL_Fresh(&link,now); }
 EXPORT uint32_t B4_Faults(void) { return MotorSafety_GetStopCauses(); }
 EXPORT uint32_t B4_Disabled(void) { return OldHW_OutputsDisabled() && !Motor_L298N_IsArmed(); }
 EXPORT uint32_t B4_Epoch(void) { return MotorSafety_EpochLocked(); }
 EXPORT uint32_t B4_Role(void) { return (uint32_t)BoardLink_Role(); }
-EXPORT float B4_PWM(void) { return Motor_L298N_AppliedPWM(selected); }
+EXPORT float B4_PWM(void) { return Motor_L298N_AppliedPWM(N_PULSE_HW_SELECTABLE_FINGER?HWCommission_SelectedMotor():selected); }
 EXPORT void B4_Stop(void) { Motor_StopAll(); }
-EXPORT void B4_EncoderFault(void) { TIM2->CR1&=~TIM_CR1_CEN; TIM3->CR1&=~TIM_CR1_CEN; }
+EXPORT void B4_EncoderFault(void) {
+    if (HWCommission_SelectedMotor()==MOTOR_THUMB) HAL_NVIC_DisableIRQ(EXTI15_10_IRQn);
+    else { TIM2->CR1&=~TIM_CR1_CEN; TIM3->CR1&=~TIM_CR1_CEN; }
+}
+EXPORT void B4_ThumbFault(void) {
+    assert(BoardLink_Role()==BOARD_ROLE_SLAVE && HWCommission_SelectedMotor()==MOTOR_THUMB);
+    GPIOB->IDR ^= GPIO_PIN_14|GPIO_PIN_15;
+    EXTI->PR1=GPIO_PIN_14|GPIO_PIN_15; /* Coalesced transition: ordering cannot be trusted. */
+    ThumbEncoder_IRQHandler();
+}
 EXPORT uint32_t B4_RemoteRaw(uint32_t id) { bl_feedback_t f; return BoardLink_GetRemote((motor_id_t)id,&f) && (f.flags&BL_RAW_VALID); }

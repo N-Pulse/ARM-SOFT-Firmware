@@ -7,7 +7,8 @@ CASES=('boot','hello-not-healthy','targets','partial','corrupt','duplicate','ord
        'stop-master','stop-slave','inflight','replay','wrap-time','wrap-sequence','wrap-epoch',
        'wrap-session','saturation','ack-timeout','feedback','invalid-feedback','thumb-fault',
        'forbidden','version-role','version','old-version','deadline','critical-full','invalid-id','unexpected-hello',
-       'malformed-stop','truncated','high-load','baud-budget')
+       'malformed-stop','truncated','high-load','baud-budget','application','application-duplicate',
+       'application-overflow','application-stop','application-stale','application-deadline')
 def main():
     OUT.mkdir(parents=True,exist_ok=True); records=[]
     def run(command):
@@ -36,8 +37,8 @@ def main():
          *[part for d in ('tests/old_hw/dual_mocks','tests/old_hw/mocks','Core/Inc','fw/comm','fw/app',
                          'fw/bsp/encoder','fw/motors/motor_control','fw/motors/motor_l298n','fw/comm-stack')
            for part in ('-I',str(ROOT/d))],
-         'tests/old_hw/test_board_transport.c','fw/comm/board_protocol.c','-o',transport,'-lm'])
-    for case in ('ownership','rx-overflow','rx-error','rx-rearm','tx-start','tx-timeout','abort-failed','rng-failed'):
+         'tests/old_hw/test_board_transport.c','fw/comm/board_protocol.c','fw/comm/board_commission.c','-o',transport,'-lm'])
+    for case in ('ownership','rx-overflow','rx-error','error-pending-rx','rx-rearm','tx-start','tx-timeout','abort-failed','rng-failed'):
         run([transport,case])
     flags=['-std=c11','-Wall','-Wextra','-Werror','-shared','-DN_PULSE_OLD_HW=1',
            '-DN_PULSE_HW_SINGLE_MOTOR_TEST=1','-DN_PULSE_OLD_HW_MOTION_OPT_IN=1',
@@ -62,5 +63,5 @@ def main():
          ROOT/'tests/old_hw/test_two_controllers.c','-o',harness,*([] if os.name=='nt' else ['-ldl'])])
     run([harness,OUT/'controller-4.dll',OUT/'controller-1.dll','0'])
     run([harness,OUT/'controller-4.dll',OUT/'controller-0.dll','1'])
-    print(f'{len(CASES)} protocol + 1 host routing + 8 transport + 2 real-controller scenarios passed; all Windows exits recorded, no hardware.')
+    print(f'{len(CASES)} protocol + 1 host routing + 9 transport + 2 real-controller scenarios passed; all Windows exits recorded, no hardware.')
 if __name__=='__main__': main()

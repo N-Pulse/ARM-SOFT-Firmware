@@ -2,7 +2,11 @@
 #define HW_TELEMETRY_H
 #include <stdint.h>
 #ifndef N_PULSE_TELEMETRY_PERIOD_MS
+#if N_PULSE_HW_SELECTABLE_FINGER
+#define N_PULSE_TELEMETRY_PERIOD_MS 100U
+#else
 #define N_PULSE_TELEMETRY_PERIOD_MS 200U
+#endif
 #endif
 #if N_PULSE_TELEMETRY_PERIOD_MS < 100U
 #error Hardware telemetry must not exceed 10 Hz

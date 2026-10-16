@@ -45,6 +45,7 @@ bool BL_Local(uint8_t role,uint8_t motor)
 static void discard(board_protocol_t *s)
 {
     s->authorized=s->peer_authorized=false; s->count=s->head=0;
+    s->have_application=false;
     memset(s->pending,0,sizeof(s->pending));
     memset(s->have_feedback,0,sizeof(s->have_feedback));
 }
@@ -120,6 +121,16 @@ static bool offer(board_protocol_t *s,uint8_t type,const uint8_t *p,uint8_t n,ui
                       .offered_ms=now,.peer=s->peer};
     memcpy(m->data,p,n); ++s->count; return true;
 }
+bool BL_OfferApplication(board_protocol_t *s,const uint8_t *p,uint8_t n,uint32_t now)
+{
+    if(!p || !n || n>BL_PAYLOAD || !BL_Fresh(s,now) || !s->have_peer_epoch) return false;
+    return offer(s,BL_APPLICATION,p,n,now);
+}
+bool BL_TakeApplication(board_protocol_t *s,bl_message_t *out)
+{
+    if(!out || !s->have_application) return false;
+    *out=s->application; s->have_application=false; return true;
+}
 bool BL_Target(board_protocol_t *s,uint8_t id,int32_t mrad,uint8_t speed,uint32_t epoch,uint32_t now)
 {
     if(s->role!=BL_MASTER || BL_Local(s->role,id) || id>=8 || !speed || speed>100 ||
@@ -136,10 +147,11 @@ bool BL_OfferFeedback(board_protocol_t *s,const bl_feedback_t *f,uint32_t now)
     if(!f || !BL_Local(s->role,f->id) || !BL_Fresh(s,now)) return false;
     /* Telemetry may be skipped before filling the command/ACK queue. */
     if(s->count>=BL_QUEUE-2) return false;
-    uint8_t p[36]={f->id,f->flags,0,0}; BL_Put32(p+4,f->age_ms);
+    uint8_t p[40]={f->id,f->flags,0,0}; BL_Put32(p+4,f->age_ms);
     BL_Put32(p+8,(uint32_t)f->position_mrad); BL_Put32(p+12,(uint32_t)f->velocity_mrad_s);
     BL_Put32(p+16,(uint32_t)f->target_mrad); BL_Put32(p+20,(uint32_t)f->pwm_milli);
     put64(p+24,(uint64_t)f->raw_count); BL_Put32(p+32,f->faults);
+    BL_Put32(p+36,(uint32_t)f->reference_mrad);
     return offer(s,BL_FEEDBACK,p,sizeof(p),now);
 }
 bool BL_GetFeedback(const board_protocol_t *s,uint8_t id,uint32_t now,bl_feedback_t *out)
@@ -218,13 +230,19 @@ static void receive(board_protocol_t *s,const uint8_t *p,size_t n,uint32_t ms,ui
             break;
         }
         if(!matched) ++s->rejected;
-    } else if(type==BL_FEEDBACK && len==36) {
+    } else if(type==BL_APPLICATION && len && mine==s->epoch && BL_Fresh(s,now)) {
+        if(s->have_application) { ++s->overflows; BL_Fail(s,now); return; }
+        s->application=(bl_message_t){.type=type,.length=len,.epoch=mine,
+            .peer_epoch=epoch,.offered_ms=ms,.peer=source};
+        memcpy(s->application.data,d,len); s->have_application=true;
+    } else if(type==BL_FEEDBACK && len==40) {
         uint8_t id=d[0];
-        if(id>=8 || mine!=s->epoch || BL_Local(s->role,id) || !BL_Local(p[2],id) || d[2] || d[3] || (d[1]&~31U)) { ++s->rejected; return; }
+        if(id>=8 || mine!=s->epoch || BL_Local(s->role,id) || !BL_Local(p[2],id) || d[2] || d[3]) { ++s->rejected; return; }
         bl_feedback_t *f=&s->feedback[id];
         *f=(bl_feedback_t){.id=id,.flags=d[1],.age_ms=BL_Get32(d+4),.position_mrad=(int32_t)BL_Get32(d+8),
              .velocity_mrad_s=(int32_t)BL_Get32(d+12),.target_mrad=(int32_t)BL_Get32(d+16),
-             .pwm_milli=(int32_t)BL_Get32(d+20),.raw_count=(int64_t)get64(d+24),.faults=BL_Get32(d+32)};
+             .pwm_milli=(int32_t)BL_Get32(d+20),.raw_count=(int64_t)get64(d+24),.faults=BL_Get32(d+32),
+             .reference_mrad=(int32_t)BL_Get32(d+36)};
         s->feedback_ms[id]=ms; s->have_feedback[id]=true;
         if(f->faults && !s->peer_faults) stop(s);
         s->peer_faults=f->faults;
@@ -268,6 +286,7 @@ size_t BL_Take(board_protocol_t *s,uint32_t now,uint8_t out[BL_WIRE_MAX])
         bl_message_t m=s->queue[s->head]; s->head=(s->head+1)%BL_QUEUE; --s->count;
         if(m.epoch!=s->epoch || m.peer_epoch!=s->peer_epoch || m.peer!=s->peer || !BL_Fresh(s,now)) return 0;
         if(m.type==BL_TARGET && (!BL_Ready(s,now) || (uint32_t)(now-m.offered_ms)>BL_COMMAND_QUEUE_MS)) { BL_Fail(s,now); return 0; }
+        if(m.type==BL_APPLICATION && (uint32_t)(now-m.offered_ms)>BL_COMMAND_QUEUE_MS) { BL_Fail(s,now); return 0; }
         type=m.type; length=m.length; memcpy(p,m.data,length); epoch=m.epoch; peer_epoch=m.peer_epoch; peer=m.peer;
         if(type==BL_FEEDBACK) { uint32_t age=BL_Get32(p+4),elapsed=now-m.offered_ms; BL_Put32(p+4,age>UINT32_MAX-elapsed?UINT32_MAX:age+elapsed); }
     } else return 0;

@@ -2,6 +2,8 @@
 #include "stm32g4xx_hal.h"
 #include "main.h"
 #include "motor_lock.h"
+#include "hw_test_config.h"
+#include "old_hw_encoder_defaults.h"
 #if N_PULSE_OLD_HW
 #include "board_link.h"
 #include "thumb_encoder.h"
@@ -141,6 +143,14 @@ bool Encoder_BSP_IsCalibrated(motor_id_t id)
     return valid;
 }
 
+float Encoder_BSP_RadiansPerCount(motor_id_t id)
+{
+    if ((uint32_t)id>=MOTOR_COUNT) return NAN;
+    uint32_t key=Motor_Lock();
+    float resolution=calibrated_locked(id)?fabsf(s_scale[id]):NAN;
+    Motor_Unlock(key); return resolution;
+}
+
 bool Encoder_BSP_RawAvailable(motor_id_t id)
 {
     if ((uint32_t)id>=MOTOR_COUNT) return false;
@@ -238,6 +248,19 @@ bool Encoder_BSP_Init(void)
         s_previous_counter[i] = read_counter((motor_id_t)i);
         s_started[i] = true;
     }
+#if N_PULSE_OLD_HW && N_PULSE_HW_SELECTABLE_FINGER
+    /* No manual calibrate command for the common test image. Preserve the
+     * real encoder validity checks; install the legacy nominal scale only
+     * for local fingers, with the raw origin captured above at power-on. */
+    const encoder_calibration_t nominal = {
+        OLD_HW_ENCODER_PPR, OLD_HW_ENCODER_QUADRATURE,
+        OLD_HW_ENCODER_GEAR_RATIO, OLD_HW_ENCODER_DIRECTION, 0
+    };
+    for (unsigned i = 0; i < 5U; ++i) {
+        if (s_started[i] && !Encoder_BSP_SetCalibration((motor_id_t)i, &nominal))
+            return false;
+    }
+#endif
     s_initialized = true;
     return true;
 }

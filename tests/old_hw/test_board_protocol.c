@@ -105,9 +105,9 @@ int main(int argc,char **argv)
         uint8_t p[BL_WIRE_MAX]; size_t n=take(&a,p); assert(n); feed(&b,p,n); feed(&b,p,n);
         assert(b.targets==1 && b.link.duplicates==1); run(15); assert(a.link.accepted_id[1]);
     } else if(!strcmp(test,"order")) {
-        uint8_t p[BL_WIRE_MAX],q[BL_WIRE_MAX],payload[36]={1,3,0,0};
-        size_t n=inject_frame(&b,&a,BL_FEEDBACK,payload,36,p);
-        BL_Put32(payload+8,200); size_t m=inject_frame(&b,&a,BL_FEEDBACK,payload,36,q);
+        uint8_t p[BL_WIRE_MAX],q[BL_WIRE_MAX],payload[40]={1,3,0,0};
+        size_t n=inject_frame(&b,&a,BL_FEEDBACK,payload,40,p);
+        BL_Put32(payload+8,200); size_t m=inject_frame(&b,&a,BL_FEEDBACK,payload,40,q);
         feed(&a,q,m); feed(&a,p,n); assert(a.link.feedback[1].position_mrad==200 && a.link.duplicates);
     } else if(!strcmp(test,"reset")) {
         uint64_t session=b.link.session; init_board(&b,BL_SLAVE,session+300,b.now); run(200);
@@ -205,6 +205,35 @@ int main(int argc,char **argv)
     } else if(!strcmp(test,"high-load")) {
         for(unsigned i=0;i<1000;++i) { assert(BL_Target(&a.link,(uint8_t)(i%4),100,3,a.epoch,a.now)); run(5); }
         assert(b.targets==1000 && !a.faults && !b.faults);
+    } else if(!strncmp(test,"application",11)) {
+        uint8_t bytes[BL_WIRE_MAX],payload[]={2,10,0,0,0,7,1};
+        size_t n=inject_frame(&a,&b,BL_APPLICATION,payload,sizeof payload,bytes);
+        if(!strcmp(test,"application-stale")) {
+            n=BL_Encode(BL_APPLICATION,BL_MASTER,a.link.session,b.link.session,++a.link.tx_seq,
+                        a.epoch,b.epoch-1,payload,sizeof payload,bytes);
+            feed(&b,bytes,n); assert(!b.link.have_application && b.faults);
+        } else if(!strcmp(test,"application-deadline")) {
+            assert(BL_OfferApplication(&a.link,payload,sizeof payload,a.now));
+            a.now+=BL_COMMAND_QUEUE_MS+1;
+            take(&a,bytes); take(&a,bytes); assert(a.faults);
+        } else {
+            feed(&b,bytes,n); assert(b.link.have_application);
+            if(!strcmp(test,"application-duplicate")) {
+                feed(&b,bytes,n); assert(b.link.duplicates && !b.faults);
+            } else if(!strcmp(test,"application-overflow")) {
+                n=inject_frame(&a,&b,BL_APPLICATION,payload,sizeof payload,bytes);
+                feed(&b,bytes,n); assert(b.faults && !b.link.have_application);
+            } else if(!strcmp(test,"application-stop")) {
+                stop_hook(&b); BL_SetLocalState(&b.link,b.epoch,b.faults,b.now);
+                assert(!b.link.have_application);
+            }
+            if(!b.faults) {
+                bl_message_t message;
+                assert(BL_TakeApplication(&b.link,&message) && !BL_TakeApplication(&b.link,&message));
+                assert(message.epoch==b.epoch && message.peer==a.link.session);
+                assert(message.length==sizeof payload && !memcmp(message.data,payload,sizeof payload));
+            }
+        }
     } else if(!strcmp(test,"baud-budget")) {
         struct wire { uint8_t bytes[BL_WIRE_MAX]; size_t n; unsigned left; } ab={0},ba={0};
         for(unsigned ms=0;ms<1000;ms+=2) {

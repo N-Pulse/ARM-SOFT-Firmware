@@ -959,7 +959,9 @@ class CommissionCommand final: public ::EmbeddedProto::MessageInterface
       ESTIMATOR_STOP = 10,
       OUTPUT_PREFLIGHT = 11,
       LINK_AUTHORIZE = 12,
-      LINK_RECOVER = 13
+      LINK_RECOVER = 13,
+      SELECT_FINGER = 14,
+      DIAGNOSTIC_POSITION = 15
     };
 
     enum class FieldNumber : uint32_t

@@ -1,5 +1,14 @@
 # OLD_HW — procédure de vérification physique progressive
 
+Pour les commandes individuelles via le MASTER, voir [SINGLE_FINGER_TEST.md](SINGLE_FINGER_TEST.md).
+L'image commune `-Fingers` autorise désormais un essai du pouce à PWM <= 5%
+avec les arrêts encodeur actifs ; le blocage décrit ci-dessous reste valable
+pour les anciennes images et les profils fixes, sans qualification EXTI déclarée.
+Cette extension utilise USART3 **v3** sur les deux cartes ; les références v2
+ci-dessous décrivent le protocole antérieur. Les restrictions de flash manuel
+des images single ci-dessous sont historiques : le flasheur prend maintenant
+`-Finger NAME -SerialNumber SN` avec manifeste et empreintes vérifiés.
+
 Date : 2026-10-14. Branche : `oldHardNewSoft`. Lire aussi [le rapport lot 4](OLD_HW_LOT4.md).
 
 **Aucune opération physique décrite ici n'a été exécutée pendant le lot 4.**

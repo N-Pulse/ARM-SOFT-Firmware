@@ -22,6 +22,8 @@ void          BoardLink_TaskCreate(void);
 #if N_PULSE_DUAL_BOARD_LINK && !defined(MOTOR_BACKEND_SIM)
 #include "board_protocol.h"
 #include "tx.h"
+#include "hw_commission.h"
+#define BOARD_LINK_PENDING UINT32_MAX /* Reply will arrive asynchronously from USART3. */
 void BoardLink_RuntimeInit(void);
 void BoardLink_SafetyPollLocked(uint32_t now);
 bool BoardLink_CanRecoverLocked(uint32_t now);
@@ -31,6 +33,7 @@ bool BoardLink_RouteTarget(motor_id_t id,float target,uint8_t speed,uint32_t epo
 bool BoardLink_GetRemote(motor_id_t id,bl_feedback_t *out);
 void BoardLink_GetDiagnostic(link_diagnostic_t *out);
 uint32_t BoardLink_Operator(uint32_t operation,uint32_t request,uint32_t epoch,uint32_t ms);
+uint32_t BoardLink_RouteCommission(const hw_command_t *,uint32_t ms,uint32_t epoch);
 bool BoardLink_RxCallback(void *uart);
 bool BoardLink_TxCallback(void *uart);
 bool BoardLink_ErrorCallback(void *uart);

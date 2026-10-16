@@ -17,6 +17,7 @@ float Encoder_BSP_GetVelocity(motor_id_t id);   /* rad/s */
 int64_t Encoder_BSP_GetRawCount(motor_id_t id);
 bool Encoder_BSP_IsCalibrated(motor_id_t id);
 bool Encoder_BSP_RawAvailable(motor_id_t id);
+float Encoder_BSP_RadiansPerCount(motor_id_t id); /* positive resolution, NAN if unavailable */
 
 typedef struct {
     uint32_t counts_per_revolution;

@@ -54,9 +54,9 @@
  *      → utiliser le script tools motor_calib.py
  * ============================================================ */
 /* #define WRIST_ENCODER_TEST */
-/* MOTOR_CALIB_MODE remains disabled until the DRV8848 wiring is confirmed. */
+/* Legacy ASCII mode stays disabled; use framed commissioning "calibrate". */
 #ifdef MOTOR_CALIB_MODE
-#error "Legacy motor calibration is unavailable during disarmed startup bring-up"
+#error "Legacy ASCII calibration is unavailable; use tools/hw_monitor.py calibrate"
 #endif
 /* USER CODE END Includes */
 

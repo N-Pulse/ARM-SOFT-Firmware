@@ -154,9 +154,9 @@ bool Motor_L298N_Arm(void)
     ++g_old_hw_rejected_commands;
     return false;
 #else
-    /* PB14/PB15 acquisition can be monitored now; its worst IRQ latency still
-     * needs qualification under real target load before driving THUMB. */
-    if (N_PULSE_HW_TEST_MOTOR == MOTOR_THUMB && !N_PULSE_THUMB_EXTI_MOTION_QUALIFIED) return false;
+    /* The common bench image allows a bounded THUMB test. Other images keep
+     * the physical EXTI qualification gate; decoder health remains required. */
+    if (HWCommission_SelectedMotor() == MOTOR_THUMB && !HWTest_ThumbMotionAllowed()) return false;
     if (__get_IPSR() || __get_PRIMASK() || !HWCommission_Ready() ||
         !HWCommission_OutputPreflightReady()) return false;
     uint32_t key = Motor_Lock();
@@ -261,9 +261,9 @@ l298n_output_result_t Motor_L298N_ApplySigned(motor_id_t id,float output)
     else {
 #if N_PULSE_OLD_HW_MOTION_OPT_IN
         if (!armed || transitioning || !HWTest_MotorAllowed(id) || !Motor_OutputAllowedLocked(id) ||
-            (id == MOTOR_THUMB && !N_PULSE_THUMB_EXTI_MOTION_QUALIFIED)) {
+            (id == MOTOR_THUMB && !HWTest_ThumbMotionAllowed())) {
             inactive_locked(id); result[id]=L298N_INHIBITED; ++g_old_hw_rejected_commands;
-        } else if (!Encoder_BSP_IsCalibrated(id) || !Motor_HasFreshPositionFeedback(id) || !HWCommission_Ready()) {
+        } else if ((!HW_DIAGNOSTIC_TIMED && (!Encoder_BSP_IsCalibrated(id) || !Motor_HasFreshPositionFeedback(id))) || !HWCommission_Ready()) {
             MotorSafety_RequestStopCauseLocked(MOTOR_STOP_FEEDBACK,id);
             Motor_L298N_InhibitLocked(); result[id]=L298N_FAULT;
         } else {

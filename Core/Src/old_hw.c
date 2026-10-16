@@ -165,7 +165,16 @@ static void uart_prepare(UART_HandleTypeDef *h, USART_TypeDef *uart)
     h->Init.Parity = UART_PARITY_NONE; h->Init.Mode = UART_MODE_TX_RX;
     h->Init.HwFlowCtl = UART_HWCONTROL_NONE; h->Init.OverSampling = UART_OVERSAMPLING_16;
     h->Init.OneBitSampling = UART_ONE_BIT_SAMPLE_DISABLE; h->Init.ClockPrescaler = UART_PRESCALER_DIV1;
-    if (HAL_UART_Init(h) != HAL_OK || HAL_UARTEx_DisableFifoMode(h) != HAL_OK) Error_Handler();
+    if (HAL_UART_Init(h) != HAL_OK) Error_Handler();
+    if (uart==USART3) {
+        /* Full-duplex board traffic must survive short IRQ-masked motor and
+         * protocol operations. A single RDR overflows after one character
+         * (~87 us at 115200). Use the hardware FIFO, with a one-byte RX
+         * threshold so the existing byte callback also handles short frames. */
+        if (HAL_UARTEx_SetRxFifoThreshold(h,UART_RXFIFO_THRESHOLD_1_8)!=HAL_OK ||
+            HAL_UARTEx_SetTxFifoThreshold(h,UART_TXFIFO_THRESHOLD_1_8)!=HAL_OK ||
+            HAL_UARTEx_EnableFifoMode(h)!=HAL_OK) Error_Handler();
+    } else if (HAL_UARTEx_DisableFifoMode(h)!=HAL_OK) Error_Handler();
 }
 
 bool OldHW_HostEnabled(void)

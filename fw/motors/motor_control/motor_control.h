@@ -52,6 +52,9 @@ void Motor_StopAll(void);
 void Motor_OnPositionFeedback(motor_id_t id, float position_rad, float velocity_rad_s);
 void Motor_OnPositionFeedbackAtTime(motor_id_t id, float position, float velocity, uint32_t ms);
 bool Motor_GetSnapshot(motor_id_t id, motor_state_t *out);
+/* Explicit timed diagnostic only. Estimated reference, independent of encoder. */
+float Motor_DiagnosticPosition(motor_id_t id);
+bool Motor_DiagnosticSetPosition(motor_id_t id, float position);
 void Motor_InvalidatePositionFeedback(motor_id_t id);
 bool Motor_HasFreshPositionFeedback(motor_id_t id);
 /* Internal interlock entry points: caller must hold Motor_Lock. */

@@ -25,6 +25,46 @@ static uint32_t s_last_update_ms;
 static uint32_t s_last_elapsed_ms;
 static bool s_clock_started;
 static bool s_timing_valid;
+#if N_PULSE_HW_FINGER_DIAGNOSTIC
+static uint32_t s_diagnostic_started[MOTOR_COUNT];
+static float s_diagnostic_origin[MOTOR_COUNT];
+#endif
+#if HW_DIAGNOSTIC_TIMED
+static float s_diagnostic_position[MOTOR_COUNT];
+static uint32_t s_diagnostic_duration[MOTOR_COUNT];
+static bool s_diagnostic_running[MOTOR_COUNT];
+static float timed_position_locked(motor_id_t id, uint32_t now)
+{
+    if(!s_diagnostic_running[id]) return s_diagnostic_position[id];
+    float distance=s_motors[id].target_position-s_diagnostic_origin[id];
+    float travel=HW_DIAGNOSTIC_RATE_RAD_S*s_motors[id].pwm_limit*.01f*
+        (float)(uint32_t)(now-s_diagnostic_started[id])*.001f;
+    if(travel>fabsf(distance)) travel=fabsf(distance);
+    return s_diagnostic_origin[id]+(distance>0.0f?travel:-travel);
+}
+#endif
+float Motor_DiagnosticPosition(motor_id_t id)
+{
+#if HW_DIAGNOSTIC_TIMED
+    if((unsigned)id>=5U) return NAN;
+    uint32_t key=Motor_Lock(); float position=timed_position_locked(id,HAL_GetTick());
+    Motor_Unlock(key); return position;
+#else
+    (void)id; return NAN;
+#endif
+}
+bool Motor_DiagnosticSetPosition(motor_id_t id,float position)
+{
+#if HW_DIAGNOSTIC_TIMED
+    uint32_t key=Motor_Lock();
+    bool ok=(unsigned)id<5U && HWTest_MotorAllowed(id) && !s_motors[id].enabled &&
+        !MotorBackend_IsArmed() && isfinite(position) && position>=0.0f && position<=1.570796327f;
+    if(ok) { s_diagnostic_position[id]=position; s_diagnostic_running[id]=false; }
+    Motor_Unlock(key); return ok;
+#else
+    (void)id; (void)position; return false;
+#endif
+}
 
 static bool feedback_fresh_locked(motor_id_t id, uint32_t now)
 {
@@ -41,6 +81,10 @@ void Motor_InhibitAllLocked(void)
 {
     for (unsigned i = 0U; i < MOTOR_COUNT; ++i) {
         motor_state_t *motor = &s_motors[i];
+#if HW_DIAGNOSTIC_TIMED
+        s_diagnostic_position[i]=timed_position_locked((motor_id_t)i,HAL_GetTick());
+        s_diagnostic_running[i]=false;
+#endif
         if (motor->enabled) s_stopped_controller_mask |= 1U << i;
         motor->enabled = false;
         motor->output_pwm = 0.0f;
@@ -60,6 +104,10 @@ void Motor_InitAll(void)
     memset(s_motors, 0, sizeof(s_motors));
     memset(s_revision, 0, sizeof(s_revision));
     memset(s_pid_ms, 0, sizeof(s_pid_ms));
+#if HW_DIAGNOSTIC_TIMED
+    memset(s_diagnostic_position,0,sizeof(s_diagnostic_position));
+    memset(s_diagnostic_running,0,sizeof(s_diagnostic_running));
+#endif
     s_stopped_controller_mask = 0U;
     s_clock_started = false;
     s_timing_valid = false;
@@ -74,6 +122,14 @@ void Motor_InitAll(void)
 #else
         s_motors[i].max_reference_rate = 180.0f * 0.0174532925f;
         const motor_pid_config_t *config = &g_motor_pid_config[i];
+#endif
+#if N_PULSE_HW_SELECTABLE_FINGER
+        motor_pid_config_t bench_config=*config;
+        if(i<5U) {
+            bench_config.kp=HW_TEST_POSITION_KP;
+            bench_config.ki=bench_config.kd=0.0f;
+            config=&bench_config;
+        }
 #endif
         if (!MotorPID_Init(&s_motors[i].pid, config)) {
             MotorSafety_RequestStopCause(MOTOR_STOP_PID, (motor_id_t)i);
@@ -115,7 +171,7 @@ void Motor_CheckHealth(void)
         key = Motor_Lock();
         now = HAL_GetTick();
         bool fresh = feedback_fresh_locked((motor_id_t)i, now);
-        if (s_motors[i].enabled && (!fresh || !MotorBackend_FeedbackReady((motor_id_t)i) ||
+        if (s_motors[i].enabled && ((!HW_DIAGNOSTIC_TIMED && (!fresh || !MotorBackend_FeedbackReady((motor_id_t)i))) ||
                                   !MotorSafety_CanEnableLocked((motor_id_t)i, now)))
             MotorSafety_RequestStopCauseLocked(MOTOR_STOP_FEEDBACK, (motor_id_t)i);
         Motor_Unlock(key);
@@ -159,6 +215,13 @@ void Motor_Update(void)
         uint32_t sample_ms = HAL_GetTick();
         uint32_t pid_elapsed = (uint32_t)(sample_ms - s_pid_ms[i]);
         prepared = s_motors[i];
+#if N_PULSE_HW_FINGER_DIAGNOSTIC
+        uint32_t diagnostic_started=s_diagnostic_started[i];
+        float diagnostic_origin=s_diagnostic_origin[i];
+#if HW_DIAGNOSTIC_TIMED
+        uint32_t duration=s_diagnostic_duration[i];
+#endif
+#endif
         prepared.pwm_limit = MotorSafety_PwmLimitLocked(id, prepared.pwm_limit, HAL_GetTick());
         Motor_Unlock(key);
         if (!allowed) continue;
@@ -181,9 +244,43 @@ void Motor_Update(void)
         if (delta > max_step) delta = max_step;
         else if (delta < -max_step) delta = -max_step;
         prepared.reference_position += delta;
+        bool diagnostic_finished=false;
+#if N_PULSE_HW_FINGER_DIAGNOSTIC
+#if HW_DIAGNOSTIC_TIMED
+        float distance=prepared.target_position-diagnostic_origin;
+        diagnostic_finished=prepared.pwm_limit>0.0f && (uint32_t)(sample_ms-diagnostic_started)>=duration;
+        prepared.reference_position=Motor_DiagnosticPosition(id);
+        prepared.output_pwm=diagnostic_finished?0.0f:(distance>0.0f?prepared.pwm_limit:-prepared.pwm_limit);
+        bool valid_pid=isfinite(distance) && duration<=HW_DIAGNOSTIC_MAX_RUN_MS;
+#else
+        float half_count=0.5f*Encoder_BSP_RadiansPerCount(id);
+        float distance=prepared.target_position-diagnostic_origin;
+        float remaining=prepared.target_position-prepared.measured_position;
+        bool reached=fabsf(remaining)<=half_count ||
+            (distance>0.0f && remaining<=0.0f) || (distance<0.0f && remaining>=0.0f);
+        diagnostic_finished=prepared.pwm_limit>0.0f &&
+            (reached || (uint32_t)(sample_ms-diagnostic_started)>=HW_DIAGNOSTIC_MAX_RUN_MS);
+        prepared.reference_position=prepared.target_position;
+        prepared.output_pwm=prepared.pwm_limit==0.0f || diagnostic_finished ? 0.0f :
+            (distance>0.0f ? prepared.pwm_limit : -prepared.pwm_limit);
+        bool valid_pid=isfinite(half_count) && isfinite(remaining);
+#endif
+#else
         bool valid_pid = MotorPID_Update(&prepared.pid, prepared.reference_position,
                                         prepared.measured_position, dt, prepared.pwm_limit,
                                         &prepared.output_pwm);
+#if N_PULSE_HW_SELECTABLE_FINGER
+        /* An encoder cannot resolve an error below half a count. Release
+         * drive there instead of hunting forever and tripping the stall
+         * guard while the host waits for its next feedback sample. Require
+         * both the ramped reference AND final waypoint to have converged. */
+        float half_count=0.5f*Encoder_BSP_RadiansPerCount(id);
+        if(valid_pid && isfinite(half_count) &&
+           fabsf(prepared.reference_position-prepared.measured_position)<=half_count &&
+           fabsf(prepared.target_position-prepared.measured_position)<=half_count)
+            prepared.output_pwm=0.0f;
+#endif
+#endif
         key = Motor_Lock();
         /* Stop wins whether it occurred before or after calculation. The
          * backend commit is bounded register writes (HW) or staging (SIM). */
@@ -193,11 +290,15 @@ void Motor_Update(void)
             if ((uint32_t)(now - s_last_update_ms) > MOTOR_CONTROL_MAX_ELAPSED_MS) {
                 s_timing_valid = false;
                 MotorSafety_RequestStopCauseLocked(MOTOR_STOP_CONTROL_DELAY, MOTOR_COUNT);
-            } else if (!feedback_fresh_locked(id, now) || !MotorBackend_FeedbackReady(id) ||
+            } else if ((!HW_DIAGNOSTIC_TIMED && (!feedback_fresh_locked(id, now) || !MotorBackend_FeedbackReady(id))) ||
                        !MotorSafety_CanEnableLocked(id, now)) {
                 MotorSafety_RequestStopCauseLocked(MOTOR_STOP_FEEDBACK, id);
             } else if (!valid_pid) {
                 MotorSafety_RequestStopCauseLocked(MOTOR_STOP_PID, id);
+            } else if (diagnostic_finished) {
+                /* Local feedback crossing or the absolute 2 s deadline stops
+                 * the drive without waiting for a PC or USART3 round trip. */
+                MotorSafety_RequestStopCauseLocked(MOTOR_STOP_MANUAL,id);
             } else {
                 /* A force sample may have arrived while PID was calculated. */
                 float limit = MotorSafety_PwmLimitLocked(id, prepared.pwm_limit, now);
@@ -226,8 +327,8 @@ bool Motor_Enable(motor_id_t id)
     uint32_t key = Motor_Lock();
     uint32_t now = HAL_GetTick();
     bool allowed = MotorSafety_CanArmLocked() && MotorBackend_IsArmed() &&
-                   !MotorBackend_FaultActive() && MotorBackend_FeedbackReady(id) &&
-                   feedback_fresh_locked(id, now) && s_timing_valid &&
+                   !MotorBackend_FaultActive() && (HW_DIAGNOSTIC_TIMED ||
+                   (MotorBackend_FeedbackReady(id) && feedback_fresh_locked(id, now))) && s_timing_valid &&
                    (uint32_t)(now - s_last_update_ms) <= MOTOR_CONTROL_MAX_ELAPSED_MS &&
                    MotorSafety_CanEnableLocked(id, now);
     if (allowed) {
@@ -235,8 +336,8 @@ bool Motor_Enable(motor_id_t id)
 #if N_PULSE_HW_SINGLE_MOTOR_TEST
         motor->max_reference_rate = HWCommission_ReferenceRate();
 #endif
-        motor->reference_position = motor->measured_position;
-        motor->target_position = motor->measured_position;
+        motor->reference_position = HW_DIAGNOSTIC_TIMED?Motor_DiagnosticPosition(id):motor->measured_position;
+        motor->target_position = motor->reference_position;
         motor->pwm_limit = 0.0f; /* An explicit new command is required AFTER enable. */
         motor->output_pwm = 0.0f;
         MotorPID_Reset(&motor->pid);
@@ -253,6 +354,10 @@ void Motor_Disable(motor_id_t id)
     if ((uint32_t)id >= MOTOR_COUNT) return;
     uint32_t key = Motor_Lock();
     motor_state_t *motor = &s_motors[id];
+#if HW_DIAGNOSTIC_TIMED
+    s_diagnostic_position[id]=timed_position_locked(id,HAL_GetTick());
+    s_diagnostic_running[id]=false;
+#endif
     motor->enabled = false;
     motor->pwm_limit = 0.0f;
     motor->output_pwm = 0.0f;
@@ -285,7 +390,7 @@ bool Motor_CanRecoverLocked(uint32_t required_feedback_mask, uint32_t now)
         return false;
     for (unsigned i = 0U; i < MOTOR_COUNT; ++i) {
         if (s_motors[i].enabled) return false;
-        if (!(required_feedback_mask & (1U << i))) continue;
+        if (HW_DIAGNOSTIC_TIMED || !(required_feedback_mask & (1U << i))) continue;
         if (!MotorBackend_FeedbackReady((motor_id_t)i) ||
             !feedback_fresh_locked((motor_id_t)i, now)) return false;
         if (causes & MOTOR_STOP_PID) {
@@ -345,8 +450,23 @@ void Motor_SetTarget(motor_id_t id, float position, uint8_t speed_percent)
     }
 #endif
     if (MotorSafety_FilterCommand(id, &safe_position, &safe_speed)) {
+#if HW_DIAGNOSTIC_TIMED
+        float origin=timed_position_locked(id,HAL_GetTick());
+#endif
         s_motors[id].target_position = safe_position;
         s_motors[id].pwm_limit = safe_speed > 100U ? 100U : safe_speed;
+#if N_PULSE_HW_FINGER_DIAGNOSTIC
+#if HW_DIAGNOSTIC_TIMED
+        s_diagnostic_origin[id]=origin;
+        float duration=ceilf(fabsf(safe_position-s_diagnostic_origin[id])/
+            (HW_DIAGNOSTIC_RATE_RAD_S*(float)safe_speed*.01f)*1000.0f);
+        s_diagnostic_duration[id]=duration>HW_DIAGNOSTIC_MAX_RUN_MS?HW_DIAGNOSTIC_MAX_RUN_MS:(uint32_t)duration;
+        s_diagnostic_running[id]=true;
+#else
+        s_diagnostic_origin[id]=s_motors[id].measured_position;
+#endif
+        s_diagnostic_started[id]=HAL_GetTick();
+#endif
         ++s_revision[id];
     }
     Motor_Unlock(key);
@@ -364,7 +484,7 @@ void Motor_InvalidatePositionFeedback(motor_id_t id)
     uint32_t key = Motor_Lock();
     s_motors[id].feedback_valid = false;
     ++s_revision[id];
-    if (s_motors[id].enabled)
+    if (!HW_DIAGNOSTIC_TIMED && s_motors[id].enabled)
         MotorSafety_RequestStopCauseLocked(MOTOR_STOP_FEEDBACK, id);
     Motor_Unlock(key);
 }
@@ -396,7 +516,7 @@ void Motor_OnPositionFeedbackAtTime(motor_id_t id, float position_rad, float vel
     s_motors[id].feedback_ms = ms;
     s_motors[id].feedback_valid = true;
 #if N_PULSE_HW_SINGLE_MOTOR_TEST
-    if(s_motors[id].enabled && !HWCommission_MeasurementAllowed(position_rad))
+    if(!HW_DIAGNOSTIC_TIMED && s_motors[id].enabled && !HWCommission_MeasurementAllowed(position_rad))
         MotorSafety_RequestStopCauseLocked(MOTOR_STOP_FEEDBACK,id);
 #endif
     Motor_Unlock(key);
@@ -407,7 +527,7 @@ bool Motor_HasFreshPositionFeedback(motor_id_t id)
     if ((uint32_t)id >= MOTOR_COUNT) return false;
     uint32_t key = Motor_Lock();
     bool fresh = feedback_fresh_locked(id, HAL_GetTick());
-    if (!fresh && s_motors[id].enabled)
+    if (!HW_DIAGNOSTIC_TIMED && !fresh && s_motors[id].enabled)
         MotorSafety_RequestStopCauseLocked(MOTOR_STOP_FEEDBACK, id);
     Motor_Unlock(key);
     return fresh;
@@ -422,6 +542,11 @@ void Motor_StopAll(void)
 bool Motor_GetSnapshot(motor_id_t id, motor_state_t *out)
 {
     if ((uint32_t)id >= MOTOR_COUNT || !out) return false;
-    uint32_t key = Motor_Lock(); *out = s_motors[id]; Motor_Unlock(key);
+    uint32_t key = Motor_Lock(); *out = s_motors[id];
+#if HW_DIAGNOSTIC_TIMED
+    out->reference_position=timed_position_locked(id,HAL_GetTick());
+    if(!out->enabled) out->target_position=out->reference_position;
+#endif
+    Motor_Unlock(key);
     return true;
 }

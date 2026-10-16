@@ -10,7 +10,7 @@ int main(int argc, char **argv)
     fputs("CALL\n",f);
     for(int i=1;i<argc;++i) fprintf(f,"ARG %s\n",argv[i]);
     fclose(f);
-    int list = argc==2 && strcmp(argv[1],"-l")==0;
+    int list = (argc==2 || (argc==3 && strcmp(argv[2],"stlink")==0)) && strcmp(argv[1],"-l")==0;
     const char *code = getenv(list ? "FAKE_LIST_CODE" : "FAKE_PROGRAM_CODE");
     const char *lines = getenv("FAKE_SERIAL_LINES");
     if(list) puts(lines ? lines : "ST-LINK SN : SNA\nST-LINK SN : SNB");
