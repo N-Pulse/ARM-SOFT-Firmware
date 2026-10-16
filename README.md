@@ -1,5 +1,18 @@
 # N-Pulse — firmware mono-carte STM32G474QET6
 
+**Branche `oldHardNewSoft` :** voir [les tests individuels de doigts via MASTER/USART3](docs/SINGLE_FINGER_TEST.md)
+pour `build.ps1 -Fingers` et `send_action.py --finger index --angle 30`.
+Le mode temporaire `-Fingers -Diagnostic` permet un PWM direct jusqu'a 40%,
+avec duree calculee plafonnee a 2 secondes (angles estimes) et reactivation des controles un par un.
+L'image commune charge les paramètres encodeur de `simulation_pipeline`
+(12 × 4 × 61 = 2928 comptes/tour de sortie), sans commande `calibrate` manuelle.
+La position au démarrage sert de zéro ; limites, préflight et armement restent requis.
+Les deux cartes doivent utiliser le protocole USART3 v3 et la même image de test.
+Test en une commande PC : `python tools/send_action.py --port COM8 --raw 11 --angle 5 --pwm 3 --run`.
+L'option `--run` prépare et lance un seul test (course 0..10° par défaut), puis STOP et sortie.
+L'image commune autorise aussi l'essai du pouce (`--raw 10`), PWM plafonné à 5% et armement 5s.
+La qualification physique EXTI reste non déclarée ; les contrôles d'encodeur restent actifs.
+
 État maintenu au **9 octobre 2026, lot 6**. Le banc PC exécute maintenant une
 boucle SIM fermée avec le **vrai contrôleur/PID/safety C** et un modèle fictif de
 huit rotors. Les deux profils démarrent inactifs. HW reste désarmé : ADC/OPAMP off,

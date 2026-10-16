@@ -9,6 +9,7 @@ import os
 import shutil
 import struct
 import subprocess
+import sys
 
 ROOT = Path(__file__).resolve().parents[2]
 HERE = Path(__file__).resolve().parent
@@ -30,7 +31,7 @@ def main():
             'elf_sha256':hashlib.sha256(elf.read_bytes()).hexdigest(),
             'flags_sha256':hashlib.sha256(flags.read_bytes()).hexdigest()}))
     log=FIXTURE/'fake.log'; count=0
-    def case(name,ok,args=(),env=None,program=False,expected=None):
+    def case(name,ok,args=(),env=None,program=False,expected=None,serial='SNA',image=None):
         nonlocal count
         log.write_text('')
         process_env={k:v for k,v in os.environ.items() if not k.startswith('FAKE_')}
@@ -42,8 +43,9 @@ def main():
         if not ok: assert 'REFUS/ECHEC:' in result.stdout,(name,result.stdout,result.stderr)
         calls=log.read_text(); assert ('ARG -c\n' in calls)==program,(name,calls)
         if program:
-            assert calls.count('ARG -c\n')==1 and 'ARG sn=SNA\n' in calls and 'sn=SNB' not in calls
-            assert f'ARG {elf}\n' in calls and 'ARG -v\n' in calls
+            assert calls.count('ARG -c\n')==1 and f'ARG sn={serial}\n' in calls
+            assert f'ARG sn={"SNB" if serial=="SNA" else "SNA"}\n' not in calls
+            assert f'ARG {image or elf}\n' in calls and 'ARG -v\n' in calls
         if expected: assert expected in result.stdout,(name,result.stdout)
         count+=1; print('PASS flash mock:',name)
         return result,calls
@@ -57,7 +59,7 @@ def main():
     case('enumeration error',False,['-SerialNumber','SNA','-DryRun'],{'FAKE_LIST_CODE':'7'},expected='Echec enumeration')
     r,calls=case('dry-run selects exactly one; no connect/write/reset',True,
                 ['-SerialNumber','SNA','-DryRun'],expected='DRY-RUN')
-    assert calls=='CALL\nARG -l\n' and f'"{fake}"' in r.stdout and f'"{elf}"' in r.stdout
+    assert calls=='CALL\nARG -l\nARG stlink\n' and f'"{fake}"' in r.stdout and f'"{elf}"' in r.stdout
     case('one simulated write+verify+reset, other probe untouched',True,
          ['-SerialNumber','SNA'],program=True)
     case('programmer nonzero exit',False,['-SerialNumber','SNA'],{'FAKE_PROGRAM_CODE':'8'},program=True)
@@ -86,6 +88,102 @@ def main():
     case('non inhibited manifest refused',False,['-SerialNumber','SNA','-DryRun'])
     artifact(); header[18]=62; artifact()
     case('non ARM ELF refused',False,['-SerialNumber','SNA','-DryRun'])
+
+    # Dedicated images must be named explicitly and retain hashes, motor/PWM
+    # containment and the same exact-probe selection as ordinary firmware.
+    header[18]=40; artifact()
+    tool_dir=FIXTURE/'tools'; tool_dir.mkdir(exist_ok=True)
+    builder=tool_dir/'build_artifacts.py'; shutil.copy2(ROOT/'tools/build_artifacts.py',builder)
+    finger=FIXTURE/'build/HW-single-1-optin'; finger.mkdir(parents=True,exist_ok=True)
+    finger_elf=finger/'n-pulse.elf'; finger_flags=finger/'compile.flags'; finger_manifest=finger/'build-manifest.json'
+    def finger_artifact():
+        finger_elf.write_bytes(header)
+        text=flags.read_text().replace('N_PULSE_OLD_HW_MOTION_OPT_IN=0','N_PULSE_OLD_HW_MOTION_OPT_IN=1')
+        text=text.replace('N_PULSE_HW_SINGLE_MOTOR_TEST=0','N_PULSE_HW_SINGLE_MOTOR_TEST=1')
+        finger_flags.write_text(text+' -DN_PULSE_HW_TEST_MOTOR=1 -DN_PULSE_HW_TEST_PWM_CAP=5\n')
+        subprocess.run([sys.executable,'-B',builder,'finger-manifest','build/HW-single-1-optin','1'],check=True)
+    finger_artifact()
+    info=json.loads(finger_manifest.read_text())
+    assert info['finger_motor_id']==1 and info['physical_outputs']=='single_finger_commissioning'
+    case('finger image requires explicit -Finger',False,
+         ['-SerialNumber','SNA','-ElfPath',str(finger_elf),'-DryRun'])
+    case('finger profile refuses ordinary ELF',False,
+         ['-Finger','index','-SerialNumber','SNA','-ElfPath',str(elf),'-DryRun'])
+    r,calls=case('finger dry-run enumerates ST-LINK only',True,
+         ['-Finger','index','-SerialNumber','SNA','-DryRun'],expected='DRY-RUN')
+    assert calls=='CALL\nARG -l\nARG stlink\n' and str(finger_elf) in r.stdout
+    for serial in ('SNA','SNB'):
+        case('same finger ELF on selected probe '+serial,True,
+             ['-Finger','index','-SerialNumber',serial],program=True,serial=serial,image=finger_elf)
+    case('finger exact serial required',False,
+         ['-Finger','index','-SerialNumber','SN','-DryRun'],expected='apparait 0 fois')
+    finger_elf.write_bytes(bytes(header)+b'changed')
+    case('finger substituted ELF digest refused',False,['-Finger','index','-SerialNumber','SNA','-DryRun'])
+    finger_artifact(); finger_flags.write_text(finger_flags.read_text()+' changed')
+    case('finger substituted flags digest refused',False,['-Finger','index','-SerialNumber','SNA','-DryRun'])
+    for old,new in (('N_PULSE_HW_TEST_MOTOR=1','N_PULSE_HW_TEST_MOTOR=2'),
+                    ('N_PULSE_HW_TEST_PWM_CAP=5','N_PULSE_HW_TEST_PWM_CAP=11'),
+                    ('N_PULSE_OLD_HW_MOTION_OPT_IN=1','N_PULSE_OLD_HW_MOTION_OPT_IN=0'),
+                    ('N_PULSE_HW_SINGLE_MOTOR_TEST=1','N_PULSE_HW_SINGLE_MOTOR_TEST=0'),
+                    ('N_PULSE_ENABLE_CURRENT_ACQUISITION=0','N_PULSE_ENABLE_CURRENT_ACQUISITION=1'),
+                    ('N_PULSE_THUMB_EXTI_MOTION_QUALIFIED=0','N_PULSE_THUMB_EXTI_MOTION_QUALIFIED=1'),
+                    ('N_PULSE_TIMING_DIAGNOSTICS=0','N_PULSE_TIMING_DIAGNOSTICS=1'),
+                    (' | test',' -DMOTOR_BACKEND_SIM=1 | test'),
+                    (' | test',' -DN_PULSE_HW_SINGLE_MOTOR_TEST=0 | test')):
+        finger_artifact(); finger_flags.write_text(finger_flags.read_text().replace(old,new))
+        # Even if someone refreshed the receipt's digest, the profile gates reject it.
+        info=json.loads(finger_manifest.read_text()); info['flags_sha256']=hashlib.sha256(finger_flags.read_bytes()).hexdigest()
+        finger_manifest.write_text(json.dumps(info))
+        case('finger invalid flag refused: '+new,False,['-Finger','index','-SerialNumber','SNA','-DryRun'])
+        rejected=subprocess.run([sys.executable,'-B',builder,'finger-manifest','build/HW-single-1-optin','1'],
+                                capture_output=True,text=True)
+        assert rejected.returncode!=0,('manifest accepted invalid flags',new)
+    for field,value in (('finger_motor_id',2),('physical_outputs','permanently_disabled')):
+        finger_artifact(); info=json.loads(finger_manifest.read_text()); info[field]=value
+        finger_manifest.write_text(json.dumps(info))
+        case('finger wrong receipt '+field+' refused',False,['-Finger','index','-SerialNumber','SNA','-DryRun'])
+
+    diagnostic=FIXTURE/'build/HW-fingers-optin-diagnostic'
+    diagnostic.mkdir(parents=True,exist_ok=True)
+    diagnostic_elf=diagnostic/'n-pulse.elf'
+    diagnostic_flags=diagnostic/'compile.flags'
+    diagnostic_manifest=diagnostic/'build-manifest.json'
+    def diagnostic_artifact(checks=False):
+        finger_artifact()
+        diagnostic_elf.write_bytes(header)
+        text=finger_flags.read_text().replace('N_PULSE_HW_TEST_PWM_CAP=5','N_PULSE_HW_TEST_PWM_CAP=40')
+        text+=' -DN_PULSE_HW_SELECTABLE_FINGER=1 -DN_PULSE_HW_FINGER_DIAGNOSTIC=1'
+        text+=''.join(f' -DN_PULSE_DIAG_CHECK_{name}={int(checks)}' for name in ('GUARD','TRAVEL','STEP','PREFLIGHT','ENCODER'))
+        diagnostic_flags.write_text(text+'\n')
+        subprocess.run([sys.executable,'-B',builder,'finger-manifest','build/HW-fingers-optin-diagnostic','all'],check=True)
+    diagnostic_artifact()
+    info=json.loads(diagnostic_manifest.read_text())
+    assert info['diagnostic_max_run_ms']==2000 and not any(info['diagnostic_checks'].values())
+    case('diagnostic requires explicit -Fingers -Diagnostic',False,
+         ['-Fingers','-SerialNumber','SNA','-ElfPath',str(diagnostic_elf),'-DryRun'])
+    case('diagnostic requires common finger profile',False,
+         ['-Diagnostic','-Finger','index','-SerialNumber','SNA','-DryRun'])
+    r,calls=case('diagnostic dry-run enumerates only',True,
+         ['-Fingers','-Diagnostic','-SerialNumber','SNA','-DryRun'],expected='DRY-RUN')
+    assert calls=='CALL\nARG -l\nARG stlink\n' and str(diagnostic_elf) in r.stdout
+    for serial in ('SNA','SNB'):
+        case('same diagnostic ELF on selected probe '+serial,True,
+             ['-Fingers','-Diagnostic','-SerialNumber',serial],program=True,serial=serial,image=diagnostic_elf)
+    diagnostic_artifact(checks=True)
+    case('diagnostic checks enabled accepted',True,
+         ['-Fingers','-Diagnostic','-SerialNumber','SNA','-DryRun'])
+    for field,value in (('diagnostic_max_run_ms',3000),('diagnostic_checks',{'guard':False,'travel':True,'step':True,'preflight':True})):
+        diagnostic_artifact(checks=True)
+        info=json.loads(diagnostic_manifest.read_text()); info[field]=value
+        diagnostic_manifest.write_text(json.dumps(info))
+        case('diagnostic incorrect receipt '+field+' refused',False,
+             ['-Fingers','-Diagnostic','-SerialNumber','SNA','-DryRun'])
+    diagnostic_artifact()
+    diagnostic_flags.write_text(diagnostic_flags.read_text().replace('N_PULSE_HW_TEST_PWM_CAP=40','N_PULSE_HW_TEST_PWM_CAP=41'))
+    info=json.loads(diagnostic_manifest.read_text()); info['flags_sha256']=hashlib.sha256(diagnostic_flags.read_bytes()).hexdigest()
+    diagnostic_manifest.write_text(json.dumps(info))
+    case('diagnostic PWM above 40 refused',False,
+         ['-Fingers','-Diagnostic','-SerialNumber','SNA','-DryRun'])
     print(f'{count} script scenarios passed using ONLY the simulated executable.')
 
 if __name__=='__main__': main()

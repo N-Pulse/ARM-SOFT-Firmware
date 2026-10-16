@@ -39,6 +39,7 @@ bool MotorGuard_CanRecoverLocked(void) { return tripped==0U; }
 #include "motor_lock.h"
 #include "encoder_bsp.h"
 #include "drv8848.h"
+#include "hw_test_config.h"
 #include <string.h>
 
 static int64_t s_reference[MOTOR_COUNT];
@@ -65,6 +66,7 @@ void MotorGuard_Init(void)
 
 uint32_t MotorGuard_Poll(void)
 {
+    if(N_PULSE_HW_FINGER_DIAGNOSTIC && !N_PULSE_DIAG_CHECK_GUARD) return 0U;
     uint32_t newly_tripped = 0U;
     for (unsigned i = 0U; i < MOTOR_COUNT; ++i) {
         motor_id_t id = (motor_id_t)i;

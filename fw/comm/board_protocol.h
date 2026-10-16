@@ -6,7 +6,7 @@
 
 /* Dedicated RET6 two-board protocol. Every instance owns independent state.
  * Caller serializes access; hooks never block, allocate, or send UART data. */
-#define BL_VERSION 2U
+#define BL_VERSION 3U
 #define BL_MASTER 1U
 #define BL_SLAVE 2U
 #define BL_PAYLOAD 48U
@@ -18,13 +18,14 @@
 #define BL_COMMAND_QUEUE_MS 50U
 #define BL_FRAME_MS 25U
 #define BL_FEEDBACK_MS 100U
-enum { BL_HELLO=1, BL_HEARTBEAT, BL_TARGET, BL_FEEDBACK, BL_STOP, BL_ACK };
+enum { BL_HELLO=1, BL_HEARTBEAT, BL_TARGET, BL_FEEDBACK, BL_STOP, BL_ACK, BL_APPLICATION };
 enum { BL_ACCEPTED, BL_FORBIDDEN, BL_INVALID, BL_STALE };
-enum { BL_VALID=1, BL_CALIBRATED=2, BL_ENABLED=4, BL_ARMED=8, BL_RAW_VALID=16 };
+enum { BL_VALID=1, BL_CALIBRATED=2, BL_ENABLED=4, BL_ARMED=8, BL_RAW_VALID=16,
+       BL_CONFIGURED=32, BL_PREFLIGHT=64, BL_THUMB_BLOCKED=128 };
 typedef struct {
     uint8_t id, flags;
     uint32_t age_ms, faults;
-    int32_t position_mrad, velocity_mrad_s, target_mrad, pwm_milli;
+    int32_t position_mrad, velocity_mrad_s, target_mrad, pwm_milli, reference_mrad;
     int64_t raw_count;
 } bl_feedback_t;
 typedef struct {
@@ -58,6 +59,8 @@ typedef struct {
     uint8_t accepted_status[8];
     uint32_t malformed, duplicates, rejected, overflows, stops, restarts;
     bl_hooks_t hooks;
+    bl_message_t application; /* One frame, consumed outside the IRQ-masked parser. */
+    bool have_application;
 } board_protocol_t;
 
 bool BL_Local(uint8_t role, uint8_t motor);
@@ -71,6 +74,8 @@ bool BL_Authorize(board_protocol_t *, uint32_t now);
 bool BL_Target(board_protocol_t *, uint8_t motor, int32_t mrad, uint8_t speed, uint32_t epoch, uint32_t now);
 bool BL_OfferFeedback(board_protocol_t *, const bl_feedback_t *, uint32_t now);
 bool BL_GetFeedback(const board_protocol_t *, uint8_t motor, uint32_t now, bl_feedback_t *);
+bool BL_OfferApplication(board_protocol_t *, const uint8_t *, uint8_t length, uint32_t now);
+bool BL_TakeApplication(board_protocol_t *, bl_message_t *);
 void BL_Feed(board_protocol_t *, uint8_t byte, uint32_t received_ms, uint32_t now);
 /* Assignment of transport sequence occurs at dequeue, preserving wire order.
  * STOP/HELLO/heartbeat have reserved slots, independent of normal saturation. */

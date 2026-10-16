@@ -13,6 +13,7 @@
 #include "rx.h"
 #include "tx.h"
 #include "hw_commission.h"
+#include "hw_test_config.h"
 #include "hw_telemetry.h"
 #if N_PULSE_DUAL_BOARD_LINK
 #include "board_link.h"
@@ -55,12 +56,24 @@ static bool frame_received(const uint8_t *bytes, size_t length, uint32_t ms,
     }
     if (result.type == RX_TYPE_COMMISSION) {
 #if N_PULSE_DUAL_BOARD_LINK
+        if(BoardLink_HostAuthority()) {
+            uint32_t code=UART4Transport_RxGenerationMatches(current_generation) ?
+                BoardLink_RouteCommission(&result.command,ms,epoch):HW_STALE;
+            if(code!=BOARD_LINK_PENDING) HWTelemetry_Reply(result.command.request_id,code);
+            return code==HW_OK || code==BOARD_LINK_PENDING;
+        }
         if (result.command.operation==12 || result.command.operation==13) {
             uint32_t code=UART4Transport_RxGenerationMatches(current_generation) && result.command.epoch==epoch ?
                 BoardLink_Operator(result.command.operation,result.command.request_id,epoch,ms) : HW_STALE;
             HWTelemetry_Reply(result.command.request_id,code);
             return code==HW_OK;
         }
+#if N_PULSE_HW_SELECTABLE_FINGER
+        /* All motion/setup authority comes from MASTER in the common image.
+         * SLAVE's USB console remains diagnostic/STOP only. */
+        HWTelemetry_Reply(result.command.request_id,HW_REJECTED);
+        return false;
+#endif
 #endif
         uint32_t code = UART4Transport_RxGenerationMatches(current_generation) ?
             HWCommission_Execute(&result.command, ms, epoch) : HW_STALE;

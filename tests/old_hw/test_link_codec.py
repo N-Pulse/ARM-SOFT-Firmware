@@ -19,6 +19,10 @@ def read(path):
 # Keep the test reproducible without an ignored local baseline directory.
 LOT3_DESCRIPTOR_SHA256='96ed93351a852e3ba8fed0674748d2dcf3e0f72fe03d2eda1d4a2aa52bb9b1a8'
 new=read(ROOT/'fw/comm-stack/PyUART/protocol_messages_pb2.py')
+operations=next(m for m in new.message_type if m.name=='CommissionCommand').enum_type[0]
+assert operations.value[-2].name=='SELECT_FINGER' and operations.value[-2].number==14
+assert operations.value[-1].name=='DIAGNOSTIC_POSITION' and operations.value[-1].number==15
+del operations.value[-2:]  # Both new enum values are additive; existing fields/values stay identical.
 for i in range(len(new.message_type)-1,-1,-1):
     if new.message_type[i].name=='LinkDiagnostic':del new.message_type[i]
 parent=next(m for m in new.message_type if m.name=='ProsthesisMessage')

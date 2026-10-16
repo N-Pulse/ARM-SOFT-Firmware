@@ -44,7 +44,7 @@ typedef struct {uint32_t CR1;} USART_TypeDef;
 extern USART_TypeDef mock_uarts[2];
 #define LPUART1 (&mock_uarts[0])
 #define USART3 (&mock_uarts[1])
-typedef struct {USART_TypeDef *Instance; struct {uint32_t BaudRate,WordLength,StopBits,Parity,Mode,HwFlowCtl,OverSampling,OneBitSampling,ClockPrescaler;} Init; uint32_t gState,TxXferCount;} UART_HandleTypeDef;
+typedef struct {USART_TypeDef *Instance; struct {uint32_t BaudRate,WordLength,StopBits,Parity,Mode,HwFlowCtl,OverSampling,OneBitSampling,ClockPrescaler;} Init; uint32_t gState,TxXferCount,ErrorCode;} UART_HandleTypeDef;
 typedef enum {LPUART1_IRQn,USART3_IRQn,EXTI15_10_IRQn} IRQn_Type;
 #define GPIO_PIN_0 (1U << 0)
 #define GPIO_PIN_1 (1U << 1)
@@ -134,6 +134,9 @@ typedef enum {LPUART1_IRQn,USART3_IRQn,EXTI15_10_IRQn} IRQn_Type;
 #define UART_PRESCALER_DIV1 1U
 #define UART_STOPBITS_1 1U
 #define UART_WORDLENGTH_8B 1U
+#define UART_RXFIFO_THRESHOLD_1_8 0U
+#define UART_TXFIFO_THRESHOLD_1_8 0U
+#define USART_CR1_FIFOEN (1U << 29)
 #define __HAL_RCC_GPIOA_CLK_ENABLE() (mock_rcc.AHB2ENR |= 1U)
 #define __HAL_RCC_GPIOB_CLK_ENABLE() (mock_rcc.AHB2ENR |= 2U)
 #define __HAL_RCC_GPIOC_CLK_ENABLE() (mock_rcc.AHB2ENR |= 4U)
@@ -184,6 +187,9 @@ HAL_StatusTypeDef HAL_TIM_Encoder_Init(TIM_HandleTypeDef *,const TIM_Encoder_Ini
 HAL_StatusTypeDef HAL_TIM_Encoder_Start(TIM_HandleTypeDef *,uint32_t);
 HAL_StatusTypeDef HAL_UART_Init(UART_HandleTypeDef *);
 HAL_StatusTypeDef HAL_UARTEx_DisableFifoMode(UART_HandleTypeDef *);
+HAL_StatusTypeDef HAL_UARTEx_EnableFifoMode(UART_HandleTypeDef *);
+HAL_StatusTypeDef HAL_UARTEx_SetRxFifoThreshold(UART_HandleTypeDef *,uint32_t);
+HAL_StatusTypeDef HAL_UARTEx_SetTxFifoThreshold(UART_HandleTypeDef *,uint32_t);
 void HAL_NVIC_DisableIRQ(IRQn_Type); void HAL_NVIC_ClearPendingIRQ(IRQn_Type);
 void HAL_NVIC_SetPriority(IRQn_Type,uint32_t,uint32_t);
 #if N_PULSE_DUAL_BOARD_LINK

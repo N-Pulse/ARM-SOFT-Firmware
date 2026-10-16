@@ -2,8 +2,15 @@
 SIM_MODE ?= 0
 CURRENT_ACQUISITION ?= 0
 HW_SINGLE_MOTOR_TEST ?= 0
+HW_SELECTABLE_FINGER ?= 0
+FINGER_DIAGNOSTIC ?= 0
+DIAG_CHECK_GUARD ?= 0
+DIAG_CHECK_TRAVEL ?= 0
+DIAG_CHECK_STEP ?= 0
+DIAG_CHECK_PREFLIGHT ?= 0
+DIAG_CHECK_ENCODER ?= 0
 HW_TEST_MOTOR ?= 1
-HW_TEST_PWM_CAP ?= 5
+HW_TEST_PWM_CAP ?= $(if $(filter 1,$(FINGER_DIAGNOSTIC)),40,5)
 OLD_HW_MOTION_OPT_IN ?= 0
 THUMB_EXTI_MOTION_QUALIFIED ?= 0
 TIMING_DIAGNOSTICS ?= 0
@@ -50,8 +57,25 @@ $(error HW_SINGLE_MOTOR_TEST requires SIM_MODE=0)
 endif
 endif
 # Explicitly isolate the experimental ADC option too.
-OUT := build/$(CONFIG)$(if $(filter 1,$(HW_SINGLE_MOTOR_TEST)),-single-$(HW_TEST_MOTOR),)$(if $(filter 1,$(OLD_HW_MOTION_OPT_IN)),-optin,)
+ifneq ($(filter $(HW_SELECTABLE_FINGER),0 1),$(HW_SELECTABLE_FINGER))
+$(error HW_SELECTABLE_FINGER must be 0 or 1)
+endif
+ifeq ($(HW_SELECTABLE_FINGER),1)
+ifneq ($(SIM_MODE)$(HW_SINGLE_MOTOR_TEST)$(OLD_HW_MOTION_OPT_IN),011)
+$(error Selectable fingers require HW single-motor commissioning with motion opt-in)
+endif
+endif
+OUT := build/$(CONFIG)$(if $(filter 1,$(HW_SINGLE_MOTOR_TEST)),$(if $(filter 1,$(HW_SELECTABLE_FINGER)),-fingers,-single-$(HW_TEST_MOTOR)),)$(if $(filter 1,$(OLD_HW_MOTION_OPT_IN)),-optin,)
 OUT := $(OUT)$(if $(filter 1,$(TIMING_DIAGNOSTICS)),-timing,)
+ifneq ($(filter $(FINGER_DIAGNOSTIC),0 1),$(FINGER_DIAGNOSTIC))
+$(error FINGER_DIAGNOSTIC must be 0 or 1)
+endif
+ifeq ($(FINGER_DIAGNOSTIC),1)
+ifneq ($(SIM_MODE)$(HW_SELECTABLE_FINGER)$(OLD_HW_MOTION_OPT_IN),011)
+$(error Finger diagnostic mode requires the common HW motion test image)
+endif
+OUT := $(OUT)-diagnostic
+endif
 ELF := $(OUT)/n-pulse.elf
 MAP := $(OUT)/n-pulse.map
 LIST := $(OUT)/n-pulse.list
@@ -75,6 +99,11 @@ CPPFLAGS += $(addprefix -I,$(INCLUDES)) -DDEBUG -DUSE_HAL_DRIVER -DSTM32G474xx \
  -DN_PULSE_THUMB_EXTI_MOTION_QUALIFIED=$(THUMB_EXTI_MOTION_QUALIFIED) \
  -DN_PULSE_ENABLE_CURRENT_ACQUISITION=$(CURRENT_ACQUISITION) \
  -DN_PULSE_HW_SINGLE_MOTOR_TEST=$(HW_SINGLE_MOTOR_TEST) -DN_PULSE_HW_TEST_MOTOR=$(HW_TEST_MOTOR) \
+ -DN_PULSE_HW_SELECTABLE_FINGER=$(HW_SELECTABLE_FINGER) \
+ -DN_PULSE_HW_FINGER_DIAGNOSTIC=$(FINGER_DIAGNOSTIC) \
+ -DN_PULSE_DIAG_CHECK_GUARD=$(DIAG_CHECK_GUARD) -DN_PULSE_DIAG_CHECK_TRAVEL=$(DIAG_CHECK_TRAVEL) \
+ -DN_PULSE_DIAG_CHECK_STEP=$(DIAG_CHECK_STEP) -DN_PULSE_DIAG_CHECK_PREFLIGHT=$(DIAG_CHECK_PREFLIGHT) \
+ -DN_PULSE_DIAG_CHECK_ENCODER=$(DIAG_CHECK_ENCODER) \
  -DN_PULSE_HW_TEST_PWM_CAP=$(HW_TEST_PWM_CAP)
 ifeq ($(SIM_MODE),1)
 CPPFLAGS += -DMOTOR_BACKEND_SIM=1
@@ -100,7 +129,7 @@ C_SOURCES := Core/Src/main.c Core/Src/old_hw.c Core/Src/stm32g4xx_hal_msp.c \
  $(addprefix $(RTOS_DIR)/,croutine.c event_groups.c list.c queue.c stream_buffer.c tasks.c timers.c) \
  $(RTOS_DIR)/portable/GCC/ARM_CM4F/port.c $(RTOS_DIR)/portable/MemMang/heap_4.c \
  fw/app/old_hw_timing.c fw/app/app.c fw/app/intent_router.c fw/app/hw_commission.c fw/app/hw_telemetry.c fw/comm/comm.c fw/comm/board_link.c \
- fw/comm/board_protocol.c fw/comm/board_link_runtime.c fw/comm/board_uart_compat.c fw/comm/uart4_transport.c fw/comm/comms_parser.c \
+ fw/comm/board_protocol.c fw/comm/board_commission.c fw/comm/board_link_runtime.c fw/comm/board_uart_compat.c fw/comm/uart4_transport.c fw/comm/comms_parser.c \
  fw/comm/comms_session.c fw/comm/sim_protocol.c fw/comm/sim_session.c fw/bsp/encoder/encoder_bsp.c \
  fw/bsp/encoder/quadrature_decoder.c fw/bsp/encoder/thumb_encoder.c fw/bsp/adc_dma/adc_dma_bsp.c \
  fw/motors/motor_map/motor_map.c fw/motors/motor_control/motor_backend_hw.c \
@@ -150,7 +179,12 @@ ifeq ($(CURRENT_ACQUISITION)$(HW_SINGLE_MOTOR_TEST)$(OLD_HW_MOTION_OPT_IN)$(TIMI
 publish: $(ELF) $(LIST)
 	$(PYTHON) tools/build_artifacts.py publish "$(CONFIG)" "$(OUT)"
 else
+ifeq ($(SIM_MODE)$(CURRENT_ACQUISITION)$(HW_SINGLE_MOTOR_TEST)$(OLD_HW_MOTION_OPT_IN)$(THUMB_EXTI_MOTION_QUALIFIED)$(TIMING_DIAGNOSTICS),001100)
+publish: $(ELF) $(LIST)
+	$(PYTHON) tools/build_artifacts.py finger-manifest "$(OUT)" "$(if $(filter 1,$(HW_SELECTABLE_FINGER)),all,$(HW_TEST_MOTOR))"
+else
 publish:
+endif
 endif
 
 clean:

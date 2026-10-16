@@ -92,7 +92,8 @@ message CommissionCommand {
   enum Operation { UNSPECIFIED = 0; LIMITS = 1; CALIBRATE = 2; ZERO = 3;
     RECOVER = 4; ARM = 5; ENABLE = 6; TARGET = 7; DISABLE = 8;
     ESTIMATOR_RESET = 9; ESTIMATOR_STOP = 10; OUTPUT_PREFLIGHT = 11;
-    LINK_AUTHORIZE = 12; LINK_RECOVER = 13; }
+    LINK_AUTHORIZE = 12; LINK_RECOVER = 13; SELECT_FINGER = 14;
+    DIAGNOSTIC_POSITION = 15; } // explicit estimated start angle, timed diagnostic only
   uint32 request_id = 1;
   uint32 epoch = 2; // latest diagnostic epoch; STOP/recovery invalidate old work
   Operation operation = 3;

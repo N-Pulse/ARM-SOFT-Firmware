@@ -39,6 +39,15 @@ bool Motor_L298N_IsArmed(void) { return false; }
 bool Motor_L298N_IsTransitioning(void) { return false; }
 float Motor_L298N_AppliedPWM(motor_id_t id) { (void)id; return 0; }
 bool CommsSession_IsFreshLocked(uint32_t ms) { (void)ms; return true; }
+bool CommsSession_OnMessage(const rx_result_t *m,uint32_t ms,uint32_t e,bool *began)
+{ (void)m; (void)ms; (void)e; (void)began; return true; }
+bool HWCommission_Configured(void) { return false; }
+bool HWCommission_ConfiguredFor(motor_id_t id) { (void)id; return false; }
+motor_id_t HWCommission_SelectedMotor(void) { return MOTOR_INDEX; }
+bool HWCommission_OutputPreflightReady(void) { return false; }
+uint32_t HWCommission_Execute(const hw_command_t *c,uint32_t ms,uint32_t e)
+{ (void)c; (void)ms; (void)e; return HW_PRODUCTION; }
+void HWTelemetry_Reply(uint32_t request,uint32_t result) { (void)request; (void)result; }
 void HAL_NVIC_DisableIRQ(IRQn_Type id) { assert(id==USART3_IRQn); irq=false; }
 void HAL_NVIC_EnableIRQ(IRQn_Type id) { assert(id==USART3_IRQn); irq=true; }
 void HAL_NVIC_ClearPendingIRQ(IRQn_Type id) { assert(id==USART3_IRQn); }
@@ -77,14 +86,32 @@ int main(int argc,char **argv)
         for(unsigned i=0;i<256;++i) { rx_byte=1; BoardLink_RxCallback(&huart3); }
         assert(causes && recover_rx && !aborts); service(); assert(aborts==1 && !recover_rx && rx_pointer==&rx_byte);
     } else if(!strcmp(test,"rx-error")) {
-        BoardLink_ErrorCallback(&huart3); assert(causes && recover_rx && !aborts);
-        service(); assert(aborts==1 && !recover_rx);
+        irq=true;
+        huart3.ErrorCode=8U; /* HAL_UART_ERROR_ORE */
+        BoardLink_ErrorCallback(&huart3); assert(causes && recover_rx && !aborts && !irq);
+        huart3.ErrorCode=0; /* HAL clears its temporary code after callback. */
+        link_diagnostic_t diagnostic; BoardLink_GetDiagnostic(&diagnostic);
+        assert(((diagnostic.flags>>8)&255U)==8U && ((diagnostic.flags>>16)&255U)==TRANSPORT_RX_ERROR);
+        service(); assert(aborts==1 && !recover_rx && irq);
+    } else if(!strcmp(test,"error-pending-rx")) {
+        irq=true;
+        BoardLink_ErrorCallback(&huart3);
+        unsigned before=rx_starts;
+        /* A completion already inside the HAL IRQ must neither enqueue the
+         * suspect byte nor rearm BUSY_RX before task recovery. */
+        rx_byte=0xA5; assert(BoardLink_RxCallback(&huart3));
+        assert(!irq && head==tail && rx_starts==before && transport_errors==1);
+        service(); assert(irq && !recover_rx && rx_starts==before+1);
     } else if(!strcmp(test,"rx-rearm")) {
-        rx_fail=true; BoardLink_RxCallback(&huart3); assert(causes && recover_rx);
+        irq=true; rx_fail=true; BoardLink_RxCallback(&huart3);
+        assert(causes && recover_rx && !irq);
+        service(); assert(recover_rx && !irq && last_transport_cause==TRANSPORT_RX_REARM);
+        rx_fail=false; service(); assert(!recover_rx && irq && causes);
     } else if(!strcmp(test,"tx-start")) {
         tx_fail=true; service(); assert(causes && quarantined && !tx_active);
     } else if(!strcmp(test,"tx-timeout")) {
         service(); assert(tx_active); now+=16; service(); assert(causes && aborts==1);
+        assert(last_transport_cause==TRANSPORT_TX_TIMEOUT);
     } else if(!strcmp(test,"abort-failed")) {
         service(); abort_fail=true; now+=16; service(); assert(causes && quarantined && !tx_active);
         unsigned before=tx_starts; now+=200; BoardLink_TxCallback(&huart3); service(); assert(tx_starts==before);
