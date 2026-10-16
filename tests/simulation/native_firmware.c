@@ -252,6 +252,12 @@ int main(int argc,char **argv) {
         } else if(!strcmp(op,"TX")) {
             current_task=1U; for(unsigned i=0;i<3U;++i) if(!UART4Transport_TxOnce(0U)) break;
             current_task=2U;
+        } else if(!strcmp(op,"SAMPLE")) {
+            unsigned id=(unsigned)strtoul(arg,NULL,10); float position=0.0f,drive=0.0f;
+            uint32_t key=Motor_Lock();
+            bool valid=SimSession_GuardSampleLocked((motor_id_t)id,&position,&drive);
+            Motor_Unlock(key);
+            printf("G %u %.9g %.9g\n",valid,position,drive);
         } else if(!strcmp(op,"STOP")) Motor_StopAll();
         else if(!strcmp(op,"ERROR")) { ipsr=1U; HAL_UART_ErrorCallback(&huart4); ipsr=0U; }
         else if(!strcmp(op,"FILL")) { uint8_t b=1U; for(unsigned i=0;i<9U;++i) UART4Transport_QueueFrame(&b,1U); }

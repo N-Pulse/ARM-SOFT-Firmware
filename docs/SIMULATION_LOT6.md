@@ -1,5 +1,9 @@
 # Lot 6 — boucle fermée SIM exécutable
 
+> Historical PWM protocol and validation report. For the current direction/speed
+> output and velocity-feedback conversion, see [current SIM protocol](SIM_COMMUNICATION_CURRENT.md).
+> The old convergence results below do not validate the new velocity interface.
+
 État au 9 octobre 2026. Niveau obtenu : **tests logiciels PC avec le vrai code C,
 et compilation/inspection ELF STM32 HW et SIM**. Aucun flash, aucune énumération
 de sonde, aucun port série physique, aucun essai ROS2/Gazebo ou moteur réel.

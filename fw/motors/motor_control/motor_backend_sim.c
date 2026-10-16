@@ -4,6 +4,7 @@
 #include "motor_safety.h"
 #include "motor_lock.h"
 #include "sim_session.h"
+#include "motor_sim_config.h"
 void MotorBackend_InitInputs(void) { /* No physical encoder/ADC/driver operation. */ }
 bool MotorBackend_InitFeedbackInputs(void) { return true; }
 void MotorBackend_Init(void) { SimSession_Init(); }
@@ -21,14 +22,16 @@ void MotorBackend_InhibitOutputsLocked(void) { /* Actuation inhibition clears st
 void MotorBackend_StopAll(void) { SimSession_Service(); }
 void MotorBackend_ApplyOutput(motor_id_t id,float reference,float value)
 {
-    (void)reference; /* The remote actuator receives PID output, never a position target. */
     if((unsigned)id>=MOTOR_COUNT) return;
-    if(!isfinite(value)) { MotorSafety_RequestStopCause(MOTOR_STOP_PID,id); return; }
-    if(value>100.0f) value=100.0f;
-    if(value< -100.0f) value= -100.0f;
+    if(!isfinite(reference) || !isfinite(value)) { MotorSafety_RequestStopCause(MOTOR_STOP_PID,id); return; }
+    /* Preserve the PID sign independently of target/reference coordinates. */
+    int8_t direction=(value>0.0f)?1:((value<0.0f)?-1:0);
+    float speed=fabsf(value);
+    if(speed>100.0f) speed=100.0f;
+    speed=speed*SIM_MAX_SPEED_RAD_S/100.0f;
     uint32_t key=Motor_Lock();
-    if(Motor_OutputAllowedLocked(id)) SimSession_StageOutputLocked(id,value);
-    else SimSession_StageOutputLocked(id,0.0f);
+    if(Motor_OutputAllowedLocked(id)) SimSession_StageOutputLocked(id,direction,speed);
+    else SimSession_StageOutputLocked(id,0,0.0f);
     Motor_Unlock(key);
 }
 #endif

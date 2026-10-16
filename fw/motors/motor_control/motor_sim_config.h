@@ -4,6 +4,8 @@
 #define SIM_MODEL_ROTOR_V1 1U
 #define SIM_POSITION_LIMIT_RAD 2.0f
 #define SIM_REFERENCE_RATE_RAD_S 1.0f
+/* Command conversion only: 100% PID/PWM magnitude -> 5 rad/s. */
+#define SIM_MAX_SPEED_RAD_S 5.0f
 #define SIM_GUARD_EPS_RAD 0.001f
 #define SIM_GUARD_MIN_OUTPUT_PERCENT 0.5f
 #define SIM_GUARD_STALL_MS 250U

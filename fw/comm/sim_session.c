@@ -14,7 +14,8 @@ static uint32_t rx_seq, tx_seq, fresh_ms, run, last_output_ms, last_status_ms;
 static bool live, configured, armed, stop_pending, reply_pending;
 static uint8_t force_mask, reply_type, reply_request, reply_result;
 static uint32_t reply_seq;
-static float output[MOTOR_COUNT], measured[MOTOR_COUNT], applied[MOTOR_COUNT];
+static struct { int8_t direction; float speed; } output[MOTOR_COUNT];
+static float measured[MOTOR_COUNT], applied[MOTOR_COUNT];
 static uint32_t position_ms[MOTOR_COUNT], applied_ms[MOTOR_COUNT], force_ms[MOTOR_COUNT];
 static uint8_t position_seen, applied_seen, force_seen;
 static sim_diagnostics_t diag;
@@ -56,7 +57,9 @@ bool SimSession_FeedbackReadyLocked(motor_id_t id) {
         (!(force_mask&bit) || ((force_seen&bit) && (uint32_t)(now-force_ms[id])<=MOTOR_FEEDBACK_TIMEOUT_MS &&
                               MotorSafety_HasFreshForceLocked(id,now)));
 }
-void SimSession_StageOutputLocked(motor_id_t id,float value) { if((unsigned)id<MOTOR_COUNT) output[id]=value; }
+void SimSession_StageOutputLocked(motor_id_t id,int8_t direction,float speed) {
+    if((unsigned)id<MOTOR_COUNT) { output[id].direction=direction; output[id].speed=speed; }
+}
 bool SimSession_GuardSampleLocked(motor_id_t id,float *position,float *drive) {
     if(!SimSession_FeedbackReadyLocked(id)) return false;
     *position=measured[id]; *drive=applied[id]; return true;
@@ -189,6 +192,14 @@ bool SimSession_OnFrame(uint8_t type,const uint8_t *p,size_t n,uint32_t ms,uint3
                 .force_mN=Sim_Read16(p+o+10U), .valid_fields=(uint8_t)(fields&7U) };
             if(fields&MOTOR_FB_POSITION) { measured[id]=fb.position; position_ms[id]=sample_ms; position_seen|=bit; }
             if(fields&8U) { applied[id]=(float)(int16_t)Sim_Read16(p+o+12U)/100.0f; applied_ms[id]=sample_ms; applied_seen|=bit; }
+            else if(fields&MOTOR_FB_VELOCITY) {
+                /* Velocity-only peers report rad/s. Convert actual signed
+                 * velocity to equivalent PWM percent for the existing guard.
+                 * Explicit APPLIED feedback takes priority when supplied. */
+                float equivalent=fb.velocity/SIM_MAX_SPEED_RAD_S*100.0f;
+                applied[id]=fmaxf(-100.0f,fminf(equivalent,100.0f));
+                applied_ms[id]=sample_ms; applied_seen|=bit;
+            }
             if(fields&MOTOR_FB_FORCE) { force_ms[id]=sample_ms; force_seen|=bit; }
             MotorBackend_OnFeedbackAtTime(&fb,sample_ms);
         }
@@ -216,8 +227,14 @@ void SimSession_Service(void) {
         type=reply_pending?reply_type:SIM_STATUS; reply_pending=false; length=37U; slot=1U; last_status_ms=now;
     } else if(SimSession_IsArmedLocked() && (uint32_t)(now-last_output_ms)>=SIM_OUTPUT_PERIOD_MS) {
         common(p,now); Sim_Write32(p+16U,run); Sim_Write32(p+20U,epoch); p[24U]=enabled_mask();
-        for(unsigned i=0;i<MOTOR_COUNT;++i) Sim_Write16(p+25U+i*2U,(uint16_t)(int16_t)lroundf(output[i]*100.0f));
-        type=SIM_OUTPUT; length=41U; slot=0U; last_output_ms=now;
+        for(unsigned i=0;i<MOTOR_COUNT;++i) {
+            size_t o=25U+i*6U;
+            bool enabled=(p[24U]&(1U<<i))!=0U;
+            p[o]=(uint8_t)i;
+            p[o+1U]=enabled?(uint8_t)output[i].direction:0U;
+            Sim_WriteFloat(p+o+2U,enabled?output[i].speed:0.0f);
+        }
+        type=SIM_OUTPUT; length=25U+MOTOR_COUNT*6U; slot=0U; last_output_ms=now;
     }
     Motor_Unlock(key);
     if(length) {
