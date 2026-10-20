@@ -1,0 +1,698 @@
+<?xml version="1.0"?>
+<robot name="prosthesis" xmlns:xacro="http://www.ros.org/wiki/xacro">
+
+  <!--File containing all the fundamental links and joints description-->
+  <xacro:include filename="$(find prosthesis_description)/model/parameters.xacro" />
+  <!-- File containing all the neccessary parameters for Gazebo-ROS bridge-->
+  <xacro:include filename="$(find prosthesis_description)/model/gazebo.xacro" />
+
+    <!-- ===== LINKS (base & palm unchanged) ===== -->
+    <link name="world" />
+    
+    <!-- Intermediate kinematic links for base movement (x, y, z) -->
+    <link name="link_base_x">
+      <xacro:inertial_box mass="0.1" x="${base_length}" y="${base_width}" z="${base_depth}">
+          <origin xyz="${-base_length} 0 ${base_depth/2}" rpy="0 0 0"/>
+      </xacro:inertial_box>
+    </link>
+    <link name="link_base_y">
+      <xacro:inertial_box mass="0.1" x="${base_length}" y="${base_width}" z="${base_depth}">
+          <origin xyz="${-base_length} 0 ${base_depth/2}" rpy="0 0 0"/>
+      </xacro:inertial_box>
+    </link>
+    <link name="link_base_z">
+      <xacro:inertial_box mass="0.1" x="${base_length}" y="${base_width}" z="${base_depth}">
+          <origin xyz="${-base_length} 0 ${base_depth/2}" rpy="0 0 0"/>
+      </xacro:inertial_box>
+    </link>
+    <link name="link_base_roll">
+      <visual>
+          <origin xyz="0 0 0" rpy="0 0 1.53"/>
+          <geometry><mesh filename="package://prosthesis_description/meshes/forearm_final.stl"/></geometry>
+      </visual>
+      <collision>
+        <origin xyz="${-base_length/2} 0 ${base_depth/2}" rpy="0 0 0"/>
+        <geometry><box size="${base_length} ${base_width} ${base_depth}"/></geometry>
+      </collision>
+      <xacro:inertial_box mass="0.1" x="${base_length}" y="${base_width}" z="${base_depth}">
+          <origin xyz="${-base_length} 0 ${base_depth/2}" rpy="0 0 0"/>
+      </xacro:inertial_box>
+    </link>
+    <link name="link_base_pitch"> 
+      <xacro:inertial_box mass="0.1" x="${base_length}" y="${base_width}" z="${base_depth}">
+          <origin xyz="${-base_length} 0 ${base_depth/2}" rpy="0 0 0"/>
+      </xacro:inertial_box>
+    </link>
+    <link name="link_base_yaw">
+      <xacro:inertial_box mass="0.1" x="${base_length}" y="${base_width}" z="${base_depth}">
+          <origin xyz="${-base_length} 0 ${base_depth/2}" rpy="0 0 0"/>
+      </xacro:inertial_box>
+    </link>
+
+    <xacro:property name="wrist_radius" value="0.01" />
+
+    <link name="link_wrist_x">
+      <collision>
+          <origin xyz="${wrist_radius} 0 0" rpy="0 0 0"/>
+          <geometry><sphere radius="${wrist_radius}"/></geometry>
+      </collision>
+      <xacro:inertial_sphere mass="0.05" radius="${wrist_radius}">
+          <origin xyz="${wrist_radius} 0 0" rpy="0 0 0"/>
+      </xacro:inertial_sphere>
+    </link>
+    <link name="link_wrist_y">
+      <xacro:inertial_sphere mass="0.05" radius="${wrist_radius}">
+          <origin xyz="${wrist_radius} 0 0" rpy="0 0 0"/>
+      </xacro:inertial_sphere>
+    </link>
+
+    <link name="palm_link">
+      <visual>
+        <origin xyz="0 0 0" rpy="1.57 3.14 -1.53"/>
+        <geometry><mesh filename="package://prosthesis_description/meshes/Palm_main_body.stl"/></geometry>
+      </visual>
+      <collision>
+        <origin xyz="${palm_length/2} 0 ${palm_depth/2}" rpy="0 0 0"/>
+        <geometry><box size="${palm_length} ${palm_width} ${palm_depth}"/></geometry>
+      </collision>
+      <xacro:inertial_box mass="0.2" x="${palm_length}" y="${palm_width}" z="${palm_depth}">
+          <origin xyz="${palm_length} 0 ${palm_depth}" rpy="0 0 0"/>
+      </xacro:inertial_box>
+    </link>
+
+
+
+    <!-- ===== FINGER & THUMB LINKS (all boxes 0.02 x 0.05 x 0.02) ===== -->
+    <!-- Index -->
+    
+    <link name="link_index_1">
+      <visual>
+          <origin xyz="0 0 0" rpy="0 0 0"/>
+          <geometry><mesh filename="package://prosthesis_description/meshes/A_PhalangeConstruction_Part_3.stl"/></geometry>
+      </visual>
+      <collision>
+        <origin xyz="${finger_proximal_length/2} ${finger_proximal_width/2} ${-finger_proximal_depth/2}" rpy="0 0 0"/>
+        <geometry><box size="${finger_proximal_length} ${finger_proximal_width} ${finger_proximal_depth}"/></geometry>
+      </collision>
+      <xacro:inertial_box mass="0.01" x="${finger_proximal_length}" y="${finger_proximal_width}" z="${finger_proximal_depth}">
+          <origin xyz="${finger_proximal_length} ${finger_proximal_width} ${-finger_proximal_depth}" rpy="0 0 0"/>
+      </xacro:inertial_box>
+    </link>
+
+    <link name="link_index_2">
+      <visual>
+          <origin xyz="0 0 0" rpy="0 0 0"/>
+          <geometry><mesh filename="package://prosthesis_description/meshes/A_PhalangeConstruction_Part_4.stl"/></geometry>
+      </visual>
+      <collision>
+        <origin xyz="${finger_middle_length/2 - 0.001} ${finger_middle_width/4} ${finger_middle_depth/2}" rpy="0 0 0"/>
+        <geometry><box size="${finger_middle_length} ${finger_middle_width} ${finger_middle_depth}"/></geometry>
+      </collision>
+      <xacro:inertial_box mass="0.02" x="${finger_middle_length}" y="${finger_middle_width}" z="${finger_middle_depth}">
+          <origin xyz="${finger_middle_length} ${finger_middle_width} ${finger_middle_depth}" rpy="0 0 0"/>
+      </xacro:inertial_box>
+    </link>
+
+    <link name="link_index_2_b">
+      <visual>
+          <origin xyz="0 0 0" rpy="0 0 0"/>
+          <geometry><mesh filename="package://prosthesis_description/meshes/A_PhalangeConstruction_Part_4.stl"/></geometry>
+      </visual>
+    </link>
+
+    <link name="link_index_3">
+      <visual>
+          <origin xyz="0 0 0" rpy="-1.57 0 1.57"/>
+          <geometry><mesh filename="package://prosthesis_description/meshes/A_PhalangeConstruction_Part_6.stl"/></geometry>
+      </visual>
+      <collision>
+        <origin xyz="${finger_distal_length/2 + 0.001} 0 ${-finger_distal_depth/2}" rpy="0 0 0"/>
+        <geometry><box size="${finger_distal_length} ${finger_distal_width} ${finger_distal_depth}"/></geometry>
+      </collision>
+      <xacro:inertial_box mass="0.02" x="${finger_distal_length}" y="${finger_distal_width}" z="${finger_distal_depth}">
+          <origin xyz="${finger_distal_length} ${finger_distal_width/2} ${finger_distal_depth}" rpy="0 0 0"/>
+      </xacro:inertial_box>
+    </link>
+
+
+
+    <!-- Middle -->
+    
+    <link name="link_middle_1">
+      <visual>
+          <origin xyz="0 0 0" rpy="0 0 0"/>
+          <geometry><mesh filename="package://prosthesis_description/meshes/A_PhalangeConstruction_Part_3.stl"/></geometry>
+      </visual>
+      <collision>
+        <origin xyz="${finger_proximal_length/2} ${finger_proximal_width/2} ${-finger_proximal_depth/2}" rpy="0 0 0"/>
+        <geometry><box size="${finger_proximal_length} ${finger_proximal_width} ${finger_proximal_depth}"/></geometry>
+      </collision>
+      <xacro:inertial_box mass="0.01" x="${finger_proximal_length}" y="${finger_proximal_width}" z="${finger_proximal_depth}">
+          <origin xyz="${finger_proximal_length} ${finger_proximal_width} ${-finger_proximal_depth}" rpy="0 0 0"/>
+      </xacro:inertial_box>
+    </link>
+
+    <link name="link_middle_2">
+      <visual>
+          <origin xyz="0 0 0" rpy="0 0 00"/>
+          <geometry><mesh filename="package://prosthesis_description/meshes/A_PhalangeConstruction_Part_4.stl"/></geometry>
+      </visual>
+      <collision>
+        <origin xyz="${finger_middle_length/2 - 0.001} ${finger_middle_width/4} ${finger_middle_depth/2}" rpy="0 0 0"/>
+        <geometry><box size="${finger_middle_length} ${finger_middle_width} ${finger_middle_depth}"/></geometry>
+      </collision>
+      <xacro:inertial_box mass="0.02" x="${finger_middle_length}" y="${finger_middle_width}" z="${finger_middle_depth}">
+          <origin xyz="${finger_middle_length} ${finger_middle_width} ${finger_middle_depth}" rpy="0 0 0"/>
+      </xacro:inertial_box>
+    </link>
+
+    <link name="link_middle_2_b">
+      <visual>
+          <origin xyz="0 0 0" rpy="0 0 0"/>
+          <geometry><mesh filename="package://prosthesis_description/meshes/A_PhalangeConstruction_Part_4.stl"/></geometry>
+      </visual>
+    </link>
+
+    <link name="link_middle_3">
+      <visual>
+          <origin xyz="0 0 0" rpy="-1.57 0 1.57"/>
+          <geometry><mesh filename="package://prosthesis_description/meshes/A_PhalangeConstruction_Part_6.stl"/></geometry>
+      </visual>
+      <collision>
+        <origin xyz="${finger_distal_length/2 + 0.001} 0 ${-finger_distal_depth/2}" rpy="0 0 0"/>
+        <geometry><box size="${finger_distal_length} ${finger_distal_width} ${finger_distal_depth}"/></geometry>
+      </collision>
+      <xacro:inertial_box mass="0.02" x="${finger_distal_length}" y="${finger_distal_width}" z="${finger_distal_depth}">
+          <origin xyz="${finger_distal_length} ${finger_distal_width/2} ${finger_distal_depth}" rpy="0 0 0"/>
+      </xacro:inertial_box>
+    </link>
+
+    <!-- Ring -->
+    
+    <link name="link_ring_1">
+      <visual>
+          <origin xyz="0 0 0" rpy="0 0 0"/>
+          <geometry><mesh filename="package://prosthesis_description/meshes/A_PhalangeConstruction_Part_3.stl"/></geometry>
+      </visual>
+      <collision>
+        <origin xyz="${finger_proximal_length/2} ${finger_proximal_width/2} ${-finger_proximal_depth/2}" rpy="0 0 0"/>
+        <geometry><box size="${finger_proximal_length} ${finger_proximal_width} ${finger_proximal_depth}"/></geometry>
+      </collision>
+      <xacro:inertial_box mass="0.01" x="${finger_proximal_length}" y="${finger_proximal_width}" z="${finger_proximal_depth}">
+          <origin xyz="${finger_proximal_length} ${finger_proximal_width} ${-finger_proximal_depth}" rpy="0 0 0"/>
+      </xacro:inertial_box>
+    </link>
+
+    <link name="link_ring_2">
+      <visual>
+          <origin xyz="0 0 0" rpy="0 0 0"/>
+          <geometry><mesh filename="package://prosthesis_description/meshes/A_PhalangeConstruction_Part_4.stl"/></geometry>
+      </visual>
+      <collision>
+        <origin xyz="${finger_middle_length/2 - 0.001} ${finger_middle_width/4} ${finger_middle_depth/2}" rpy="0 0 0"/>
+        <geometry><box size="${finger_middle_length} ${finger_middle_width} ${finger_middle_depth}"/></geometry>
+      </collision>
+      <xacro:inertial_box mass="0.02" x="${finger_middle_length}" y="${finger_middle_width}" z="${finger_middle_depth}">
+          <origin xyz="${finger_middle_length} ${finger_middle_width} ${finger_middle_depth}" rpy="0 0 0"/>
+      </xacro:inertial_box>
+    </link>
+
+    <link name="link_ring_2_b">
+      <visual>
+          <origin xyz="0 0 0" rpy="0 0 0"/>
+          <geometry><mesh filename="package://prosthesis_description/meshes/A_PhalangeConstruction_Part_4.stl"/></geometry>
+      </visual>
+    </link>
+
+    <link name="link_ring_3">
+      <visual>
+          <origin xyz="0 0 0" rpy="-1.57 0 1.57"/>
+          <geometry><mesh filename="package://prosthesis_description/meshes/A_PhalangeConstruction_Part_6.stl"/></geometry>
+      </visual>
+      <collision>
+        <origin xyz="${finger_distal_length/2 + 0.001} 0 ${-finger_distal_depth/2}" rpy="0 0 0"/>
+        <geometry><box size="${finger_distal_length} ${finger_distal_width} ${finger_distal_depth}"/></geometry>
+      </collision>
+      <xacro:inertial_box mass="0.02" x="${finger_distal_length}" y="${finger_distal_width}" z="${finger_distal_depth}">
+          <origin xyz="${finger_distal_length} ${finger_distal_width/2} ${finger_distal_depth}" rpy="0 0 0"/>
+      </xacro:inertial_box>
+    </link>
+
+    <!-- Little -->
+    
+    <link name="link_little_1">
+      <visual>
+          <origin xyz="0 0 0" rpy="0 0 0"/>
+          <geometry><mesh filename="package://prosthesis_description/meshes/A_PhalangeConstruction_Part_3.stl"/></geometry>
+      </visual>
+      <collision>
+        <origin xyz="${finger_proximal_length/2} ${finger_proximal_width/2} ${-finger_proximal_depth/2}" rpy="0 0 0"/>
+        <geometry><box size="${finger_proximal_length} ${finger_proximal_width} ${finger_proximal_depth}"/></geometry>
+      </collision>
+      <xacro:inertial_box mass="0.01" x="${finger_proximal_length}" y="${finger_proximal_width}" z="${finger_proximal_depth}">
+          <origin xyz="${finger_proximal_length} ${finger_proximal_width} ${-finger_proximal_depth}" rpy="0 0 0"/>
+      </xacro:inertial_box>
+    </link>
+
+    <link name="link_little_2">
+      <visual>
+          <origin xyz="0 0 0" rpy="0 0 0"/>
+          <geometry><mesh filename="package://prosthesis_description/meshes/A_PhalangeConstruction_Part_4.stl"/></geometry>
+      </visual>
+      <collision>
+        <origin xyz="${finger_middle_length/2 - 0.001} ${finger_middle_width/4} ${finger_middle_depth/2}" rpy="0 0 0"/>
+        <geometry><box size="${finger_middle_length} ${finger_middle_width} ${finger_middle_depth}"/></geometry>
+      </collision>
+      <xacro:inertial_box mass="0.02" x="${finger_middle_length}" y="${finger_middle_width}" z="${finger_middle_depth}">
+          <origin xyz="${finger_middle_length} ${finger_middle_width} ${finger_middle_depth}" rpy="0 0 0"/>
+      </xacro:inertial_box>
+    </link>
+
+    <link name="link_little_2_b">
+      <visual>
+          <origin xyz="0 0 0" rpy="0 0 0"/>
+          <geometry><mesh filename="package://prosthesis_description/meshes/A_PhalangeConstruction_Part_4.stl"/></geometry>
+      </visual>
+    </link>
+
+    <link name="link_little_3">
+      <visual>
+          <origin xyz="0 0 0" rpy="-1.57 0 1.57"/>
+          <geometry><mesh filename="package://prosthesis_description/meshes/A_PhalangeConstruction_Part_6.stl"/></geometry>
+      </visual>
+      <collision>
+        <origin xyz="${finger_distal_length/2 + 0.001} 0 ${-finger_distal_depth/2}" rpy="0 0 0"/>
+        <geometry><box size="${finger_distal_length} ${finger_distal_width} ${finger_distal_depth}"/></geometry>
+      </collision>
+      <xacro:inertial_box mass="0.02" x="${finger_distal_length}" y="${finger_distal_width}" z="${finger_distal_depth}">
+          <origin xyz="${finger_distal_length} ${finger_distal_width/2} ${finger_distal_depth}" rpy="0 0 0"/>
+      </xacro:inertial_box>
+    </link>
+
+    <!-- Thumb -->
+
+    <link name="link_thumb_1_x">
+      <visual>
+          <origin xyz="0 0 0" rpy="0 1.57 0"/>
+          <geometry><mesh filename="package://prosthesis_description/meshes/SupportThumb.stl"/></geometry>
+      </visual>
+      <collision>
+          <origin xyz="${-thumb_metacarpal_length} 0 0" rpy="0 1.57 0"/>
+          <geometry><box size="${thumb_metacarpal_length} ${thumb_metacarpal_width} ${thumb_metacarpal_depth}"/></geometry>
+      </collision>
+      <xacro:inertial_box mass="0.01" x="${thumb_metacarpal_length}" y="${thumb_metacarpal_width}" z="${thumb_metacarpal_depth}">
+          <origin xyz="${-thumb_metacarpal_length/2} ${thumb_metacarpal_width/2} ${thumb_metacarpal_depth/2}" rpy="0 0 0"/>
+      </xacro:inertial_box>
+    </link>
+    <link name="link_thumb_1_y">
+      <xacro:inertial_box mass="0.01" x="${thumb_metacarpal_length}" y="${thumb_metacarpal_width}" z="${thumb_metacarpal_depth}">
+          <origin xyz="${-thumb_metacarpal_length/2} ${thumb_metacarpal_width/2} ${thumb_metacarpal_depth/2}" rpy="0 0 0"/>
+      </xacro:inertial_box>
+    </link>
+
+    <link name="link_thumb_2">
+      <visual>
+          <origin xyz="0 0 0" rpy="0 1.57 3.14"/>
+          <geometry><mesh filename="package://prosthesis_description/meshes/PhalangeThumbPart1.stl"/></geometry>
+      </visual>
+      <collision>
+          <origin xyz="-0.003 0 -0.003" rpy="0 1.57 0"/>
+          <geometry><box size="${thumb_proximal_length} ${thumb_proximal_width} ${thumb_proximal_depth}"/></geometry>
+      </collision>
+      <xacro:inertial_box mass="0.01" x="${thumb_proximal_length}" y="${thumb_proximal_width}" z="${thumb_proximal_depth}">
+          <origin xyz="${thumb_proximal_length/2} ${thumb_proximal_width/2} ${thumb_proximal_depth/2}" rpy="0 0 0"/>
+      </xacro:inertial_box>
+    </link>
+
+    <link name="link_thumb_3">
+      <visual>
+          <origin xyz="0 0 0" rpy="0 1.57 -1.57"/>
+          <geometry><mesh filename="package://prosthesis_description/meshes/PhalangeThumbPart3.stl"/></geometry>
+      </visual>
+      <collision>
+          <origin xyz="0 ${-thumb_distal_width/2} ${thumb_distal_depth}" rpy="0 1.57 0"/>
+          <geometry><box size="${thumb_distal_length} ${thumb_distal_width} ${thumb_distal_depth}"/></geometry>
+      </collision>
+      <xacro:inertial_box mass="0.01" x="${thumb_distal_length}" y="${thumb_distal_width}" z="${thumb_distal_depth}">
+          <origin xyz="0 ${-thumb_distal_width} ${thumb_distal_depth*(3/4)}" rpy="0 0 0"/>
+      </xacro:inertial_box>
+    </link>
+
+    <!-- ===== JOINTS ===== -->
+    <!-- World → Base X (prismatic joint for x-axis motion) -->
+    <joint name="joint_base_x" type="prismatic">
+          <origin xyz="0 0 0" rpy="0 0 0"/>
+          <parent link="world"/>
+          <child link="link_base_x"/>
+          <axis xyz="1 0 0"/>
+          <limit lower="-1000" upper="1000" effort="100" velocity="4"/>
+    </joint>
+
+    <!-- Base X → Base Y (prismatic joint for y-axis motion) -->
+    <joint name="joint_base_y" type="prismatic">
+          <origin xyz="0 0 0" rpy="0 0 0"/>
+          <parent link="link_base_x"/>
+          <child link="link_base_y"/>
+          <axis xyz="0 1 0"/>
+          <limit lower="-1000" upper="1000" effort="100" velocity="4"/>
+    </joint>
+
+    <!-- Base Y → Base Link (prismatic joint for z-axis motion) -->
+    <joint name="joint_base_z" type="prismatic">
+          <origin xyz="0 0 0" rpy="0 0 0"/>
+          <parent link="link_base_y"/>
+          <child link="link_base_z"/>
+          <axis xyz="0 0 1"/>
+          <limit lower="-1000" upper="1000" effort="100" velocity="4"/>
+    </joint>
+    
+    <!-- Base Y → Base Link (revolute joint for yaw motion - applied first for world frame) -->
+    <joint name="joint_base_yaw" type="revolute">
+          <origin xyz="0 0 0" rpy="0 0 0"/>
+          <parent link="link_base_z"/>
+          <child link="link_base_yaw"/>
+          <axis xyz="0 0 1"/>
+          <limit lower="-1.57" upper="1.57" effort="100" velocity="4"/>
+    </joint>
+
+    <!-- Base P → Base Link (revolute joint for pitch motion - applied second for world frame) -->
+    <joint name="joint_base_pitch" type="revolute">
+          <origin xyz="0 0 0" rpy="0 0 0"/>
+          <parent link="link_base_yaw"/>
+          <child link="link_base_pitch"/>
+          <axis xyz="0 1 0"/>
+          <limit lower="-1.57" upper="1.57" effort="100" velocity="4"/>
+    </joint>
+
+    <!-- Base R → Base Link (revolute joint for roll motion - applied last for world frame) -->
+    <joint name="joint_base_roll" type="revolute">
+          <origin xyz="0 0 0" rpy="0 0 0"/>
+          <parent link="link_base_pitch"/>
+          <child link="link_base_roll"/>
+          <axis xyz="1 0 0"/>
+          <limit lower="-1.57" upper="1.57" effort="100" velocity="4"/>
+    </joint>
+
+
+
+    <!-- Base → Wrist -->
+    <joint name="joint_base_to_wrist" type="fixed">
+      <parent link="link_base_roll"/>
+      <child  link="link_wrist_x"/>
+      <origin xyz="0 0 ${wrist_radius}" rpy="0 0 0"/>
+    </joint>
+
+    <!-- Wrist → Palm -->
+    <joint name="joint_wrist_x" type="revolute">
+      <parent link="link_wrist_x"/>
+      <child  link="link_wrist_y"/>
+      <origin xyz="${wrist_radius*2} 0 0" rpy="0 0 0"/>
+      <axis xyz="1 0 0"/>
+      <limit lower="-1.57" upper="1.57" effort="5" velocity="5"/>
+    </joint>
+    <joint name="joint_wrist_y" type="revolute">
+      <parent link="link_wrist_y"/>
+      <child  link="palm_link"/>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <axis xyz="0 1 0"/>
+      <limit lower="-1.57" upper="1.57" effort="5" velocity="5"/>
+    </joint>
+
+    <!-- Index -->
+    <joint name="joint_index_1" type="revolute">
+      <parent link="palm_link"/><child link="link_index_1"/>
+      <origin xyz="0.1 0.025 0.03" rpy="0 0 0.1"/><axis xyz="0 1 0"/>
+      <limit lower="0.0" upper="1.57" effort="3" velocity="5"/>
+    </joint>
+    <joint name="joint_index_2" type="revolute">
+      <parent link="link_index_1"/><child link="link_index_2"/>
+      <origin xyz="0.0327 0.005 -0.0133" rpy="0 0 0"/><axis xyz="0 1 0"/>
+      <limit lower="0.0" upper="1.57" effort="2" velocity="5"/>
+    </joint>
+    <joint name="joint_index_2_b" type="fixed">
+      <parent link="link_index_2"/><child link="link_index_2_b"/>
+      <origin xyz="0 0.01 0" rpy="0 0 0"/><axis xyz="0 1 0"/>
+    </joint>
+    <joint name="joint_index_3" type="revolute">
+      <parent link="link_index_2"/>
+      <child link="link_index_3"/>
+      <origin xyz="0.02 0.003 0.013" rpy="0 0 0"/><axis xyz="0 1 0"/>
+      <limit lower="0.0" upper="1.57" effort="2" velocity="5"/>
+    </joint>
+
+    <!-- Middle -->
+    <joint name="joint_middle_1" type="revolute">
+      <parent link="palm_link"/><child link="link_middle_1"/>
+      <origin xyz="0.1 0.003 0.03" rpy="0 0 0.05"/><axis xyz="0 1 0"/>
+      <limit lower="0.0" upper="1.57" effort="3" velocity="5"/>
+    </joint>
+    <joint name="joint_middle_2" type="revolute">
+      <parent link="link_middle_1"/><child link="link_middle_2"/>
+      <origin xyz="0.0327 0.005 -0.0133" rpy="0 0 0"/><axis xyz="0 1 0"/>
+      <limit lower="0.0" upper="1.57" effort="2" velocity="5"/>
+    </joint>
+    <joint name="joint_middle_2_b" type="fixed">
+      <parent link="link_middle_2"/><child link="link_middle_2_b"/>
+      <origin xyz="0 0.01 0" rpy="0 0 0"/><axis xyz="0 1 0"/>
+    </joint>
+    <joint name="joint_middle_3" type="revolute">
+      <parent link="link_middle_2"/><child link="link_middle_3"/>
+      <origin xyz="0.02 0.003 0.013" rpy="0 0 0"/><axis xyz="0 1 0"/>
+      <limit lower="0.0" upper="1.57" effort="2" velocity="5"/>
+    </joint>
+
+    <!-- Ring -->
+    <joint name="joint_ring_1" type="revolute">
+      <parent link="palm_link"/><child link="link_ring_1"/>
+      <origin xyz="0.1 -0.02 0.03" rpy="0 0 -0.05"/><axis xyz="0 1 0"/>
+      <limit lower="0.0" upper="1.57" effort="3" velocity="5"/>
+    </joint>
+    <joint name="joint_ring_2" type="revolute">
+      <parent link="link_ring_1"/><child link="link_ring_2"/>
+      <origin xyz="0.0327 0.005 -0.0133" rpy="0 0 0"/><axis xyz="0 1 0"/>
+      <limit lower="0.0" upper="1.57" effort="2" velocity="5"/>
+    </joint>
+    <joint name="joint_ring_2_b" type="fixed">
+      <parent link="link_ring_2"/><child link="link_ring_2_b"/>
+      <origin xyz="0 0.01 0" rpy="0 0 0"/><axis xyz="0 1 0"/>
+    </joint>
+    <joint name="joint_ring_3" type="revolute">
+      <parent link="link_ring_2"/><child link="link_ring_3"/>
+      <origin xyz="0.02 0.003 0.013" rpy="0 0 0"/><axis xyz="0 1 0"/>
+      <limit lower="0.0" upper="1.57" effort="2" velocity="5"/>
+    </joint>
+
+    <!-- Little -->
+    <joint name="joint_little_1" type="revolute">
+      <parent link="palm_link"/><child link="link_little_1"/>
+      <origin xyz="0.1 -0.04 0.03" rpy="0 0 -0.15"/><axis xyz="0 1 0"/>
+      <limit lower="0.0" upper="1.57" effort="3" velocity="5"/>
+    </joint>
+    <joint name="joint_little_2" type="revolute">
+      <parent link="link_little_1"/><child link="link_little_2"/>
+      <origin xyz="0.0327 0.005 -0.0133" rpy="0 0 0"/><axis xyz="0 1 0"/>
+      <limit lower="0.0" upper="1.57" effort="2" velocity="5"/>
+    </joint>
+    <joint name="joint_little_2_b" type="fixed">
+      <parent link="link_little_2"/><child link="link_little_2_b"/>
+      <origin xyz="0 0.01 0" rpy="0 0 0"/><axis xyz="0 1 0"/>
+    </joint>
+    <joint name="joint_little_3" type="revolute">
+      <parent link="link_little_2"/><child link="link_little_3"/>
+      <origin xyz="0.02 0.003 0.013" rpy="0 0 0"/><axis xyz="0 1 0"/>
+      <limit lower="0.0" upper="1.57" effort="2" velocity="5"/>
+    </joint>
+
+    <!-- Thumb -->
+    <joint name="joint_thumb_1_x" type="revolute">
+      <parent link="palm_link"/><child link="link_thumb_1_x"/>
+      <origin xyz="0.05 0.04 0.001" rpy="0 0 0"/><axis xyz="-1 0 0"/>
+      <limit lower="0" upper="1.57" effort="3" velocity="5"/>
+    </joint>
+    <joint name="joint_thumb_1_y" type="revolute">
+      <parent link="link_thumb_1_x"/><child link="link_thumb_1_y"/>
+      <origin xyz="0 0 0" rpy="0 0 0"/><axis xyz="0 -1 0"/>
+      <limit lower="0" upper="1.57" effort="3" velocity="5"/>
+    </joint>
+    <joint name="joint_thumb_2" type="revolute">
+      <parent link="link_thumb_1_y"/><child link="link_thumb_2"/>
+      <origin xyz="-0.0055 -0.003 -0.016" rpy="0 0 0"/><axis xyz="0 -1 0"/>
+      <limit lower="0.0" upper="1.57" effort="2" velocity="5"/>
+    </joint>
+    <joint name="joint_thumb_3" type="revolute">
+      <parent link="link_thumb_2"/><child link="link_thumb_3"/>
+      <origin xyz="-0.003 0.009 -0.04" rpy="0 0 0"/><axis xyz="0 -1 0"/>
+      <limit lower="0.0" upper="1.57" effort="2" velocity="5"/>
+    </joint>
+
+      <!-- ===== ROS2 CONTROL INTERFACE ===== -->
+  <!-- Tells control_manager what hardware plugin to instanciate,
+   which joint exists and which interface each joint exposes -->
+
+  <ros2_control name="GazeboSimROS2ControlPlugin" type="system">
+
+    <hardware>
+      <plugin>gz_ros2_control/GazeboSimSystem</plugin>
+    </hardware>
+
+    <!-- Base Movement Joints (x, y, z, r, p, y) -->
+    <joint name="joint_base_x">
+      <command_interface name="position"/> <!-- command controller will send for position control -->
+      <state_interface name="position"/>  <!-- state controller can read -->
+      <state_interface name="velocity"/>
+      <state_interface name="effort"/>
+    </joint>
+    <joint name="joint_base_y">
+      <command_interface name="position"/>
+      <state_interface name="position"/>
+      <state_interface name="velocity"/>
+      <state_interface name="effort"/>
+    </joint>
+    <joint name="joint_base_z">
+      <command_interface name="position"/>
+      <state_interface name="position"/>
+      <state_interface name="velocity"/>
+      <state_interface name="effort"/>
+    </joint>
+    <joint name="joint_base_roll">
+      <command_interface name="position"/>
+      <state_interface name="position"/>
+      <state_interface name="velocity"/>
+      <state_interface name="effort"/>
+    </joint>
+    <joint name="joint_base_pitch">
+      <command_interface name="position"/>
+      <state_interface name="position"/>
+      <state_interface name="velocity"/>
+      <state_interface name="effort"/>
+    </joint>
+    <joint name="joint_base_yaw">
+      <command_interface name="position"/>
+      <state_interface name="position"/>
+      <state_interface name="velocity"/>
+      <state_interface name="effort"/>
+    </joint>
+
+    <!-- Wrist Joint -->
+    <joint name="joint_wrist_x">
+      <command_interface name="position"/> 
+      <state_interface name="position"/>
+      <state_interface name="velocity"/>
+      <state_interface name="effort"/>
+    </joint>
+    <joint name="joint_wrist_y">
+      <command_interface name="position"/>
+      <state_interface name="position"/>
+      <state_interface name="velocity"/>
+      <state_interface name="effort"/>
+    </joint>
+
+    <!-- Index Finger Joints -->
+    <joint name="joint_index_1">
+      <command_interface name="position"/>
+      <state_interface name="position"/>
+      <state_interface name="velocity"/>
+      <state_interface name="effort"/>
+    </joint>
+    <joint name="joint_index_2">
+      <command_interface name="position"/>
+      <state_interface name="position"/>
+      <state_interface name="velocity"/>
+      <state_interface name="effort"/>
+    </joint>
+    <joint name="joint_index_3">
+      <command_interface name="position"/>
+      <state_interface name="position"/>
+      <state_interface name="velocity"/>
+      <state_interface name="effort"/>
+    </joint>
+
+    <!-- Middle Finger Joints -->
+    <joint name="joint_middle_1">
+      <command_interface name="position"/>
+      <state_interface name="position"/>
+      <state_interface name="velocity"/>
+      <state_interface name="effort"/>
+    </joint>
+    <joint name="joint_middle_2">
+      <command_interface name="position"/>
+      <state_interface name="position"/>
+      <state_interface name="velocity"/>
+      <state_interface name="effort"/>
+    </joint>
+    <joint name="joint_middle_3">
+      <command_interface name="position"/>
+      <state_interface name="position"/>
+      <state_interface name="velocity"/>
+      <state_interface name="effort"/>
+    </joint>
+
+    <!-- Ring Finger Joints -->
+    <joint name="joint_ring_1">
+      <command_interface name="position"/>
+      <state_interface name="position"/>
+      <state_interface name="velocity"/>
+      <state_interface name="effort"/>
+    </joint>
+    <joint name="joint_ring_2">
+      <command_interface name="position"/>
+      <state_interface name="position"/>
+      <state_interface name="velocity"/>
+      <state_interface name="effort"/>
+    </joint>
+    <joint name="joint_ring_3">
+      <command_interface name="position"/>
+      <state_interface name="position"/>
+      <state_interface name="velocity"/>
+      <state_interface name="effort"/>
+    </joint>
+
+    <!-- Little Finger Joints -->
+    <joint name="joint_little_1">
+      <command_interface name="position"/>
+      <state_interface name="position"/>
+      <state_interface name="velocity"/>
+      <state_interface name="effort"/>
+    </joint>
+    <joint name="joint_little_2">
+      <command_interface name="position"/>
+      <state_interface name="position"/>
+      <state_interface name="velocity"/>
+      <state_interface name="effort"/>
+    </joint>
+    <joint name="joint_little_3">
+      <command_interface name="position"/>
+      <state_interface name="position"/>
+      <state_interface name="velocity"/>
+      <state_interface name="effort"/>
+    </joint>
+
+    <!-- Thumb Joints -->
+    <joint name="joint_thumb_1_x">
+      <command_interface name="position"/>
+      <state_interface name="position"/>
+      <state_interface name="velocity"/>
+      <state_interface name="effort"/>
+    </joint>
+    <joint name="joint_thumb_1_y">
+      <command_interface name="position"/>
+      <state_interface name="position"/>
+      <state_interface name="velocity"/>
+      <state_interface name="effort"/>
+    </joint>
+    <joint name="joint_thumb_2">
+      <command_interface name="position"/>
+      <state_interface name="position"/>
+      <state_interface name="velocity"/>
+      <state_interface name="effort"/>
+    </joint>
+    <joint name="joint_thumb_3">
+      <command_interface name="position"/>
+      <state_interface name="position"/>
+      <state_interface name="velocity"/>
+      <state_interface name="effort"/>
+    </joint>
+
+  </ros2_control>
+
+</robot>
