@@ -473,155 +473,65 @@ feedback.position = q15_to_float(pos_raw);
 
 Les mêmes conversions sont implémentées côté Python pour maintenir la compatibilité :
 
-```python
-SIM_POSITION_RANGE_RAD = 3.1415926
-
-def float_to_q15(value: float) -> int:
-    normalized = max(-1.0, min(1.0, value / SIM_POSITION_RANGE_RAD))
-    return int(round(normalized * 32767.0))
-
-def q15_to_float(raw: int) -> float:
-    return (raw / 32767.0) * SIM_POSITION_RANGE_RAD
+```bash
+cd "$NPULSE_REPO/simulation/ros2_ws"
+source /opt/ros/jazzy/setup.bash
+source install/setup.bash
+export GZ_SIM_RESOURCE_PATH="$PWD/install/prosthesis_description/share${GZ_SIM_RESOURCE_PATH:+:$GZ_SIM_RESOURCE_PATH}"
+ros2 launch prosthesis_description gazebo.launch.py
 ```
 
-#### Exemple concret
+Wait for the hand to appear and the controllers to activate. Keep this terminal open. Run only one Gazebo instance for this test.
 
-Pour une position de **+1.57 radians** (π/2, 90°) :
-1. Normalisation : `1.57 / 3.14159 = 0.5`
-2. Conversion Q15 : `0.5 × 32767 = 16383`
-3. Encodage : `[0xFF, 0x3F]` (16383 en little-endian sur 2 octets)
-4. Réception : Décode `[0xFF, 0x3F]` → `16383` → `0.5 × 3.14159 = 1.57 rad`
+## 5. Terminal 2: launch the bridge
 
-Cette représentation permet d'envoyer 8 positions de moteurs (16 octets) au lieu de 32 octets avec des floats, tout en gardant une précision largement suffisante pour le contrôle de position.
-
-## 🌉 Bridge entre Hardware et Simulation ROS2
-
-### Objectif du Bridge
-
-Le bridge ROS2 fait le lien entre le firmware STM32 (qui "croit" contrôler des vrais moteurs) et la simulation Gazebo. Il traduit les frames série en topics ROS2 et vice versa.
-
-### Architecture du Bridge
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│                    STM32 Firmware                            │
-│         (motor_backend_sim.c)                                │
-│         Envoie frames série via USB CDC                     │
-└───────────────────────┬─────────────────────────────────────┘
-                        │ USB CDC (921600 baud)
-                        │ Frames avec CRC
-┌───────────────────────▼─────────────────────────────────────┐
-│              ROS2 Bridge (Python)                            │
-│              tools/ros2_bridge/serial_bridge.py             │
-│                                                              │
-│  ┌──────────────┐         ┌──────────────┐                 │
-│  │ FrameParser  │         │ SerialBridge │                 │
-│  │ - Parse CRC  │         │ - ROS2 Node  │                 │
-│  │ - State mach │         │ - Publishers │                 │
-│  └──────────────┘         │ - Subscribers│                 │
-│                           └──────────────┘                 │
-└───────────────────────┬─────────────────────────────────────┘
-                        │ ROS2 Topics
-                        │
-         ┌──────────────┴──────────────┐
-         │                             │
-┌────────▼────────┐         ┌─────────▼─────────┐
-│ /forward_       │         │ /joint_states     │
-│ position_       │         │ /n_pulse/fsr      │
-│ controller/     │         │ (feedback)        │
-│ commands        │         │                   │
-│ (commandes)     │         │                   │
-└─────────────────┘         └───────────────────┘
-         │                             │
-         └──────────────┬──────────────┘
-                        │
-┌───────────────────────▼─────────────────────────────────────┐
-│                  Gazebo Simulation                           │
-│                  (ros2_control)                              │
-│                  - Joint controllers                         │
-│                  - Physics simulation                        │
-└─────────────────────────────────────────────────────────────┘
-```
-
-### Fonctionnalités du Bridge
-
-Le bridge Python (`serial_bridge.py`) implémente :
-
-1. **Parsing des frames série** :
-   - Machine à états pour parser byte par byte
-   - Vérification CRC
-   - Détection de synchronisation (0xAA)
-
-2. **Traduction vers ROS2** :
-   - `SET_JOINT_TARGETS` → Publication sur `/forward_position_controller/commands`
-   - Conversion Q15 → radians
-   - Mapping des IDs de moteurs vers noms de joints
-
-3. **Traduction depuis ROS2** :
-   - `/joint_states` → `JOINT_FEEDBACK` (positions/vitesses)
-   - `/n_pulse/fsr` → `FSR_FEEDBACK` (forces)
-   - Conversion radians → Q15
-
-4. **Watchdog et sécurité** :
-   - Surveillance du heartbeat STM32
-   - Émission de `ALL_STOP` si timeout
-   - Envoi de `HEARTBEAT_ACK`
-
-### Utilisation du Bridge
+Set `NPULSE_REPO` in this terminal, then:
 
 ```bash
-# Lancer le bridge ROS2
-python tools/ros2_bridge/serial_bridge.py \
-    --port COM3 \
-    --baudrate 921600 \
-    --joint-names thumb index middle ring little wrist_x wrist_y palm \
-    --fsr-topics /n_pulse/fsr
+cd "$NPULSE_REPO"
+source /opt/ros/jazzy/setup.bash
+source simulation/ros2_ws/install/setup.bash
+python3 tools/ros2_bridge/sim_bridge_v2.py --port /dev/ttyACM0 --board --verbose
 ```
 
-**Paramètres :**
-- `--port` : Port série (COMx sous Windows, /dev/ttyACMx sous Linux)
-- `--baudrate` : Vitesse de communication (921600 ou 3000000 recommandé)
-- `--joint-names` : Liste des noms de joints dans l'ordre des `motor_id_t`
-- `--fsr-topics` : Topics ROS2 pour les capteurs de force
+This is the command supplied for the final working bridge. It requires the latest `sim_bridge_v2.py` with `--verbose` support, not an earlier version with the same filename. Use the actual serial port if different.
 
-### Avantages de cette Architecture
+Expect a bridge-ready message. Keep this terminal open. Do not run the old bridge at the same time or open a serial monitor on the same port.
 
-✅ **Test sans matériel** : Le firmware peut être testé complètement en simulation  
-✅ **Validation précoce** : Algorithme de contrôle validé avant intégration hardware  
-✅ **Débogage facilité** : Visualisation dans Gazebo, logs ROS2  
-✅ **Développement parallèle** : L'équipe firmware et l'équipe simulation travaillent indépendamment  
-✅ **Transition transparente** : Même code pour simulation et hardware  
+## 6. Terminal 3: send movement requests
 
-## 🔧 Compilation et Build
+Set `NPULSE_REPO` in this terminal, then:
 
-### Prérequis
-
-- **STM32CubeIDE** ou outils de compilation ARM (GCC)
-- **Make** (via Git Bash ou GnuWin32 sur Windows)
-- **STM32CubeProgrammer** (pour le flash)
-
-### Compilation en Mode Simulation
-
-Le projet inclut des scripts PowerShell pour faciliter la compilation :
-
-```powershell
-# Compiler en mode simulation (active MOTOR_BACKEND_SIM)
-.\build-sim.ps1
+```bash
+source /opt/ros/jazzy/setup.bash
+source "$NPULSE_REPO/simulation/ros2_ws/install/setup.bash"
 ```
 
-Ce script :
-1. Configure l'environnement (PATH pour make, git bash)
-2. Compile avec le flag `SIM_MODE=1`
-3. Génère `Debug/N-PULSE FIRMWARE.elf`
+Send one request at a time and observe the response before sending the next.
 
-### Compilation en Mode Hardware
+| Value | Movement |
+|---|---|
+| 0 | Open |
+| 1 | Close |
+| 2 | Pinch |
+| 3 | Wrist right |
+| 4 | Wrist left |
 
-```powershell
-# Compiler en mode hardware (backend par défaut)
-.\build.ps1
+```bash
+# Close
+ros2 topic pub --once /firmware_intent std_msgs/msg/Int8 "{data: 1}"
 ```
 
-Ou manuellement :
+```bash
+# Open
+ros2 topic pub --once /firmware_intent std_msgs/msg/Int8 "{data: 0}"
+```
+
+```bash
+# Pinch
+ros2 topic pub --once /firmware_intent std_msgs/msg/Int8 "{data: 2}"
+```
+
 ```bash
 cd Debug
 make              # Mode hardware
