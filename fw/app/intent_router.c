@@ -55,7 +55,6 @@ void IntentRouter_Handle(const intent_t *intent)
         case ACTION_WRIST_PALM:      apply_full_pose(MOTOR_WRIST_PALMARFLEXION, intent->epoch); break;
         case ACTION_WRIST_DORSI:      apply_full_pose(MOTOR_WRIST_DORSIFLEXION, intent->epoch); break;
         case ACTION_UNKNOWN:
-        default:
             /* Safety fallback (link timeout or unrecognised intent). */
             Motor_StopAll();
             break;
