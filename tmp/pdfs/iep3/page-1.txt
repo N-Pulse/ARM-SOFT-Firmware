@@ -1,0 +1,158 @@
+For notes on technical data and lifetime performance  
+refer to “Technical Information”.
+© DR. FRITZ FAULHABER GMBH & CO. KG
+Specifications subject to change without notice.
+For notes on technical data and lifetime performance  
+refer to “Technical Information”.
+© DR. FRITZ FAULHABER GMBH & CO. KG
+Specifications subject to change without notice.
+For notes on technical data and lifetime performance  
+refer to “Technical Information”.
+© DR. FRITZ FAULHABER GMBH & CO. KG
+Specifications subject to change without notice.
+Encoders
+magnetic Encoder, digital outputs,
+3 channels, 16 - 4096 lines per revolution
+Series IEP3-4096
+IEP3
+-16
+-32
+-64
+-128
+-256
+-512
+-1024
+-2048
+-4096
+Lines per revolution1)
+N
+16
+32
+64
+128
+256
+512
+1 024
+2 048
+4 096
+Frequency range, up to1)
+f
+8
+16
+32
+64
+128
+256
+512
+1 000
+1 000
+kHz
+Signal output, square wave
+2+1 Index
+Channels
+Supply voltage
+UDD
+3 ... 3,6 / 4,5 ... 5,5
+V
+Current consumption, typical2)
+IDD
+typ. 25, max. 34
+mA
+Output current, max.3)
+IOUT
+4
+mA
+Index Pulse width4)
+P0
+90 ± 25
+90 ± 45
+°e
+Phase shift, channel A to B4)
+Φ
+90 ± 25
+90 ± 45
+°e
+Signal rise/fall time, max. (CLOAD = 50 pF)
+tr /tf
+0,1 / 0,1
+µs
+Inertia of sensor magnet
+J
+0,01
+gcm²
+Operating temperature range
+-40 ... +100
+°C
+Accuracy, typ.
+0,3
+°m
+Repeatability, typ.
+0,05
+°m
+Hysteresis
+0,08
+0,04
+°m
+Edge spacing, min.
+125
+ns
+MTTF5)
+3 094 000
+h
+Mass, typ.
+2,3
+g
+1)	Velocity (min-1) = f (Hz) x 60/N
+2)	UDD = 3,3 or 5 V: with unloaded outputs
+3)	UDD =  3,3 / 5 V: low logic level < 0,4 / 0,4 V, high logic level > 2,8 / 4,5 V: CMOS and TTL compatible
+4)	At 5 000 min-1
+5)	„Mean time to failure“ at maximum operating condition
+For combination with Motor
+Dimensional drawing A
+L1 [mm]
+1218 ... SXR - K4585
+28,0
+1228 ... SXR - K4585
+38,0
+1424 ... SXR
+32,8
+1437 ... SXR
+46,5
+1437 ... GXR
+46,5
+Dimensional drawing B
+L1 [mm]
+0816 ... SR - K4180
+25,0
+1016 ... SR - K4180
+25,0
+1024 ... SR - K4180
+33,0
+Dimensional drawing C
+L1 [mm]
+AM0820
+23,7
+AM1020
+25,8
+Dimensional drawing D
+L1 [mm]
+AM1524
+27,0
+Characteristics
+These incremental encoders with 3 output channels, in combination 
+with the FAULHABER Motors, are used for the indication and 
+control of both shaft velocity and direction of rotation as well as for 
+positioning.
+A permanent magnet on the shaft creates a moving magnetic field 
+which is captured using an angular sensor and further processed.  
+At the encoder outputs, two 90° phase-shifted square wave signals 
+are available with up to 4.096 impulses as standard and up to 10.000 
+impulses per request and an index impulse per motor revolution.  
+The encoder has a high accuracy and a high repeatability for 
+positioning applications. 
+The encoder is connected with a ribbon cable.  
+To view our large range of accessory parts, please refer to the 
+“Accessories” chapter.
+Edition 2026 Jul. 28
+www.faulhaber.com
+www.faulhaber.com

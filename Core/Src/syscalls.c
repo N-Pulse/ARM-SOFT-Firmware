@@ -29,13 +29,10 @@
 #include <time.h>
 #include <sys/time.h>
 #include <sys/times.h>
+#include "bench_hw.h"
 
 
 /* Variables */
-extern int __io_putchar(int ch) __attribute__((weak));
-extern int __io_getchar(void) __attribute__((weak));
-
-
 char *__env[1] = { 0 };
 char **environ = __env;
 
@@ -60,33 +57,23 @@ int _kill(int pid, int sig)
 
 void _exit (int status)
 {
-  _kill(status, -1);
-  while (1) {}    /* Make sure we hang here */
+  (void)status;
+  BenchHW_Fatal();
 }
 
 __attribute__((weak)) int _read(int file, char *ptr, int len)
 {
-  (void)file;
-  int DataIdx;
-
-  for (DataIdx = 0; DataIdx < len; DataIdx++)
-  {
-    *ptr++ = __io_getchar();
-  }
-
-  return len;
+  (void)file; (void)ptr; (void)len;
+  errno = ENOSYS;
+  return -1;
 }
 
 __attribute__((weak)) int _write(int file, char *ptr, int len)
 {
-  (void)file;
-  int DataIdx;
-
-  for (DataIdx = 0; DataIdx < len; DataIdx++)
-  {
-    __io_putchar(*ptr++);
-  }
-  return len;
+  /* UART is exclusively owned by bench_protocol; stdio cannot block control. */
+  (void)file; (void)ptr; (void)len;
+  errno = ENOSYS;
+  return -1;
 }
 
 int _close(int file)

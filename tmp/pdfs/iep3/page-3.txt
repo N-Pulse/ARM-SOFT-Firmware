@@ -1,0 +1,42 @@
+For notes on technical data and lifetime performance  
+refer to “Technical Information”.
+© DR. FRITZ FAULHABER GMBH & CO. KG
+Specifications subject to change without notice.
+For notes on technical data and lifetime performance  
+refer to “Technical Information”.
+© DR. FRITZ FAULHABER GMBH & CO. KG
+Specifications subject to change without notice.
+For notes on technical data and lifetime performance  
+refer to “Technical Information”.
+© DR. FRITZ FAULHABER GMBH & CO. KG
+Specifications subject to change without notice.
+Dimensional drawing B
+IEP3-4096
+L1
+Ø8
+150 ±10
+2 ±0,5
+±0,4
+-0,1
+Example of combination with 1024...SR
+Dimensional drawing C
+IEP3-4096
+150 ±10
+2 ±0,5
+L1
+Ø8
+±0,4
+-0,1
+Example of combination with AM1020
+Dimensional drawing D
+IEP3-4096
+ø16
+150 ±10
+2 ±0,5
+L1
+Ø8
+±0,4
+-0,1
+Example of combination with AM1524
+Edition 2026 Jul. 28
+www.faulhaber.com

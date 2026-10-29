@@ -1,0 +1,157 @@
+For notes on technical data and lifetime performance  
+refer to “Technical Information”.
+© DR. FRITZ FAULHABER GMBH & CO. KG
+Specifications subject to change without notice.
+For notes on technical data and lifetime performance  
+refer to “Technical Information”.
+© DR. FRITZ FAULHABER GMBH & CO. KG
+Specifications subject to change without notice.
+For notes on technical data and lifetime performance  
+refer to “Technical Information”.
+© DR. FRITZ FAULHABER GMBH & CO. KG
+Specifications subject to change without notice.
+Circuit diagram / Output signals
+UDD
+A, B, I
+GND 
+A
+I
+B
+P0
+P
+Φ
+Angle
+Amplitude
+Output signals
+with clockwise rotation as seen  
+from the shaft end
+Output circuit
+Connector information / Variants
+1
+2
+3
+4
+5
+1
+2
+3
+4
+5
+6
+7
+8
+1
+2
+3
+4
+5
+6
+7
+8
+5
+1
+K4453
+K4454
+K4455
+K4502
+K4456
+K4806
+8
+1
+1
+5
+2
+4
+3
+6
+7
+8
+ 
+For combination with DC-Motors series SXR/GXR and SR, connector 
+variant with MOLEX Picoblade 51021-0800, recommended mating 
+connector 51047-0800
+Resolutions from 1 - 10 000 lines per revolution are available by request.
+  
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+Standard cable
+PVC-ribbon cable, 
+5-AWG 28, 1 mm
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+GND
+UDD
+Channel B
+Channel A
+Channel I
+0816K012SR K4180 IEP3-4096 K4453
+Option
+Type                       Description
+No.
+Function
+N.C.
+N.C.
+N.C.
+GND
+UDD
+Channel B
+Channel A
+Channel I
+No.
+Function
+Connection Encoder
+Standard           Option K4456    Option K4806
+Example product designation:
+Connector
+Resolutions 
+For combination with DC-Motors series SXR/GXR and SR, encoder ribbon cable 
+PVC and motor single leads PVC, length 50 mm
+For combination with DC-Motors series SXR/GXR and SR, encoder ribbon cable 
+PVC and motor single leads PVC, length 100 mm
+For combination with DC-Motors series SXR/GXR and SR, up to 125 °C 
+(motor high temperature execution needs to be selected), encoder ribbon 
+cable FEP and motor single leads PTFE, length 150 mm
+For combination with stepper motors, encoder ribbon cable FEP, length 150mm 
+(an additional motor cable is mandatory) 
+Ribbon cable PVC
+Ribbon cable PVC
+Ribbon cable FEP
+Ribbon cable FEP
+For combination with DC-Motors series 14xx...SXR/GXR and stepper 
+motors, connector variant with MOLEX Microﬁt 3.0, 43025-0800, 
+recommended mating connector 43020-0800
+Connector
+UDD
+GND
+N.C.
+Channel A
+N.C. 
+Channel B
+N.C.
+Channel I
+No.
+Function
+Caution:
+Incorrect lead connection will damage the electronics! 
+Dimensional drawing A
+IEP3-4096
+150 ±10
+2 ±0,5
+L1
+Ø8
+±0,3
+-0,1
+Example of combination with 1218...SXR
+Edition 2026 Jul. 28
+www.faulhaber.com

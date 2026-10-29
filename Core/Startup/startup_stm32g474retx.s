@@ -64,6 +64,8 @@ Reset_Handler:
 
 /* Call the clock system initialization function.*/
     bl  SystemInit
+/* Hold only the three bench bridge outputs low before RAM initialization. */
+    bl  BenchHW_CutoffRegisters
 
 /* Copy the data segment initializers from flash to SRAM */
   ldr r0, =_sdata
@@ -108,14 +110,14 @@ LoopForever:
 
 /**
  * @brief  This is the code that gets called when the processor receives an
- *         unexpected interrupt. Cut the existing motor outputs before halting.
+ *         unexpected interrupt. Disable the bench bridge before halting.
  *
  * @param  None
  * @retval : None
 */
     .section	.text.Default_Handler,"ax",%progbits
 Default_Handler:
-	b	N_PULSE_FatalUnhandledIRQ
+	b	BenchHW_Fatal
 	.size	Default_Handler, .-Default_Handler
 /******************************************************************************
 *

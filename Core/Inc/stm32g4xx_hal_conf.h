@@ -36,7 +36,7 @@
 
 #define HAL_MODULE_ENABLED
 
-  #define HAL_ADC_MODULE_ENABLED
+/* ADC acquisition is absent from this bench. */
 /*#define HAL_COMP_MODULE_ENABLED   */
 /*#define HAL_CORDIC_MODULE_ENABLED   */
 /*#define HAL_CRC_MODULE_ENABLED   */
@@ -44,21 +44,15 @@
 /*#define HAL_DAC_MODULE_ENABLED   */
 /*#define HAL_FDCAN_MODULE_ENABLED   */
 /*#define HAL_FMAC_MODULE_ENABLED   */
-#if !N_PULSE_OLD_HW
-#define HAL_HRTIM_MODULE_ENABLED
-#endif
+
 /*#define HAL_IRDA_MODULE_ENABLED   */
 /*#define HAL_IWDG_MODULE_ENABLED   */
 /*#define HAL_I2C_MODULE_ENABLED   */
 /*#define HAL_I2S_MODULE_ENABLED   */
-#if !N_PULSE_OLD_HW
-#define HAL_LPTIM_MODULE_ENABLED
-#endif
+
 /*#define HAL_NAND_MODULE_ENABLED   */
 /*#define HAL_NOR_MODULE_ENABLED   */
-#if !N_PULSE_OLD_HW
-#define HAL_OPAMP_MODULE_ENABLED
-#endif
+
 /*#define HAL_PCD_MODULE_ENABLED   */
 /*#define HAL_QSPI_MODULE_ENABLED   */
 /*#define HAL_RNG_MODULE_ENABLED   */
@@ -187,9 +181,8 @@ The real value may vary depending on the variations in voltage and temperature.*
   */
 
 #define  VDD_VALUE                   (3300UL) /*!< Value of VDD in mv */
-/* TIM6 never calls FreeRTOS. Priority 4 keeps HAL timeouts alive even while
- * pre-scheduler FreeRTOS object creation masks priorities 5..15. */
-#define  TICK_INT_PRIORITY           (4UL)
+/* SysTick is the only 1ms timebase and runs the independent bench cutoff. */
+#define  TICK_INT_PRIORITY           (0UL)
 #define  USE_RTOS                     0U
 #define  PREFETCH_ENABLE              0U
 #define  INSTRUCTION_CACHE_ENABLE     1U

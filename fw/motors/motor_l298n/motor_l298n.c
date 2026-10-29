@@ -183,7 +183,7 @@ bool Motor_L298N_Arm(void)
 }
 bool Motor_L298N_IsArmed(void)
 { uint32_t key=Motor_Lock(); bool value=armed; Motor_Unlock(key); return value; }
-bool Motor_L298N_IsTransitioning(void) { return transitioning; }
+bool Motor_L298N_IsTransitioning(void)python tools/send_action.py --port COM8 --finger index --angle 2 --max-angle 5 --pwm 2 --run --diagnostic --verbose { return transitioning; }
 void Motor_L298N_InhibitLocked(void)
 {
     armed = false;
