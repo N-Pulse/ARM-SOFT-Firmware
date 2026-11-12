@@ -10,6 +10,7 @@
 #endif
 #include "motor_outputs.h"
 #include "motor_safety.h"
+#include "boot_homing.h"
 
 #include <math.h>
 
@@ -255,7 +256,8 @@ void Motor_DRV8848_SetRaw(motor_id_t id, float output_percent)
         Motor_Unlock(key);
         return;
     }
-    if (!s_armed || !Motor_OutputAllowedLocked(id)) {
+    if (!s_armed || (!Motor_OutputAllowedLocked(id) &&
+                     !BootHoming_OutputAllowedLocked(id, output_percent))) {
         Motor_Unlock(key);
         return;
     }

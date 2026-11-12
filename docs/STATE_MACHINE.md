@@ -1,3 +1,5 @@
+> Historical snapshot: READY/ALLOW_START, FIFO completion and remote STOP/RESTART described below have been retired. Use [HANDSHAKE.md](HANDSHAKE.md) and [CODE_AUDIT.md](CODE_AUDIT.md) for the current implementation.
+
 # State Machine Version Guide
 
 This version adds a host-controlled lifecycle state machine for UART4 in **HW mode**. The existing SIM v2 CONFIG/ARM/TARGET/STOP protocol remains separate and is not the host protocol for this state machine. The state machine tests run the actual HW application code with mocked HAL/RTOS interfaces and do not require physical motors.

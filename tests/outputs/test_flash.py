@@ -15,6 +15,9 @@ HERE = Path(__file__).resolve().parent
 FIXTURE = ROOT/'build/output-tests/flash-fixture'
 
 def main():
+    if not shutil.which("powershell.exe"):
+        print("SKIP flash-script fixture: powershell.exe is not installed; no programmer was invoked")
+        return
     FIXTURE.mkdir(parents=True, exist_ok=True)
     script = FIXTURE/'flash.ps1'; shutil.copy2(ROOT/'flash.ps1',script)
     fake = FIXTURE/'fake_programmer.exe'

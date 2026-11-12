@@ -2,6 +2,7 @@
 from pathlib import Path
 import os
 import subprocess
+import sys
 
 ROOT = Path(__file__).resolve().parents[2]
 HERE = Path(__file__).resolve().parent
@@ -16,7 +17,7 @@ def main():
     cc = os.environ.get('HOST_CC', 'gcc')
     flags = ['-std=c11', '-Wall', '-Wextra', '-Werror', '-g', '-O0']
     includes = [HERE/'mocks', ROOT/'tests/safety/mocks', ROOT/'Core/Inc', CTRL,
-                ROOT/'fw/bsp/encoder', ROOT/'fw/comm', ROOT/'fw/comm-stack', ROOT/'fw/app']
+                ROOT/'fw/bsp/encoder', ROOT/'fw/comm', ROOT/'fw/comm-stack', ROOT/'fw/app', ROOT/'fw/motors/motor_map']
     for p in includes: flags += ['-I', p]
     suffix = '.exe' if os.name=='nt' else ''
     binary = OUT / ('fatal'+suffix)
@@ -27,10 +28,11 @@ def main():
     run([binary])
     sources = [CTRL/(s+'.c') for s in ('motor_control','motor_safety','motor_guard',
         'motor_feedback','drv8848','motor_outputs','motor_pid','motor_pid_config')]
-    sources += [ROOT/'fw/comm/comms_session.c', HERE/'test_pwm.c']
+    sources += [ROOT/'fw/comm/comms_session.c', ROOT/'fw/app/intent_router.c',
+                ROOT/'fw/motors/motor_map/motor_map.c', ROOT/'tests/safety/boot_homing_stub.c', HERE/'test_pwm.c']
     binary = OUT / ('pwm'+suffix)
     run([cc,*flags,'-finstrument-functions',*sources,'-o',binary,'-lm'])
     run([binary])
-    run(['python',HERE/'test_flash.py'])
+    run([sys.executable,HERE/'test_flash.py'])
 
 if __name__ == '__main__': main()

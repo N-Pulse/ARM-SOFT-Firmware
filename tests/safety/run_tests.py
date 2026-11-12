@@ -22,11 +22,12 @@ def main():
     flags = ["-std=c11", "-Wall", "-Wextra", "-Werror", "-g", "-O0",
              "-finstrument-functions", "-I", HERE / "mocks", "-I", CONTROL,
              "-I", ROOT / "fw/bsp/encoder", "-I", ROOT / "fw/comm",
-             "-I", ROOT / "fw/comm-stack", "-I", ROOT / "fw/app"]
+             "-I", ROOT / "fw/comm-stack", "-I", ROOT / "fw/app", "-I", ROOT / "fw/motors/motor_map"]
     sources = [CONTROL / (name + ".c") for name in (
         "motor_control", "motor_safety", "motor_guard", "motor_feedback",
         "drv8848", "motor_outputs", "motor_pid", "motor_pid_config")]
-    sources.append(ROOT / "fw/comm/comms_session.c")
+    sources += [ROOT/"fw/comm/comms_session.c", ROOT/"fw/app/intent_router.c",
+                ROOT/"fw/motors/motor_map/motor_map.c", HERE/"boot_homing_stub.c"]
     for mode in ("async", "hw", "disarm", "encoder-integration"):
         binary = OUT / (mode + (".exe" if os.name == "nt" else ""))
         extra = ["-DTEST_HW_BACKEND", CONTROL / "motor_backend_hw.c"] if mode in ("hw", "encoder-integration") else []

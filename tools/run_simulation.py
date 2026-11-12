@@ -16,6 +16,7 @@ def main():
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--case',default='all')
     parser.add_argument('--no-sanitizers',action='store_true')
+    parser.add_argument('--offline',action='store_true',help='Skip the optional localhost UDP subprocess check')
     args=parser.parse_args()
     binary=build()
     protocol=OUT/("protocol.exe" if os.name=="nt" else "protocol")
@@ -23,7 +24,7 @@ def main():
                     "fw/comm/sim_protocol.c","tests/simulation/test_protocol.c","-o",str(protocol)],cwd=ROOT,check=True)
     subprocess.run([str(protocol)],check=True)
     from test_host import run
-    run()
+    run(include_network=not args.offline)
     run_cases(binary,args.case)
     if not args.no_sanitizers:
         from sanitizer import run_available

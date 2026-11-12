@@ -33,6 +33,13 @@ typedef struct { float offset_v, shunt_ohm, analog_gain, scale; int8_t polarity;
 bool ADC_DMA_BSP_SetVref(float volts);
 bool ADC_DMA_BSP_SetCalibration(motor_id_t id,const adc_current_calibration_t *calibration);
 bool ADC_DMA_BSP_GetSample(motor_id_t id,adc_current_sample_t *out);
+/* ADC4 regular rank 2 (PE15/ADC4_IN2, Batt_lvl), separate from motor current. */
+typedef struct {
+    uint16_t raw;
+    uint32_t timestamp_ms,sequence;
+    bool valid;
+} adc_battery_sample_t;
+bool ADC_DMA_BSP_GetBatterySample(adc_battery_sample_t *out);
 uint16_t ADC_DMA_BSP_GetRaw(motor_id_t id);
 /* Returns NAN unless a fresh, unsaturated calibrated sample exists. */
 float    ADC_DMA_BSP_GetCurrentA(motor_id_t id);

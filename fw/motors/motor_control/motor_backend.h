@@ -10,7 +10,8 @@
 enum {
     MOTOR_FB_POSITION = 1U << 0,
     MOTOR_FB_VELOCITY = 1U << 1,
-    MOTOR_FB_FORCE    = 1U << 2
+    MOTOR_FB_FORCE    = 1U << 2, /* SIM/legacy force_mN only. */
+    MOTOR_FB_FORCE_VOLTAGE = 1U << 3
 };
 
 typedef struct
@@ -20,6 +21,7 @@ typedef struct
     float      velocity;
     uint16_t   force_mN;
     uint8_t valid_fields;
+    float      force_voltage_v;
 } motor_feedback_t;
 
 void MotorBackend_Init(void);

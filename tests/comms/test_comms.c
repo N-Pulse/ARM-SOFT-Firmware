@@ -1,3 +1,5 @@
+/* HISTORICAL FIFO/PING regression snapshot; not compiled by current runners.
+ * Maintained behavior is covered by tests/lifecycle/test_streaming.c and peers. */
 /* Reuse the lot-2 HAL/BSP fixture, not an alternative safety implementation. */
 #define TEST_COMMS_FIXTURE
 #define main lot2_fixture_suite

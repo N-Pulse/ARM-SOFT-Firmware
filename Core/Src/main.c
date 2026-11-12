@@ -33,6 +33,10 @@
 #include "encoder_bsp.h"
 #include "hw_telemetry.h"
 #include "adc_dma_bsp.h"
+#include "force_sensor.h"
+#include "battery.h"
+#include "status_leds.h"
+#include "haptics.h"
 #include "motor_estimation.h"
 
 /* ============================================================
@@ -49,7 +53,7 @@
 /* #define WRIST_ENCODER_TEST */
 /* MOTOR_CALIB_MODE remains disabled until the DRV8848 wiring is confirmed. */
 #ifdef MOTOR_CALIB_MODE
-#error "Legacy motor calibration is unavailable during disarmed startup bring-up"
+#error "Legacy ASCII calibration is unavailable; use maintained homing/commissioning paths"
 #endif
 /* USER CODE END Includes */
 
@@ -112,7 +116,6 @@ static TaskHandle_t sDefaultTaskHandle;
 static TaskHandle_t sControlTaskHandle;
 static TaskHandle_t sSafetyTaskHandle;
 static TaskHandle_t sTelemetryTaskHandle;
-static TimerHandle_t sLedTimer;
 
 
 /* USER CODE END PV */
@@ -153,7 +156,6 @@ static void SafetyTask(void *argument);
 static void TelemetryTask(void *argument);
 static void CreateTasks(void);
 static void StartScheduler(void);
-static void LedTimerCallback(TimerHandle_t timer);
 void App_Init(void);
 void App_Task(void);
 /* USER CODE END PFP */
@@ -1949,21 +1951,9 @@ static void MX_GPIO_Init(void)
 
 /* USER CODE BEGIN 4 */
 
-/* ---------------------------------------------------------------------------
- * Infra encodeurs — TOUJOURS compilée (test, calibration, ET sécurité
- * anti-butée de la pipeline normale). Autonome (pas fw/bsp).
- *
- * La carte unique initialise les encodeurs exposés par le dernier .ioc.
- * Les timers et GPIO sont configurés par CubeMX ; ce code se contente de
- * démarrer les instances et de lire leurs compteurs.
- *
- * Le dernier .ioc expose sept paires d'entrées encodeur. PALM reste donc
- * explicitement sans entrée jusqu'à ce qu'un câblage et une ressource timer
- * valides soient ajoutés au matériel et au .ioc.
- *
- * Moon DCU10025P12 : 12 PPR ×4 = 48 cnt/tour moteur, gearbox 61:1
- * → 2928 cnt/tour arbre sortie.
- * --------------------------------------------------------------------------- */
+/* Production encoder ownership and the PALM LPTIM mapping live in
+ * fw/bsp/encoder. The disabled legacy calibration helpers below retain an old
+ * seven-timer map and must not be used as the production hardware definition. */
 
 /* prototypes directs (Core/Src/subdir.mk n'inclut pas fw/motors/motor_l298n) */
 void Motor_DRV8848_SetSignedRaw(motor_id_t id, int dir, uint8_t speed_pct);
@@ -2024,18 +2014,9 @@ static void wt_init_one(const wt_enc_t *e)
 #endif /* MOTOR_CALIB_MODE: legacy helpers are not compiled */
 
 #ifndef MOTOR_CALIB_MODE
-/* ===========================================================================
- *  SÉCURITÉ ANTI-BUTÉE — TOUJOURS ACTIVE (pipeline normale + tests).
- *
- *  Surveille chaque moteur local : s'il est alimenté (DRV8848 drive != 0) mais
- *  que son encodeur n'avance plus pendant GUARD_STALL_MS → il force contre une
- *  butée → on COUPE immédiatement (Motor_DRV8848_Stop). Indépendant de la
- *  commande : protège quel que soit le script (send_action.py, wrist_test.py…)
- *  ou la pipeline proto. Empêche la sur-course et la casse des câbles.
- *
- *  (En mode calibration ce garde est désactivé : le homing/seek POUSSE
- *   volontairement dans la butée pour la détecter.)
- * ======================================================================== */
+/* The production guard owns stall classification. Ordinary stalls stop the
+ * whole system; selected grasp/pinch contacts stop only the affected finger.
+ * Boot homing runs before this task and has its own end-stop detection. */
 
 static void MotorGuard_Task(void *argument)
 {
@@ -2528,7 +2509,7 @@ static void CreateTasks(void)
   status = xTaskCreate(ControlTask, "ctrl", 256, NULL, tskIDLE_PRIORITY + 3, &sControlTaskHandle);
   configASSERT(status == pdPASS);
 
-  /* Must preempt ctrl/guard/simtx (3) and comms (4) to check their delays. */
+  /* Preempts control/guard (3), comms (2), and telemetry/haptics/UART TX (1). */
   status = xTaskCreate(SafetyTask, "safe", 256, NULL, tskIDLE_PRIORITY + 5, &sSafetyTaskHandle);
   configASSERT(status == pdPASS);
 
@@ -2541,19 +2522,14 @@ static void CreateTasks(void)
   Calib_TaskCreate();
 #else
   Comms_TaskCreate();
+  Haptics_TaskCreate();
   MotorGuard_TaskCreate();   /* SÉCURITÉ anti-butée — toujours active */
 #ifdef WRIST_ENCODER_TEST
   WristTest_TaskCreate();
 #endif
 #endif
 
-  sLedTimer = xTimerCreate("led",
-                           pdMS_TO_TICKS(500),
-                           pdTRUE,
-                           NULL,
-                           LedTimerCallback);
-  configASSERT(sLedTimer != NULL);
-  xTimerStart(sLedTimer, 0);
+
 }
 
 static void StartScheduler(void)
@@ -2601,6 +2577,9 @@ static void TelemetryTask(void *argument)
   {
 #ifndef MOTOR_BACKEND_SIM
     ADC_DMA_BSP_Service();
+    ForceSensor_Service();
+    Battery_Service();
+    StatusLeds_Service();
     if ((uint32_t)(HAL_GetTick()-last_telemetry) >= N_PULSE_TELEMETRY_PERIOD_MS) {
       last_telemetry = HAL_GetTick();
       HWTelemetry_Service();
@@ -2613,11 +2592,6 @@ static void TelemetryTask(void *argument)
   }
 }
 
-static void LedTimerCallback(TimerHandle_t timer)
-{
-  (void)timer;
-  HAL_GPIO_TogglePin(USART3_TX_LED_GPIO_Port, USART3_TX_LED_Pin);
-}
 
 void vApplicationMallocFailedHook(void)
 {

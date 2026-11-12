@@ -15,6 +15,8 @@
 
 typedef struct {
     uint16_t length; uint32_t epoch; bool safety_record;
+    bool handshake_reply, handshake_matches;
+    uint32_t handshake_generation;
 #ifdef MOTOR_BACKEND_SIM
     uint32_t offered_ms; uint8_t slot;
 #endif
@@ -85,7 +87,8 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *uart)
     bool full = next == tail;
     if (!full) {
         ring[head] = (uart4_rx_event_t){ .byte = rx_byte, .ms = HAL_GetTick(),
-            .epoch = MotorSafety_EpochLocked(), .generation = generation };
+            .epoch = MotorSafety_EpochLocked(), .generation = generation,
+            .handshake_generation = CommsSession_HandshakeGenerationLocked() };
         head = next; ++diag.rx_bytes;
     }
     Motor_Unlock(key);
@@ -143,15 +146,19 @@ bool UART4Transport_RecoverRx(void)
     HAL_NVIC_EnableIRQ(UART4_IRQn);
     return true;
 }
-bool UART4Transport_QueueFrameAtEpoch(const uint8_t *bytes, size_t size, uint32_t epoch)
+static bool queue_frame(const uint8_t *bytes, size_t size, uint32_t epoch,
+                        bool handshake_reply, bool matches, uint32_t generation)
 {
     if (!bytes || !size || size > sizeof(transmitting.bytes) || !tx_queue ||
         __get_PRIMASK() || __get_IPSR()) return false;
     tx_frame_t frame = { .length = (uint16_t)size };
+    frame.handshake_reply=handshake_reply; frame.handshake_matches=matches;
+    frame.handshake_generation=generation;
     memcpy(frame.bytes, bytes, size);
     frame.epoch = epoch;
     uint32_t key = Motor_Lock();
-    bool stale = epoch != MotorSafety_EpochLocked();
+    bool stale = epoch != MotorSafety_EpochLocked() ||
+        generation != CommsSession_HandshakeGenerationLocked();
     if (stale) ++diag.tx_stale;
     Motor_Unlock(key);
     if (stale) return false;
@@ -159,6 +166,16 @@ bool UART4Transport_QueueFrameAtEpoch(const uint8_t *bytes, size_t size, uint32_
     key = Motor_Lock();
     if (queued) ++diag.tx_queued; else ++diag.tx_full;
     Motor_Unlock(key); return queued;
+}
+bool UART4Transport_QueueFrameAtEpoch(const uint8_t *bytes, size_t size, uint32_t epoch)
+{
+    uint32_t key=Motor_Lock(); uint32_t generation=CommsSession_HandshakeGenerationLocked(); Motor_Unlock(key);
+    return queue_frame(bytes,size,epoch,false,false,generation);
+}
+bool UART4Transport_QueueHandshakeReply(const uint8_t *bytes, size_t size,
+                                       uint32_t epoch, uint32_t generation, bool matches)
+{
+    return queue_frame(bytes,size,epoch,true,matches,generation);
 }
 bool UART4Transport_QueueFrame(const uint8_t *bytes, size_t size)
 {
@@ -221,7 +238,8 @@ bool UART4Transport_TxOnce(TickType_t wait)
     /* RTOS operations precede commitment and remain outside PRIMASK. */
     ulTaskNotifyTake(pdTRUE, 0U);
     uint32_t key = Motor_Lock();
-    if (!transmitting.safety_record && transmitting.epoch != MotorSafety_EpochLocked()) {
+    if (!transmitting.safety_record && (transmitting.epoch != MotorSafety_EpochLocked() ||
+        transmitting.handshake_generation != CommsSession_HandshakeGenerationLocked())) {
         ++diag.tx_stale;
         Motor_Unlock(key);
         return false;
@@ -251,7 +269,12 @@ bool UART4Transport_TxOnce(TickType_t wait)
             ulTaskNotifyTake(pdTRUE, remaining);
             key = Motor_Lock();
             bool complete = tx_completed;
-            if (complete) { tx_active = false; ++diag.tx_complete; }
+            if (complete) {
+                tx_active = false; ++diag.tx_complete;
+                if(transmitting.handshake_reply)
+                    CommsSession_HandshakeReplySentLocked(transmitting.epoch,
+                        transmitting.handshake_generation, HAL_GetTick(),transmitting.handshake_matches);
+            }
             Motor_Unlock(key);
             if (complete) return true;
             TickType_t elapsed = xTaskGetTickCount() - started;

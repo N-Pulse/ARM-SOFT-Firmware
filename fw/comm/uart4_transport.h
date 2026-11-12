@@ -6,7 +6,7 @@
 #include "FreeRTOS.h"
 #include "task.h"
 #include "comms_config.h"
-typedef struct { uint8_t byte; uint32_t ms, epoch, generation; } uart4_rx_event_t;
+typedef struct { uint8_t byte; uint32_t ms, epoch, generation, handshake_generation; } uart4_rx_event_t;
 typedef struct {
     uint32_t rx_bytes, rx_overflow, rx_errors, rx_start_errors,
              tx_queued, tx_full, tx_errors, tx_timeouts, tx_complete, tx_stale, tx_replaced, tx_expired;
@@ -21,6 +21,9 @@ bool UART4Transport_RxGenerationMatches(uint32_t generation);
  * outside Motor_Lock. Success means queued, not transmitted/acknowledged. */
 bool UART4Transport_QueueFrame(const uint8_t *frame, size_t length);
 bool UART4Transport_QueueFrameAtEpoch(const uint8_t *frame, size_t length, uint32_t epoch);
+/* Session opens only after the TX worker observes successful completion. */
+bool UART4Transport_QueueHandshakeReply(const uint8_t *frame, size_t length,
+                                       uint32_t epoch, uint32_t generation, bool matches);
 bool UART4Transport_QueuePayload(const uint8_t *payload, size_t length);
 /* Only immutable SafetyEvent records; survives later actuator epoch changes. */
 bool UART4Transport_QueueSafetyPayload(const uint8_t *payload, size_t length);

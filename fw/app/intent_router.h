@@ -2,6 +2,7 @@
 #define INTENT_ROUTER_H
 
 #include <stdint.h>
+#include <stdbool.h>
 
 /**
  * @brief Intent IDs mapped to the Protobuf Action enumeration.
@@ -24,11 +25,14 @@ typedef enum {
     ACTION_LITTLE_CLOSE   = 14,
     ACTION_WRIST_PALM     = 15,
     ACTION_WRIST_DORSI    = 16,
+    ACTION_GRASPING       = 17,
+    ACTION_PINCHING       = 18,
+    ACTION_COUNT         = 19,
     ACTION_UNKNOWN        = 99 // Used for safety stops/timeouts
 } intent_id_t;
 
 /**
- * @brief Command stored in the bounded interlock-protected intent ring.
+ * @brief Intent dispatched immediately in the shared motor interlock domain.
  */
 typedef struct {
     intent_id_t id;
@@ -38,6 +42,6 @@ typedef struct {
 /**
  * @brief Dispatches the intent to the corresponding motor drivers.
  */
-void IntentRouter_Handle(const intent_t* intent);
+bool IntentRouter_Handle(const intent_t* intent);
 
 #endif /* INTENT_ROUTER_H */

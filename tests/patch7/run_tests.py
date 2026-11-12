@@ -9,10 +9,11 @@ def main():
     OUT.mkdir(parents=True,exist_ok=True)
     ctrl=ROOT/'fw/motors/motor_control'
     flags=['-std=c11','-Wall','-Wextra','-Werror','-g','-O0','-finstrument-functions']
-    for p in ('tests/safety/mocks','fw/motors/motor_control','fw/bsp/encoder','fw/comm','fw/comm-stack','fw/app','fw/motors/estimation'):
+    for p in ('tests/safety/mocks','fw/motors/motor_control','fw/bsp/encoder','fw/comm','fw/comm-stack','fw/app','fw/motors/estimation','fw/motors/motor_map'):
         flags+=['-I',ROOT/p]
     sources=[ctrl/(n+'.c') for n in ('motor_control','motor_safety','motor_guard','motor_feedback',
         'drv8848','motor_outputs','motor_pid','motor_pid_config','motor_backend_hw')]
+    sources += [ROOT/'tests/safety/boot_homing_stub.c',ROOT/'fw/app/intent_router.c',ROOT/'fw/motors/motor_map/motor_map.c']
     sources += [ROOT/'fw/comm/comms_session.c',ROOT/'fw/app/hw_commission.c',ROOT/'tests/safety/test_commission.c']
     sources += [ROOT/'fw/motors/estimation/motor_kalman.c',ROOT/'fw/motors/estimation/motor_estimation.c']
     binary=OUT/('commission.exe' if os.name=='nt' else 'commission')

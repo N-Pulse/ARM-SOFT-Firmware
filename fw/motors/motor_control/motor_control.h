@@ -34,6 +34,15 @@ typedef struct {
 void Motor_InitAll(void);
 /* Called by ControlTask. Measures elapsed HAL milliseconds itself. */
 void Motor_Update(void);
+/* At least one valid measured control interval is required before enabling. */
+bool Motor_ControlReady(void);
+/* Closing contact-seek for thumb..little only. Same active mask is idempotent:
+ * repeated intents cannot restart a finger already stopped on contact. */
+bool Motor_BeginGrip(uint32_t finger_mask,uint32_t epoch);
+void Motor_EndGripLocked(void);
+bool Motor_GripActiveLocked(motor_id_t id);
+bool Motor_GripHandleStallLocked(motor_id_t id);
+void Motor_GetGripMasks(uint32_t *selected,uint32_t *contacted);
 void Motor_SetTarget(motor_id_t id, float position, uint8_t speed_percent);
 /* Queued commands must still belong to the current stop/recovery generation. */
 bool Motor_SetTargetAtEpoch(motor_id_t id, float position, uint8_t speed_percent, uint32_t epoch);

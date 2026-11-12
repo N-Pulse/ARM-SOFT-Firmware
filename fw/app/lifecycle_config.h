@@ -26,7 +26,7 @@
 #ifndef APP_ENCODER_GEAR_RATIO
 #define APP_ENCODER_GEAR_RATIO 61.0f
 #endif
-/* Override per motor by editing the table in app.c (especially LPTIM PALM). */
+/* Override per motor by editing the calibration table in boot_homing.c (especially LPTIM PALM). */
 #ifndef APP_ENCODER_DIRECTION
 #define APP_ENCODER_DIRECTION 1
 #endif

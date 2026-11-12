@@ -8,8 +8,8 @@
  * the application rejects it); false requests bounded suffix resynchronisation. */
 typedef bool (*comms_frame_fn)(const uint8_t *, size_t, uint32_t, uint32_t, void *);
 typedef struct {
-    uint8_t bytes[COMMS_PAYLOAD_MAX + 2U];
-    uint32_t byte_ms[COMMS_PAYLOAD_MAX + 2U];
+    uint8_t bytes[COMMS_PAYLOAD_MAX + 5U];
+    uint32_t byte_ms[COMMS_PAYLOAD_MAX + 5U];
     size_t used;
     uint32_t first_ms, last_ms, epoch;
     uint32_t invalid_lengths, invalid_frames, timeouts;

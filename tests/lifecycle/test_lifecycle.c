@@ -1,3 +1,5 @@
+/* HISTORICAL FIFO/PING regression snapshot; not compiled by current runners.
+ * Maintained behavior is covered by tests/lifecycle/test_streaming.c and peers. */
 /* Real app/session/parser/PID/interlock/driver; only hardware/RTOS are mocked. */
 #define TEST_LIFECYCLE_FIXTURE
 #include "../comms/test_comms.c"

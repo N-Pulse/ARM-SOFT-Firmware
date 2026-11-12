@@ -1,3 +1,5 @@
+> Historical snapshot: READY/ALLOW_START, FIFO completion and remote STOP/RESTART described below have been retired. Use [HANDSHAKE.md](HANDSHAKE.md) and [CODE_AUDIT.md](CODE_AUDIT.md) for the current implementation.
+
 # State Machine Validation Record (2026-10-10)
 
 ## Passed

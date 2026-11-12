@@ -155,6 +155,16 @@ uint16_t ADC_DMA_BSP_GetRaw(motor_id_t id) {
     adc_current_sample_t sample;
     return ADC_DMA_BSP_GetSample(id,&sample) && sample.raw_valid ? sample.raw : 0U;
 }
+bool ADC_DMA_BSP_GetBatterySample(adc_battery_sample_t *out) {
+    if(!out) return false;
+    uint32_t key=Motor_Lock();
+    *out=(adc_battery_sample_t){.raw=completed[3][1],.timestamp_ms=stamp[3],
+        .sequence=sequence[3],.valid=started && seen[3] && !errors[3]};
+    Motor_Unlock(key);
+    out->valid=out->valid && out->raw>0 && out->raw<4095U &&
+        (uint32_t)(HAL_GetTick()-out->timestamp_ms)<=ADC_DMA_STALE_MS;
+    return out->valid;
+}
 float ADC_DMA_BSP_GetCurrentA(motor_id_t id) {
     adc_current_sample_t sample;
     return ADC_DMA_BSP_GetSample(id,&sample) && sample.state==ADC_CURRENT_CALIBRATED ? sample.current_a : NAN;

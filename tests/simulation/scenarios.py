@@ -324,12 +324,25 @@ def high_level_intents(b):
             target=1.57 if action==3 else -1.57
             assert all(abs(b.fw.motors[i]['target']-target)<1e-6 for i in (5,6))
     before=[m['target'] for m in b.fw.motors]
-    b.raw(p.INTENT,bytes((5,)))
+    b.raw(p.INTENT,bytes((19,)))
     assert [m['target'] for m in b.fw.motors]==before
     b.command(p.STOP); b.stopped()
     return {'five_authoritative_mappings':True,'all_eight_required':True}
 
-CASES={'high_level_intents':high_level_intents,'closed_loop':closed_loop,'startup_reconnect':startup_reconnect,'partial_routing':partial_routing,
+def grip_contacts(b):
+    b.connect(); b.activate(); b.pause_model=True
+    for action,ids in ((17,range(5)),(18,range(2))):
+        b.command(p.INTENT,bytes((action,))); b.advance(120)
+        assert all(b.model.applied[i]>0 for i in ids)
+        assert all(b.model.applied[i]==0 for i in range(8) if i not in ids)
+        b.advance(500); assert b.fw.state['causes']==0 and not any(b.model.applied)
+        b.command(p.INTENT,bytes((action,))); b.advance(120)
+        assert b.fw.state['causes']==0 and not any(b.model.applied)
+    b.command(p.INTENT,bytes((1,))); b.advance(600)
+    b.stopped(); assert b.fw.state['causes']&2
+    return {'new_intents': [17,18], 'independent_contact_stops': True, 'normal_guard_restored': True}
+
+CASES={'grip_contacts':grip_contacts,'high_level_intents':high_level_intents,'closed_loop':closed_loop,'startup_reconnect':startup_reconnect,'partial_routing':partial_routing,
     'feedback_loss':feedback_loss,'firmware_to_host_loss':lambda b:direction_loss(b,'down'),
     'host_to_firmware_loss':lambda b:direction_loss(b,'up'),'complete_cut':lambda b:direction_loss(b,'both'),
     'host_process_pause':host_process_pause,'malformed_packets':malformed_packets,

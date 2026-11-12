@@ -11,6 +11,9 @@ static float reference[MOTOR_COUNT];
 static uint32_t last_motion[MOTOR_COUNT],tripped;
 static bool driving[MOTOR_COUNT];
 void MotorGuard_Init(void) { memset(reference,0,sizeof(reference)); memset(last_motion,0,sizeof(last_motion)); memset(driving,0,sizeof(driving)); tripped=0U; }
+void MotorGuard_ResetLocked(uint32_t mask) {
+    for(unsigned i=0;i<MOTOR_COUNT;++i) if(mask&(1U<<i)) driving[i]=false;
+}
 uint32_t MotorGuard_Poll(void) {
     uint32_t newly=0U,key=Motor_Lock(),now=HAL_GetTick();
     for(unsigned i=0;i<MOTOR_COUNT;++i) {
@@ -24,8 +27,10 @@ uint32_t MotorGuard_Poll(void) {
             reference[i]=position; last_motion[i]=now; driving[i]=false;
         } else if(!driving[i] || moved) { reference[i]=position; last_motion[i]=now; driving[i]=true; }
         else if((uint32_t)(now-last_motion[i])>=SIM_GUARD_STALL_MS) {
-            reference[i]=position; tripped|=bit; newly|=bit;
-            MotorSafety_RequestStopCauseLocked(MOTOR_STOP_GUARD,(motor_id_t)i);
+            reference[i]=position;
+            if(applied>0 && Motor_GripHandleStallLocked((motor_id_t)i)) driving[i]=false;
+            else { tripped|=bit; newly|=bit;
+                MotorSafety_RequestStopCauseLocked(MOTOR_STOP_GUARD,(motor_id_t)i); }
         }
     }
     Motor_Unlock(key); return newly;
@@ -63,6 +68,12 @@ void MotorGuard_Init(void)
     s_tripped = 0U;
 }
 
+void MotorGuard_ResetLocked(uint32_t mask) {
+    for(unsigned i=0;i<MOTOR_COUNT;++i) if(mask&(1U<<i)) {
+        s_driving[i]=false; ++s_sample_revision[i];
+    }
+}
+
 uint32_t MotorGuard_Poll(void)
 {
     uint32_t newly_tripped = 0U;
@@ -84,7 +95,7 @@ uint32_t MotorGuard_Poll(void)
         uint32_t now = HAL_GetTick();
         uint32_t bit = 1U << i;
         motor_state_t motor;
-        bool holding=Motor_GetSnapshot(id,&motor) && motor.enabled && motor.feedback_valid &&
+        bool holding=!Motor_GripActiveLocked(id) && Motor_GetSnapshot(id,&motor) && motor.enabled && motor.feedback_valid &&
             (uint32_t)(now-motor.feedback_ms)<=MOTOR_FEEDBACK_TIMEOUT_MS &&
             isfinite(motor.measured_position) && isfinite(motor.target_position) &&
             fabsf(motor.target_position-motor.measured_position)<=MOTOR_GUARD_HOLD_TOLERANCE_RAD &&
@@ -108,9 +119,12 @@ uint32_t MotorGuard_Poll(void)
             s_driving[i] = true;
         } else if ((uint32_t)(now - s_last_motion_ms[i]) >= MOTOR_GUARD_STALL_MS) {
             s_reference[i] = count;
-            s_tripped |= bit;
-            newly_tripped |= bit;
-            MotorSafety_RequestStopCauseLocked(MOTOR_STOP_GUARD, id);
+            if(Motor_DRV8848_DrivingDir(id)>0 && Motor_GripHandleStallLocked(id)) {
+                s_driving[i]=false; /* Expected contact, not a global fault. */
+            } else {
+                s_tripped |= bit; newly_tripped |= bit;
+                MotorSafety_RequestStopCauseLocked(MOTOR_STOP_GUARD,id);
+            }
         }
         Motor_Unlock(key);
     }

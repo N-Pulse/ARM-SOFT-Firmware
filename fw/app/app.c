@@ -1,29 +1,26 @@
 #include "app.h"
 #include "motor_control.h"
 #include "comm.h"
-#include "intent_router.h"
 #include "motor_estimation.h"
+#include "boot_homing.h"
 #include "hw_test_config.h"
+#include "force_sensor.h"
+#include "haptics.h"
+#include "status_leds.h"
 
 #if !defined(MOTOR_BACKEND_SIM) && !N_PULSE_HW_SINGLE_MOTOR_TEST
 #include "comms_session.h"
-#include "encoder_bsp.h"
 #include "motor_map.h"
 #include "motor_safety.h"
 #include "motor_lock.h"
 #include "lifecycle_config.h"
 #include <math.h>
 
-/* Confirm each axis on the actual board, particularly LPTIM quadrature.
- * Zero offsets are relative to the boot pose. Never reset them on RESTART. */
-static const encoder_calibration_t calibration[MOTOR_COUNT] = {
-#define CAL {APP_ENCODER_PPR,APP_ENCODER_QUADRATURE,APP_ENCODER_GEAR_RATIO,APP_ENCODER_DIRECTION,0}
-    CAL,CAL,CAL,CAL,CAL,CAL,CAL,CAL
-#undef CAL
-};
-static bool calibrated, return_started, settle_started;
-static uint32_t init_ms, motion_ms, settle_ms, affected_mask;
-static float previous_targets[MOTOR_COUNT];
+/* Boot homing owns encoder zero offsets. Reconnection retains them. */
+static bool calibrated, settle_started;
+static uint32_t handled_fault_masks[MOTOR_STOP_CAUSE_COUNT];
+static uint32_t battery_warning_revision;
+static uint32_t init_ms, motion_ms, settle_ms;
 static void transition(app_state_t expected, app_state_t next) {
     uint32_t k=Motor_Lock();
     if(CommsSession_StateLocked()==expected && MotorSafety_CanArmLocked())
@@ -39,19 +36,7 @@ static bool all_feedback_ready(void) {
         if(!Motor_HasFreshPositionFeedback((motor_id_t)i)) return false;
     return true;
 }
-static void begin_motion(bool all) {
-    affected_mask=0; settle_started=false; motion_ms=HAL_GetTick();
-    for(unsigned i=0;i<MOTOR_COUNT;++i) {
-        motor_state_t s;
-        if(!Motor_GetSnapshot((motor_id_t)i,&s)) continue;
-        if(all || s.target_position!=previous_targets[i] ||
-           !s.feedback_valid || !isfinite(s.measured_position) ||
-           fabsf(s.measured_position-s.target_position)>APP_POSITION_TOLERANCE_RAD)
-            affected_mask|=1U<<i;
-        previous_targets[i]=s.target_position;
-    }
-}
-static bool motion_complete(void) {
+static bool initial_pose_settled(void) {
     /* Recheck unchanged held joints too: drift must not fabricate completion. */
     bool in_range=true;
     for(unsigned i=0;i<MOTOR_COUNT;++i) {
@@ -63,7 +48,7 @@ static bool motion_complete(void) {
         }
         if(fabsf(s.measured_position-s.target_position)>APP_POSITION_TOLERANCE_RAD ||
            !isfinite(s.reference_position) || fabsf(s.reference_position-s.target_position)>APP_POSITION_TOLERANCE_RAD) {
-            affected_mask|=1U<<i; in_range=false;
+            in_range=false;
         }
     }
     if(!in_range) { settle_started=false; return false; }
@@ -79,45 +64,53 @@ static bool set_default(app_state_t expected) {
         if(ok) ok=Motor_SetTargetAtEpoch((motor_id_t)i,
             MotorMap_GetPose(MOTOR_POSE_OPEN,(motor_id_t)i),APP_HOME_SPEED_PERCENT,epoch);
     }
-    if(ok) begin_motion(true);
+    if(ok) { settle_started=false; motion_ms=HAL_GetTick(); }
     Motor_Unlock(k); return ok;
 }
-static void handle_control(void) {
-    lifecycle_control_t c; uint32_t epoch;
-    if(!CommsSession_TakeControl(&c,&epoch)) return;
-    uint32_t k=Motor_Lock();
-    bool current=epoch==MotorSafety_EpochLocked(); app_state_t s=CommsSession_StateLocked();
-    if(current && c.command==CONTROL_ALLOW_START && s==APP_READY)
-        CommsSession_StateLockedSet(APP_WORK_WAIT);
-    if(current && c.command==CONTROL_STOP && s==APP_STOPPING) return_started=false;
-    Motor_Unlock(k);
-    if(!current) { CommsSession_Report(APP_RESULT_STALE,c.request_id,0); return; }
-    if(c.command==CONTROL_RESTART && (s==APP_STOPPED || s==APP_FAULT)) {
-        /* No zero reset: fault/ESTOP can leave the mechanism away from boot pose. */
-        if(!Motor_RecoverFromFault()) {
-            CommsSession_Report(APP_RESULT_RECOVERY_DENIED,c.request_id,MotorSafety_GetStopCauses()); return;
-        }
-        k=Motor_Lock();
-        if(MotorSafety_CanArmLocked() && CommsSession_StateLocked()==s) {
-            MotorSafety_CancelCommandsLocked();
-            CommsSession_BeginRestartLocked();
-            CommsSession_StateLockedSet(APP_INIT_HANDSHAKE);
-            init_ms=HAL_GetTick(); return_started=settle_started=false;
-        }
-        Motor_Unlock(k);
-    }
-    /* DENY_START deliberately leaves READY holding the initial pose. */
-}
+
 #endif
+__attribute__((weak)) void App_OnCommunicationInterrupted(void) { }
+__attribute__((weak)) void App_OnBatteryWarning(bool active,const battery_snapshot_t *snapshot) {
+    (void)active; (void)snapshot; /* Indication/telemetry policy to be assigned. */
+}
+
+__attribute__((weak)) void App_OnSafetyFault(motor_stop_cause_t cause,uint32_t motor_mask) {
+    (void)motor_mask;
+    /* Every branch is entered AFTER the common all-motor stop. Follow-up
+     * handling remains deliberately undefined; none automatically recovers. */
+    switch(cause) {
+    case MOTOR_STOP_GUARD: break;         /* Stall / mechanical obstruction. */
+    case MOTOR_STOP_FORCE: break;         /* Force hard limit. */
+    case MOTOR_STOP_DRIVER: break;        /* DRV8848 physical fault. */
+    case MOTOR_STOP_FEEDBACK: break;      /* Missing/invalid sensor feedback. */
+    case MOTOR_STOP_CONTROL_DELAY: break; /* Control loop timing fault. */
+    case MOTOR_STOP_PID: break;           /* Invalid control calculation. */
+    case MOTOR_STOP_INIT: break;          /* Initialization / homing failure. */
+    case MOTOR_STOP_LINK: break;          /* UART transport fault, not heartbeat. */
+    case MOTOR_STOP_MOTION_TIMEOUT: break;
+    case MOTOR_STOP_POSITION: break;      /* Grip exceeds configured closing travel. */
+    case MOTOR_STOP_MANUAL: break;        /* Internal stop request only. */
+    default: break;
+    }
+}
+
 void App_Init(void) {
     /* Safe output/feedback/UART plumbing must exist before handshake or tasks. */
     Motor_InitAll();
     MotorEstimation_Init();
+    ForceSensor_Init();
+    Haptics_Init();
+    Battery_Init();
+    (void)BootHoming_RunOnce();
     Comms_Init();
+    StatusLeds_Init();
 #if !defined(MOTOR_BACKEND_SIM) && !N_PULSE_HW_SINGLE_MOTOR_TEST
-    calibrated=return_started=settle_started=false; affected_mask=0;
+    for(unsigned i=0;i<MOTOR_STOP_CAUSE_COUNT;++i) handled_fault_masks[i]=0;
+    battery_warning_revision=0;
+    calibrated=BootHoming_Done();
+    CommsSession_SetState(APP_INIT_MODULES);
+    settle_started=false;
     init_ms=HAL_GetTick();
-    for(unsigned i=0;i<MOTOR_COUNT;++i) previous_targets[i]=0;
     if(!isfinite(APP_POSITION_TOLERANCE_RAD) || APP_POSITION_TOLERANCE_RAD<=0)
         fault(APP_RESULT_INIT_FAILED,MOTOR_STOP_INIT);
 #endif
@@ -127,27 +120,37 @@ void App_Task(void) {
     /* Dedicated commissioning owns targets; never initialize/return all axes. */
     return;
 #elif defined(MOTOR_BACKEND_SIM)
-    /* SIM v2 retains its independent CONFIG/ARM/TARGET protocol. */
-    intent_t intent;
-    if(Comms_GetNextIntent(&intent)) IntentRouter_Handle(&intent);
+    /* SIM v2 dispatches its own targets directly from SimSession. */
+    return;
 #else
-    handle_control();
-    app_state_t s=CommsSession_GetState();
-    if(MotorSafety_IsFaultActive() && s!=APP_STOPPED) {
-        CommsSession_SetState(APP_FAULT); return;
+    battery_snapshot_t battery; Battery_GetSnapshot(&battery);
+    if(battery.warning_revision!=battery_warning_revision) {
+        battery_warning_revision=battery.warning_revision;
+        App_OnBatteryWarning(battery.low_warning,&battery);
     }
-    if(s==APP_INIT_HANDSHAKE) {
-        if(CommsSession_HasSession()) { transition(APP_INIT_HANDSHAKE,APP_INIT_MODULES); init_ms=HAL_GetTick(); }
-    } else if(s==APP_INIT_MODULES) {
-        if(!calibrated) {
-            for(unsigned i=0;i<MOTOR_COUNT;++i) {
-                if(!Encoder_BSP_SetCalibration((motor_id_t)i,&calibration[i])) {
-                    fault(APP_RESULT_INIT_FAILED,MOTOR_STOP_INIT); return;
-                }
-            }
-            calibrated=true;
+    if(CommsSession_TakeLinkLoss()) App_OnCommunicationInterrupted();
+    app_state_t s=CommsSession_GetState();
+    if(MotorSafety_IsFaultActive()) {
+        CommsSession_SetState(APP_FAULT);
+        /* Immediate all-output inhibition is done by MotorSafety at detection;
+         * task context completes HAL cleanup and dispatches deferred branches. */
+        Motor_ServiceStop();
+        uint32_t causes=MotorSafety_GetStopCauses();
+        for(unsigned i=0;i<MOTOR_STOP_CAUSE_COUNT;++i) {
+            motor_stop_cause_t cause=(motor_stop_cause_t)(1U<<i);
+            if(!(causes&(uint32_t)cause)) continue;
+            uint32_t mask=MotorSafety_GetCauseMotorMask(cause);
+            uint32_t newly_affected=mask&~handled_fault_masks[i];
+            handled_fault_masks[i]|=mask;
+            if(newly_affected) App_OnSafetyFault(cause,newly_affected);
         }
-        if(all_feedback_ready()) {
+        return;
+    }
+    if(s==APP_INIT_MODULES) {
+        if(!calibrated) {
+            fault(APP_RESULT_INIT_FAILED,MOTOR_STOP_INIT); return;
+        }
+        if(all_feedback_ready() && Motor_ControlReady()) {
             if(!Motor_DRV8848_IsArmed() && !Motor_DRV8848_Arm()) {
                 fault(APP_RESULT_INIT_FAILED,MOTOR_STOP_INIT); return;
             }
@@ -155,40 +158,11 @@ void App_Task(void) {
             else fault(APP_RESULT_INIT_FAILED,MOTOR_STOP_INIT);
         } else if((uint32_t)(HAL_GetTick()-init_ms)>APP_INIT_TIMEOUT_MS)
             fault(APP_RESULT_INIT_FAILED,MOTOR_STOP_INIT);
-    } else if(s==APP_INIT_RETURN || s==APP_WORK_EXECUTING || s==APP_STOPPING) {
-        if(s==APP_STOPPING && !return_started) {
-            if(!set_default(APP_STOPPING)) { fault(APP_RESULT_INIT_FAILED,MOTOR_STOP_INIT); return; }
-            return_started=true;
-        }
-        if(motion_complete()) {
-            uint32_t k=Motor_Lock();
-            if(CommsSession_StateLocked()==s && MotorSafety_CanArmLocked()) {
-                if(s==APP_INIT_RETURN) {
-                    CommsSession_StateLockedSet(APP_READY);
-                    CommsSession_Report(APP_RESULT_OK,0,0);
-                }
-                else if(s==APP_WORK_EXECUTING) {
-                    CommsSession_ActionCompleted(); CommsSession_StateLockedSet(APP_WORK_WAIT);
-                } else {
-                    Motor_StopAll(); /* Global inhibit and PID reset; retains reference. */
-                    if(MotorSafety_GetStopCauses()==MOTOR_STOP_MANUAL)
-                        CommsSession_StateLockedSet(APP_STOPPED);
-                }
-            }
-            Motor_Unlock(k);
-        } else if((uint32_t)(HAL_GetTick()-motion_ms)>APP_MOTION_TIMEOUT_MS)
-            fault(APP_RESULT_MOTION_TIMEOUT,MOTOR_STOP_MOTION_TIMEOUT);
-    }
-    if(CommsSession_GetState()==APP_WORK_WAIT) {
-        intent_t intent;
-        if(Comms_GetNextIntent(&intent)) {
-            uint32_t k=Motor_Lock();
-            if(CommsSession_StateLocked()==APP_WORK_WAIT && intent.epoch==MotorSafety_EpochLocked() && MotorSafety_CanArmLocked()) {
-                IntentRouter_Handle(&intent); begin_motion(false);
-                CommsSession_ActionStarted(); CommsSession_StateLockedSet(APP_WORK_EXECUTING);
-            }
-            Motor_Unlock(k);
-        }
+    } else if(s==APP_INIT_RETURN) {
+        /* Only startup return uses arrival/settling checks. Work never does. */
+        if(initial_pose_settled()) transition(APP_INIT_RETURN,APP_INIT_HANDSHAKE);
+        else if((uint32_t)(HAL_GetTick()-motion_ms)>APP_MOTION_TIMEOUT_MS)
+            fault(APP_RESULT_INIT_FAILED,MOTOR_STOP_INIT);
     }
 #endif
 }

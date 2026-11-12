@@ -52,15 +52,18 @@ int main(void) {
         assert(!Motor_IsEnabled((motor_id_t)i) && Motor_DRV8848_DrivingDir((motor_id_t)i)==0);
     }
     uint32_t old_epoch=MotorSafety_EpochLocked(); Motor_StopAll(); assert_stopped();
-    step(10,false); assert(command((hw_command_t){.operation=4})==HW_OK); assert_stopped();
+    step(10,false); assert(command((hw_command_t){.operation=4})==HW_PARAMETERS);
+    assert(Motor_RecoverFromFault()); assert_stopped();
     hw_command_t old={.operation=5,.request_id=++request_id,.epoch=old_epoch,.motor_id=MOTOR_INDEX};
     assert(HWCommission_Execute(&old,clock_ms,old_epoch)==HW_STALE); assert_stopped();
     assert(command((hw_command_t){.operation=5})==HW_OK);
     assert(command((hw_command_t){.operation=6})==HW_OK);
     step(10,false); Motor_GetSnapshot(MOTOR_INDEX,&m); assert(m.output_pwm==0);
     hardware_fault=true; MotorSafety_Poll(); assert_stopped();
-    assert(command((hw_command_t){.operation=4})==HW_FAULT);
-    hardware_fault=false; step(10,false); assert(command((hw_command_t){.operation=4})==HW_OK);
+    assert(command((hw_command_t){.operation=4})==HW_PARAMETERS);
+    assert(!Motor_RecoverFromFault());
+    hardware_fault=false; step(10,false); assert(command((hw_command_t){.operation=4})==HW_PARAMETERS);
+    assert(Motor_RecoverFromFault());
     assert_stopped();
     motor_kalman_config_t synthetic={.inertia_kg_m2=1,.torque_nm_a=1,.q_position=.001,.q_velocity=.01,
         .r_position=.001,.initial_position_variance=1,.initial_velocity_variance=1,.innovation_limit_rad=.5,
@@ -71,6 +74,6 @@ int main(void) {
     assert(!MotorEstimation_Reset(MOTOR_INDEX,false));
     assert(MotorEstimation_Reset(MOTOR_INDEX,true));
     step(10,false); MotorEstimation_Service(); MotorEstimation_Stop(MOTOR_INDEX); assert_stopped();
-    puts("PASS commissioning: missing parameters/session/calibration, one of eight enabled, bounded PID, disabled reference, STOP epoch, explicit recovery, global fault; no automatic motion");
+    puts("PASS commissioning: missing parameters/session/calibration, one of eight enabled, bounded PID, disabled reference, STOP epoch, local-only recovery, global fault; no automatic motion");
     return 0;
 }

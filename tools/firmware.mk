@@ -41,7 +41,7 @@ CPU_FLAGS := -mcpu=cortex-m4 -mfpu=fpv4-sp-d16 -mfloat-abi=hard -mthumb
 INCLUDES := Core/Inc Drivers/STM32G4xx_HAL_Driver/Inc \
  Drivers/STM32G4xx_HAL_Driver/Inc/Legacy Drivers/CMSIS/Device/ST/STM32G4xx/Include \
  Drivers/CMSIS/Include fw fw/app fw/comm fw/comm-stack fw/motors \
- fw/motors/motor_control fw/motors/motor_map fw/motors/estimation fw/bsp/encoder fw/bsp/adc_dma \
+ fw/motors/motor_control fw/motors/motor_map fw/motors/estimation fw/bsp/encoder fw/bsp/adc_dma fw/bsp/force_sensor fw/bsp/battery fw/bsp/status_leds \
  Middlewares/Third_Party/EmbeddedProto/src \
  Middlewares/Third_Party/FreeRTOS-Kernel/include \
  Middlewares/Third_Party/FreeRTOS-Kernel/portable/GCC/ARM_CM4F
@@ -72,9 +72,9 @@ C_SOURCES := Core/Src/main.c Core/Src/stm32g4xx_hal_msp.c \
  $(addprefix $(HAL_DIR)/stm32g4xx_,$(addsuffix .c,$(HAL_MODULES))) \
  $(addprefix $(RTOS_DIR)/,croutine.c event_groups.c list.c queue.c stream_buffer.c tasks.c timers.c) \
  $(RTOS_DIR)/portable/GCC/ARM_CM4F/port.c $(RTOS_DIR)/portable/MemMang/heap_4.c \
- fw/app/app.c fw/app/intent_router.c fw/app/hw_commission.c fw/app/hw_telemetry.c fw/comm/comm.c fw/comm/board_link.c \
- fw/comm/board_uart_compat.c fw/comm/uart4_transport.c fw/comm/comms_parser.c \
- fw/comm/comms_session.c fw/comm/lifecycle_protocol.c fw/comm/sim_protocol.c fw/comm/sim_session.c fw/bsp/encoder/encoder_bsp.c fw/bsp/adc_dma/adc_dma_bsp.c \
+ fw/app/app.c fw/app/boot_homing.c fw/app/intent_router.c fw/app/hw_commission.c fw/app/hw_telemetry.c fw/comm/comm.c fw/comm/board_link.c \
+ fw/comm/board_uart_compat.c fw/comm/uart4_transport.c fw/comm/comms_parser.c fw/comm/handshake_protocol.c fw/comm/data_protocol.c fw/comm/haptics.c fw/comm/haptics_task.c \
+ fw/comm/comms_session.c fw/comm/lifecycle_protocol.c fw/comm/sim_protocol.c fw/comm/sim_session.c fw/bsp/encoder/encoder_bsp.c fw/bsp/adc_dma/adc_dma_bsp.c fw/bsp/force_sensor/force_sensor.c fw/bsp/battery/battery.c fw/bsp/status_leds/status_leds.c \
  fw/motors/motor_map/motor_map.c fw/motors/motor_control/motor_backend_hw.c \
  fw/motors/motor_control/motor_backend_sim.c fw/motors/motor_control/motor_control.c \
  fw/motors/motor_control/motor_safety.c fw/motors/motor_control/motor_guard.c \

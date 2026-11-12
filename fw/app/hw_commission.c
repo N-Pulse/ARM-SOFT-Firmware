@@ -70,9 +70,6 @@ uint32_t HWCommission_Execute(const hw_command_t *c, uint32_t ms, uint32_t epoch
         if (enabled || armed) result=HW_DISABLE_FIRST;
         else if (!Encoder_BSP_Reset(id)) result=HW_REJECTED;
         break;
-    case 4:
-        Motor_Unlock(key);
-        return Motor_RecoverFromFault() ? HW_OK : HW_FAULT;
     case 5:
         if (!configured) result=HW_PARAMETERS;
         else if (!Encoder_BSP_IsCalibrated(id)) result=HW_CALIBRATION;
@@ -95,7 +92,6 @@ uint32_t HWCommission_Execute(const hw_command_t *c, uint32_t ms, uint32_t epoch
         else if (!Motor_SetTargetAtEpoch(id,c->target_rad,pwm,epoch)) result=HW_STALE;
         break;
     }
-    case 8: Motor_Disable(id); break;
     case 9:
         if(enabled || armed) result=HW_DISABLE_FIRST;
         else if(!MotorEstimation_Reset(id,c->stationary_reference_verified)) result=HW_REJECTED;

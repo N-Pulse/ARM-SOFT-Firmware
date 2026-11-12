@@ -5,6 +5,7 @@
 #include "motor_safety_config.h"
 #include "motor_lock.h"
 #include "motor_guard.h"
+#include "motor_grip_config.h"
 #include "motor_pid_config.h"
 #include "drv8848.h"
 #include "motor_backend_state.h"
@@ -25,6 +26,7 @@ static uint32_t s_last_update_ms;
 static uint32_t s_last_elapsed_ms;
 static bool s_clock_started;
 static bool s_timing_valid;
+static uint32_t s_grip_mask,s_grip_contact;
 
 static bool feedback_fresh_locked(motor_id_t id, uint32_t now)
 {
@@ -39,6 +41,7 @@ static bool feedback_fresh_locked(motor_id_t id, uint32_t now)
 
 void Motor_InhibitAllLocked(void)
 {
+    s_grip_mask=s_grip_contact=0;
     for (unsigned i = 0U; i < MOTOR_COUNT; ++i) {
         motor_state_t *motor = &s_motors[i];
         if (motor->enabled) s_stopped_controller_mask |= 1U << i;
@@ -61,6 +64,7 @@ void Motor_InitAll(void)
     memset(s_revision, 0, sizeof(s_revision));
     memset(s_pid_ms, 0, sizeof(s_pid_ms));
     s_stopped_controller_mask = 0U;
+    s_grip_mask=s_grip_contact=0;
     s_clock_started = false;
     s_timing_valid = false;
     s_last_update_ms = 0U;
@@ -97,7 +101,7 @@ void Motor_ServiceStop(void)
 bool Motor_OutputAllowedLocked(motor_id_t id)
 {
     return (uint32_t)id < MOTOR_COUNT && HWTest_MotorAllowed(id) && s_motors[id].enabled &&
-           MotorSafety_CanArmLocked() && MotorBackend_IsArmed();
+           MotorSafety_CanArmLocked() && MotorBackend_IsArmed() && !(s_grip_contact&(1U<<id));
 }
 
 uint32_t Motor_StoppedControllerMaskLocked(void) { return s_stopped_controller_mask; }
@@ -159,6 +163,7 @@ void Motor_Update(void)
         uint32_t sample_ms = HAL_GetTick();
         uint32_t pid_elapsed = (uint32_t)(sample_ms - s_pid_ms[i]);
         prepared = s_motors[i];
+        bool gripping=Motor_GripActiveLocked(id);
         prepared.pwm_limit = MotorSafety_PwmLimitLocked(id, prepared.pwm_limit, HAL_GetTick());
         Motor_Unlock(key);
         if (!allowed) continue;
@@ -181,8 +186,12 @@ void Motor_Update(void)
         if (delta > max_step) delta = max_step;
         else if (delta < -max_step) delta = -max_step;
         prepared.reference_position += delta;
-        bool valid_pid = MotorPID_Update(&prepared.pid, prepared.reference_position,
-                                        prepared.measured_position, dt, prepared.pwm_limit,
+        bool valid_pid=true;
+        if(gripping) {
+            prepared.reference_position=prepared.measured_position;
+            prepared.output_pwm=fminf((float)MOTOR_GRIP_PWM_PERCENT,prepared.pwm_limit);
+        } else valid_pid=MotorPID_Update(&prepared.pid,prepared.reference_position,
+                                        prepared.measured_position,dt,prepared.pwm_limit,
                                         &prepared.output_pwm);
         key = Motor_Lock();
         /* Stop wins whether it occurred before or after calculation. The
@@ -196,6 +205,8 @@ void Motor_Update(void)
             } else if (!feedback_fresh_locked(id, now) || !MotorBackend_FeedbackReady(id) ||
                        !MotorSafety_CanEnableLocked(id, now)) {
                 MotorSafety_RequestStopCauseLocked(MOTOR_STOP_FEEDBACK, id);
+            } else if(gripping && !MotorSafety_CanCloseLocked(id,s_motors[i].measured_position)) {
+                MotorSafety_RequestStopCauseLocked(MOTOR_STOP_POSITION,id);
             } else if (!valid_pid) {
                 MotorSafety_RequestStopCauseLocked(MOTOR_STOP_PID, id);
             } else {
@@ -214,6 +225,78 @@ void Motor_Update(void)
     }
     if (MotorSafety_IsFaultActive()) Motor_ServiceStop();
     else MotorBackend_Flush();
+}
+
+static void grip_stop_locked(motor_id_t id) {
+    motor_state_t *m=&s_motors[id];
+    m->target_position=m->reference_position=m->measured_position;
+    m->output_pwm=m->pwm_limit=0;
+    s_pid_ms[id]=HAL_GetTick();
+    MotorPID_Reset(&m->pid); ++s_revision[id];
+#ifndef MOTOR_BACKEND_SIM
+    Motor_DRV8848_Stop(id);
+#endif
+    MotorBackend_ApplyOutput(id,m->reference_position,0);
+}
+void Motor_EndGripLocked(void) {
+    uint32_t mask=s_grip_mask;
+    s_grip_mask=s_grip_contact=0;
+    for(unsigned i=0;i<MOTOR_COUNT;++i)
+        if(mask&(1U<<i)) grip_stop_locked((motor_id_t)i);
+    MotorGuard_ResetLocked(mask);
+}
+bool Motor_GripActiveLocked(motor_id_t id) {
+    return (unsigned)id<MOTOR_COUNT && (s_grip_mask&~s_grip_contact&(1U<<id));
+}
+bool Motor_GripHandleStallLocked(motor_id_t id) {
+    if(!Motor_GripActiveLocked(id) || !Motor_OutputAllowedLocked(id)) return false;
+    grip_stop_locked(id);
+    if(!(s_grip_mask&(1U<<id)) || !MotorSafety_CanArmLocked()) return false;
+    s_grip_contact|=1U<<id;
+    return true;
+}
+void Motor_GetGripMasks(uint32_t *selected,uint32_t *contacted) {
+    uint32_t key=Motor_Lock();
+    if(selected) *selected=s_grip_mask;
+    if(contacted) *contacted=s_grip_contact;
+    Motor_Unlock(key);
+}
+bool Motor_BeginGrip(uint32_t mask,uint32_t epoch) {
+    const uint32_t fingers=(1U<<MOTOR_THUMB)|(1U<<MOTOR_INDEX)|(1U<<MOTOR_MIDDLE)|
+        (1U<<MOTOR_RING)|(1U<<MOTOR_LITTLE);
+    uint32_t key=Motor_Lock(),now=HAL_GetTick();
+    bool ok=mask && !(mask&~fingers) && epoch==MotorSafety_EpochLocked() &&
+        MotorSafety_CanArmLocked() && MotorBackend_IsArmed();
+    for(unsigned i=0;ok && i<MOTOR_COUNT;++i) if(mask&(1U<<i))
+        ok=s_motors[i].enabled && feedback_fresh_locked((motor_id_t)i,now) &&
+            MotorBackend_FeedbackReady((motor_id_t)i) && MotorSafety_CanEnableLocked((motor_id_t)i,now);
+    if(ok && s_grip_mask!=mask) {
+        uint32_t previous=s_grip_mask;
+        Motor_EndGripLocked();
+        /* Cancel the previous PWM on every enabled motor immediately. In
+         * particular, a selected finger must not retain a previous 100% PID
+         * output until the next tick applies the lower grip duty limit. */
+        for(unsigned i=0;i<MOTOR_COUNT;++i)
+            if(!(previous&(1U<<i)) && s_motors[i].enabled) grip_stop_locked((motor_id_t)i);
+        s_grip_mask=mask;
+        for(unsigned i=0;i<MOTOR_COUNT;++i) if(mask&(1U<<i)) {
+            motor_state_t *m=&s_motors[i];
+            m->target_position=m->reference_position=m->measured_position;
+            m->pwm_limit=MOTOR_GRIP_PWM_PERCENT; m->output_pwm=0;
+            MotorPID_Reset(&m->pid); s_pid_ms[i]=now; ++s_revision[i];
+        }
+        MotorGuard_ResetLocked((1U<<MOTOR_COUNT)-1U);
+    }
+    Motor_Unlock(key); return ok;
+}
+
+bool Motor_ControlReady(void)
+{
+    uint32_t key=Motor_Lock();
+    bool ready=s_clock_started && s_timing_valid &&
+        (uint32_t)(HAL_GetTick()-s_last_update_ms)<=MOTOR_CONTROL_MAX_ELAPSED_MS;
+    Motor_Unlock(key);
+    return ready;
 }
 
 bool Motor_Enable(motor_id_t id)
@@ -253,6 +336,7 @@ void Motor_Disable(motor_id_t id)
     if ((uint32_t)id >= MOTOR_COUNT) return;
     uint32_t key = Motor_Lock();
     motor_state_t *motor = &s_motors[id];
+    s_grip_mask&=~(1U<<id); s_grip_contact&=~(1U<<id);
     motor->enabled = false;
     motor->pwm_limit = 0.0f;
     motor->output_pwm = 0.0f;

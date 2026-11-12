@@ -23,7 +23,7 @@ def rejects(fn):
     except (ValueError,OverflowError): return
     raise AssertionError('invalid value accepted')
 
-def run():
+def run(include_network=True):
     for module_path in ('tools/ros2_bridge/serial_bridge.py','tools/serial_emg_client.py'):
         spec=importlib.util.spec_from_file_location('safe_import',ROOT/module_path)
         module=importlib.util.module_from_spec(spec); spec.loader.exec_module(module)
@@ -110,6 +110,10 @@ def run():
     for f in fake.writes: parsed+=parser.feed(f,0)
     assert len(parsed)==len(fake.writes) and worker.peer.replaced>0
     assert all(len(f)<=151 for f in fake.writes)
+
+    if not include_network:
+        print("PASS host codec/worker tests; SKIP localhost UDP subprocess (offline mode)")
+        return
 
     # A separate real OS process keeps integrating and cancels u after its own
     # deadline while the parent sends nothing. Only localhost UDP is used.

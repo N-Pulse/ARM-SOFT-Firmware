@@ -47,6 +47,8 @@ message ClassificationData {
     LITTLE_CLOSE   = 14;
     WRIST_PALM     = 15;
     WRIST_DORSI    = 16;
+    GRASPING       = 17;
+    PINCHING       = 18;
   }
   Action action = 1;
 }

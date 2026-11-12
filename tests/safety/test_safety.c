@@ -112,6 +112,10 @@ bool Encoder_BSP_GetSnapshot(motor_id_t id, encoder_snapshot_t *out) {
 }
 #endif
 bool ADC_DMA_BSP_Init(void) { return true; }
+bool ADC_DMA_BSP_GetBatterySample(adc_battery_sample_t *out) {
+    if(out) *out=(adc_battery_sample_t){0};
+    return false;
+}
 bool ADC_DMA_BSP_GetSample(motor_id_t id,adc_current_sample_t *out) {
     (void)id;
     *out=(adc_current_sample_t){.current_a=NAN,.voltage_v=NAN,.age_ms=UINT32_MAX};
@@ -141,7 +145,8 @@ static void position(motor_id_t id, float value)
 static void force(motor_id_t id, uint16_t value)
 {
     motor_feedback_t fb = { .id = id, .position = NAN, .velocity = NAN,
-                           .force_mN = value, .valid_fields = MOTOR_FB_FORCE };
+                           .force_mN = value, .force_voltage_v=(float)fmax(0.0,((double)value/9806.65-0.0064)/1.1937),
+    .valid_fields = MOTOR_FB_FORCE_VOLTAGE };
     MotorBackend_OnFeedback(&fb);
 }
 static void deliver_positions(void)

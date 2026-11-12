@@ -7,6 +7,7 @@ import threading
 import time
 from . import protocol as p
 from .peer import Peer
+from intent_actions import ACTION_NAMES
 
 def milliseconds():
     return time.monotonic_ns()//1000000
@@ -29,9 +30,8 @@ def submit_command(peer, text):
     if command=='target' and len(words)==4:
         return peer.request(p.TARGET,p.targets([(int(words[1]),float(words[2]),int(words[3]))]))
     if command=='intent' and len(words)==2:
-        actions=('OPEN_HAND','CLOSE_HAND','PINCH','ROTATE_WRIST_R','ROTATE_WRIST_L')
-        if words[1] not in actions: raise ValueError('one of the five existing public intentions required')
-        return peer.request(p.INTENT,bytes((actions.index(words[1]),)))
+        if words[1] not in ACTION_NAMES: raise ValueError('Unknown public intent')
+        return peer.request(p.INTENT,bytes((ACTION_NAMES.index(words[1]),)))
     raise ValueError('config [force_mask] | recover | arm | enable mask | target ID rad limit | intent NAME | stop')
 
 class SerialWorker:

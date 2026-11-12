@@ -1,6 +1,9 @@
 #include <WriteBufferFixedSize.h>
 #include "tx.h"
 #include "protocol_messages.h"
+#include "intent_router.h"
+static_assert(static_cast<uint32_t>(ClassificationData::Action::PINCHING)+1U==ACTION_COUNT,
+              "Protobuf and intent action counts must match");
 extern "C" {
 #include "uart4_transport.h"
 }
@@ -19,7 +22,7 @@ bool SendHelloMessage(void)
 }
 bool SendClassificationData(uint8_t action)
 {
-    if (action > 16U) return false;
+    if (action >= ACTION_COUNT) return false;
     ClassificationData classification;
     classification.set_action(static_cast<ClassificationData::Action>(action));
     Data data; data.set_instruction(classification);

@@ -14,8 +14,11 @@ typedef enum {
     MOTOR_STOP_PID           = 1U << 6,
     MOTOR_STOP_LINK          = 1U << 7,
     MOTOR_STOP_INIT          = 1U << 8,
-    MOTOR_STOP_MOTION_TIMEOUT= 1U << 9
+    MOTOR_STOP_MOTION_TIMEOUT= 1U << 9,
+    MOTOR_STOP_POSITION      = 1U << 10
 } motor_stop_cause_t;
+
+#define MOTOR_STOP_CAUSE_COUNT 11U
 
 typedef struct {
     uint32_t ms, cause, motor_mask, epoch, state, sequence;
@@ -45,6 +48,8 @@ void MotorSafety_RequestStopCauseLocked(motor_stop_cause_t cause, motor_id_t sou
 uint32_t MotorSafety_EpochLocked(void);
 bool MotorSafety_CanArmLocked(void);
 bool MotorSafety_CanEnableLocked(motor_id_t id, uint32_t now);
+/* Closing contact-seek must still respect the configured upper travel bound. */
+bool MotorSafety_CanCloseLocked(motor_id_t id,float position_rad);
 bool MotorSafety_CanRecoverLocked(uint32_t now);
 uint32_t MotorSafety_RequiredFeedbackMaskLocked(void);
 void MotorSafety_ClearFaultLocked(void);

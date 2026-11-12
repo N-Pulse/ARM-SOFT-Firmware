@@ -89,7 +89,7 @@ void MotorBackend_RefreshFeedback(void)
 
 void MotorBackend_ApplyOutput(motor_id_t id, float reference_position, float output_percent)
 {
-    (void)reference_position; // HW 输出只需要 PID 的结果
+    (void)reference_position; /* Hardware output uses the computed control effort. */
 
     if ((uint32_t)id >= MOTOR_COUNT) {
         return;

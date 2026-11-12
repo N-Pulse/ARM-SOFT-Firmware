@@ -72,10 +72,13 @@ int main(int argc, char **argv)
         return 0;
     }
     assert(ADC_DMA_BSP_Init() && starts == 5 && amps == 6);
+    adc_battery_sample_t battery;
+    assert(!ADC_DMA_BSP_GetBatterySample(&battery));
     adc_current_sample_t sample;
     assert(ADC_DMA_BSP_GetSample(MOTOR_INDEX,&sample) && !sample.raw_valid && sample.active);
     HAL_ADC_ConvCpltCallback(&hadc1); HAL_ADC_ConvCpltCallback(&hadc2);
     HAL_ADC_ConvCpltCallback(&hadc3); HAL_ADC_ConvCpltCallback(&hadc4); HAL_ADC_ConvCpltCallback(&hadc5);
+    assert(ADC_DMA_BSP_GetBatterySample(&battery) && battery.raw==401 && battery.timestamp_ms==clock_ms);
     assert(ADC_DMA_BSP_GetRaw(MOTOR_INDEX) == 100);
     assert(ADC_DMA_BSP_GetRaw(MOTOR_MIDDLE) == 200);
     assert(ADC_DMA_BSP_GetRaw(MOTOR_RING) == 201);
@@ -111,6 +114,7 @@ int main(int argc, char **argv)
     assert(ADC_DMA_BSP_GetSample(MOTOR_MIDDLE,&sample) && sample.state==ADC_CURRENT_SATURATED);
     clock_ms=101;
     clock_ms=121;
+    assert(!ADC_DMA_BSP_GetBatterySample(&battery));
     assert(ADC_DMA_BSP_GetSample(MOTOR_INDEX,&sample) && sample.state==ADC_CURRENT_STALE && isnan(sample.current_a));
     hadc3.ErrorCode=4; HAL_ADC_ErrorCallback(&hadc3);
     assert(ADC_DMA_BSP_GetSample(MOTOR_THUMB,&sample) && sample.state==ADC_CURRENT_ERROR);
@@ -121,6 +125,7 @@ int main(int argc, char **argv)
     puts("Finite ADC scans: completed-only freshness, raw/calibrated/stale/error, coefficients, Curr5=ADC3/PE13, battery excluded OK");
 #else
     assert(ADC_DMA_BSP_Init() && starts == 0 && amps == 0);
+    adc_battery_sample_t battery; assert(!ADC_DMA_BSP_GetBatterySample(&battery));
     for (unsigned i = 0; i < MOTOR_COUNT; ++i) assert(ADC_DMA_BSP_GetRaw((motor_id_t)i) == 0);
     puts("Default ADC acquisition: no hardware starts, no valid samples OK");
 #endif

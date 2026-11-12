@@ -24,21 +24,22 @@ static const float s_pos_max[MOTOR_COUNT] = {
     DEGREES_TO_RAD(90.0f), DEGREES_TO_RAD(15.0f)
 };
 #endif
-static const uint16_t s_force_limits[MOTOR_COUNT] = {
+static const float s_force_limits[MOTOR_COUNT] = {
 #ifdef MOTOR_BACKEND_SIM
     SIM_FORCE_HARD_MN, SIM_FORCE_HARD_MN, SIM_FORCE_HARD_MN, SIM_FORCE_HARD_MN,
     SIM_FORCE_HARD_MN, SIM_FORCE_HARD_MN, SIM_FORCE_HARD_MN, SIM_FORCE_HARD_MN
 #else
-    MOTOR_FORCE_HARD_LIMIT_MN, MOTOR_FORCE_HARD_LIMIT_MN, MOTOR_FORCE_HARD_LIMIT_MN, MOTOR_FORCE_HARD_LIMIT_MN,
-    MOTOR_FORCE_HARD_LIMIT_MN, MOTOR_FORCE_WRIST_HARD_LIMIT_MN, MOTOR_FORCE_WRIST_HARD_LIMIT_MN, MOTOR_FORCE_HARD_LIMIT_MN
+    MOTOR_FORCE_HARD_LIMIT_V, MOTOR_FORCE_HARD_LIMIT_V, MOTOR_FORCE_HARD_LIMIT_V, MOTOR_FORCE_HARD_LIMIT_V,
+    MOTOR_FORCE_HARD_LIMIT_V, MOTOR_FORCE_WRIST_HARD_LIMIT_V, MOTOR_FORCE_WRIST_HARD_LIMIT_V, MOTOR_FORCE_HARD_LIMIT_V
 #endif
 };
 
-static uint16_t s_force[MOTOR_COUNT];
+/* HW: volts. SIM retains its separate mN protocol. */
+static float s_force[MOTOR_COUNT];
 static uint32_t s_force_ms[MOTOR_COUNT];
 static bool s_force_received[MOTOR_COUNT];
 static uint32_t s_causes;
-static uint32_t s_cause_motors[10];
+static uint32_t s_cause_motors[MOTOR_STOP_CAUSE_COUNT];
 static uint32_t s_epoch;
 static bool s_stop_pending;
 static bool s_stop_in_progress;
@@ -103,7 +104,7 @@ void MotorSafety_RequestStopCauseLocked(motor_stop_cause_t cause, motor_id_t sou
 {
     uint32_t bits = (uint32_t)cause;
     /* This entry accepts one known cause, preserving an unambiguous history. */
-    if (bits == 0U || (bits & (bits - 1U)) != 0U || bits > MOTOR_STOP_MOTION_TIMEOUT) return;
+    if (bits == 0U || (bits & (bits - 1U)) != 0U || bits > MOTOR_STOP_POSITION) return;
     unsigned index = cause_index(cause);
     uint32_t mask = (uint32_t)source < MOTOR_COUNT ? (1U << source) :
                     ((1U << MOTOR_COUNT) - 1U);
@@ -159,7 +160,7 @@ uint32_t MotorSafety_GetStopCauses(void)
 uint32_t MotorSafety_GetCauseMotorMask(motor_stop_cause_t cause)
 {
     uint32_t bits = (uint32_t)cause;
-    if (!bits || (bits & (bits - 1U)) || bits > MOTOR_STOP_MOTION_TIMEOUT) return 0U;
+    if (!bits || (bits & (bits - 1U)) || bits > MOTOR_STOP_POSITION) return 0U;
     uint32_t key = Motor_Lock();
     uint32_t result = s_cause_motors[cause_index(cause)];
     Motor_Unlock(key);
@@ -170,6 +171,14 @@ uint32_t MotorSafety_EpochLocked(void) { return s_epoch; }
 
 bool MotorSafety_CanArmLocked(void)
 {
+#ifndef MOTOR_BACKEND_SIM
+    /* Voltage thresholds are editable float constants, so the preprocessor
+     * cannot check ordering/NaN. Invalid settings must never permit arming. */
+    if(!isfinite(MOTOR_FORCE_SOFT_LIMIT_V) || MOTOR_FORCE_SOFT_LIMIT_V<0.0f ||
+       !isfinite(MOTOR_FORCE_HARD_LIMIT_V) || MOTOR_FORCE_HARD_LIMIT_V<=MOTOR_FORCE_SOFT_LIMIT_V ||
+       !isfinite(MOTOR_FORCE_WRIST_HARD_LIMIT_V) || MOTOR_FORCE_WRIST_HARD_LIMIT_V<=MOTOR_FORCE_SOFT_LIMIT_V)
+        return false;
+#endif
     return s_causes == 0U && !s_stop_pending && !s_stop_in_progress;
 }
 
@@ -178,6 +187,14 @@ bool MotorSafety_CanEnableLocked(motor_id_t id, uint32_t now)
     return !s_force_received[id] ||
            (force_fresh(id, now) && s_force[id] < s_force_limits[id]);
 }
+bool MotorSafety_CanCloseLocked(motor_id_t id,float position) {
+    if((unsigned)id>=MOTOR_COUNT || !isfinite(position)) return false;
+#ifdef MOTOR_BACKEND_SIM
+    return position<SIM_POSITION_LIMIT_RAD;
+#else
+    return position<s_pos_max[id];
+#endif
+}
 
 float MotorSafety_PwmLimitLocked(motor_id_t id, float requested, uint32_t now)
 {
@@ -185,7 +202,7 @@ float MotorSafety_PwmLimitLocked(motor_id_t id, float requested, uint32_t now)
     if (force_fresh(id, now) && s_force[id] >= SIM_FORCE_SOFT_MN &&
         requested > SIM_FORCE_REDUCED_PERCENT) return SIM_FORCE_REDUCED_PERCENT;
 #else
-    if (force_fresh(id, now) && s_force[id] >= MOTOR_FORCE_SOFT_LIMIT_MN &&
+    if (force_fresh(id, now) && s_force[id] >= MOTOR_FORCE_SOFT_LIMIT_V &&
         requested > MOTOR_FORCE_REDUCED_SPEED) return MOTOR_FORCE_REDUCED_SPEED;
 #endif
     return requested;
@@ -218,11 +235,22 @@ void MotorSafety_OnFeedback(const motor_feedback_t *feedback)
 
 void MotorSafety_OnFeedbackAtTime(const motor_feedback_t *feedback, uint32_t ms)
 {
-    if (feedback == NULL || (uint32_t)feedback->id >= MOTOR_COUNT ||
-        !(feedback->valid_fields & MOTOR_FB_FORCE)) return;
+    if (feedback == NULL || (uint32_t)feedback->id >= MOTOR_COUNT) return;
+#ifdef MOTOR_BACKEND_SIM
+    if(!(feedback->valid_fields & MOTOR_FB_FORCE)) return;
+#else
+    if(!(feedback->valid_fields & MOTOR_FB_FORCE_VOLTAGE)) return;
+    if(!isfinite(feedback->force_voltage_v) || feedback->force_voltage_v<0.0f) {
+        MotorSafety_RequestStopCause(MOTOR_STOP_FEEDBACK,feedback->id); return;
+    }
+#endif
     motor_id_t id = feedback->id;
     uint32_t key = Motor_Lock();
+#ifdef MOTOR_BACKEND_SIM
     s_force[id] = feedback->force_mN;
+#else
+    s_force[id] = feedback->force_voltage_v;
+#endif
     s_force_ms[id] = ms;
     s_force_received[id] = true;
     if (s_force[id] >= s_force_limits[id])
@@ -258,7 +286,8 @@ uint32_t MotorSafety_RequiredFeedbackMaskLocked(void)
     return Motor_StoppedControllerMaskLocked() |
            s_cause_motors[cause_index(MOTOR_STOP_GUARD)] |
            s_cause_motors[cause_index(MOTOR_STOP_FEEDBACK)] |
-           s_cause_motors[cause_index(MOTOR_STOP_PID)];
+           s_cause_motors[cause_index(MOTOR_STOP_PID)] |
+           s_cause_motors[cause_index(MOTOR_STOP_POSITION)];
 }
 
 bool MotorSafety_CanRecoverLocked(uint32_t now)
@@ -271,6 +300,11 @@ bool MotorSafety_CanRecoverLocked(uint32_t now)
         MotorBackend_FaultActive()) return false;
     uint32_t mask = s_cause_motors[cause_index(MOTOR_STOP_FORCE)];
     for (unsigned i = 0U; i < MOTOR_COUNT; ++i) {
+        if(s_cause_motors[cause_index(MOTOR_STOP_POSITION)]&(1U<<i)) {
+            motor_state_t motor;
+            if(!Motor_GetSnapshot((motor_id_t)i,&motor) ||
+               !MotorSafety_CanCloseLocked((motor_id_t)i,motor.measured_position)) return false;
+        }
         if ((mask & (1U << i)) &&
             (!force_fresh((motor_id_t)i, now) || s_force[i] >= s_force_limits[i])) return false;
         /* Once force reception has been used by a stopped controller, a

@@ -56,7 +56,9 @@ class ClassificationData final: public ::EmbeddedProto::MessageInterface
       LITTLE_OPEN    = 13,
       LITTLE_CLOSE   = 14,
       WRIST_PALM     = 15,
-      WRIST_DORSI    = 16
+      WRIST_DORSI    = 16,
+      GRASPING       = 17,
+      PINCHING       = 18
     };
 
     enum class FieldNumber : uint32_t

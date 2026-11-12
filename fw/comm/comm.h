@@ -9,7 +9,6 @@
 
 void Comms_Init(void);
 void Comms_TaskCreate(void);
-bool Comms_GetNextIntent(intent_t *out_intent);
 
 /* One bounded task iteration, production entry also used by host tests. */
 void Comms_ProcessRxOnce(TickType_t wait);

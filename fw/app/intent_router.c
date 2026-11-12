@@ -1,15 +1,19 @@
 #include "intent_router.h"
 #include "motor_control.h"
 #include "motor_map.h"
+#include "motor_lock.h"
+#include "motor_safety.h"
 #include <stddef.h>
 
-static void apply_full_pose(motor_pose_id_t pose, uint32_t epoch)
+static bool apply_full_pose(motor_pose_id_t pose, uint32_t epoch)
 {
+    bool ok=true;
     for (int i = 0; i < MOTOR_COUNT; i++)
     {
         float target_rad = MotorMap_GetPose(pose, (motor_id_t)i);
-        Motor_SetTargetAtEpoch((motor_id_t)i, target_rad, 100, epoch);
+        ok=Motor_SetTargetAtEpoch((motor_id_t)i,target_rad,100,epoch) && ok;
     }
+    return ok;
 }
 
 /* Poignet différentiel : WRIST_X et WRIST_Y sont 2 moteurs couplés
@@ -24,65 +28,54 @@ static void apply_full_pose(motor_pose_id_t pose, uint32_t epoch)
  *
  * Donc rotation pure  → flexion = 0  → les 2 moteurs vont dans le même sens.
  *      flexion pure    → rotation = 0 → les 2 moteurs vont en sens opposé. */
-static void drive_wrist(float rotation_rad, float flexion_rad, uint8_t speed, uint32_t epoch)
+static bool drive_wrist(float rotation_rad, float flexion_rad, uint8_t speed, uint32_t epoch)
 {
-    Motor_SetTargetAtEpoch(MOTOR_WRIST_X, rotation_rad + flexion_rad, speed, epoch);
-    Motor_SetTargetAtEpoch(MOTOR_WRIST_Y, rotation_rad - flexion_rad, speed, epoch);
+    bool x=Motor_SetTargetAtEpoch(MOTOR_WRIST_X,rotation_rad+flexion_rad,speed,epoch);
+    bool y=Motor_SetTargetAtEpoch(MOTOR_WRIST_Y,rotation_rad-flexion_rad,speed,epoch);
+    return x && y;
 }
 
-void IntentRouter_Handle(const intent_t *intent)
+bool IntentRouter_Handle(const intent_t *intent)
 {
-    if (intent == NULL) return;
+    if (intent == NULL) return false;
 
+    uint32_t key=Motor_Lock();
+    if(intent->epoch!=MotorSafety_EpochLocked() || !MotorSafety_CanArmLocked()) {
+        Motor_Unlock(key); return false;
+    }
+    if(intent->id!=ACTION_GRASPING && intent->id!=ACTION_PINCHING) Motor_EndGripLocked();
+    bool ok=true;
     switch (intent->id)
     {
-        case ACTION_OPEN_HAND:      apply_full_pose(MOTOR_POSE_OPEN, intent->epoch); break;
-        case ACTION_CLOSE_HAND:     apply_full_pose(MOTOR_POSE_CLOSED, intent->epoch); break;
-        case ACTION_PINCH:          apply_full_pose(MOTOR_POSE_PINCH, intent->epoch); break;
+        case ACTION_OPEN_HAND:      ok=apply_full_pose(MOTOR_POSE_OPEN, intent->epoch); break;
+        case ACTION_CLOSE_HAND:     ok=apply_full_pose(MOTOR_POSE_CLOSED, intent->epoch); break;
+        case ACTION_PINCH:          ok=apply_full_pose(MOTOR_POSE_PINCH, intent->epoch); break;
         /* Rotation pure : les 2 moteurs du poignet dans le même sens. */
-        case ACTION_ROTATE_WRIST_R: drive_wrist( 1.57f, 0.0f, 100, intent->epoch); break;
-        case ACTION_ROTATE_WRIST_L: drive_wrist(-1.57f, 0.0f, 100, intent->epoch); break;
-        case ACTION_THUMB_OPEN:      apply_full_pose(MOTOR_THUMB_OPEN, intent->epoch); break;
-        case ACTION_THUMB_CLOSE:      apply_full_pose(MOTOR_THUMB_CLOSE, intent->epoch); break;
-        case ACTION_INDEX_OPEN:      apply_full_pose(MOTOR_INDEX_OPEN, intent->epoch); break;
-        case ACTION_INDEX_CLOSE:      apply_full_pose(MOTOR_INDEX_CLOSE, intent->epoch); break;
-        case ACTION_MIDDLE_OPEN:      apply_full_pose(MOTOR_MIDDLE_OPEN, intent->epoch); break;
-        case ACTION_MIDDLE_CLOSE:      apply_full_pose(MOTOR_MIDDLE_CLOSE, intent->epoch); break;
-        case ACTION_RING_OPEN:      apply_full_pose(MOTOR_RING_OPEN, intent->epoch); break;
-        case ACTION_RING_CLOSE:      apply_full_pose(MOTOR_RING_CLOSE, intent->epoch); break;
-        case ACTION_LITTLE_OPEN:      apply_full_pose(MOTOR_LITTLE_OPEN, intent->epoch); break;
-        case ACTION_LITTLE_CLOSE:      apply_full_pose(MOTOR_LITTLE_CLOSE, intent->epoch); break;
-        case ACTION_WRIST_PALM:      apply_full_pose(MOTOR_WRIST_PALMARFLEXION, intent->epoch); break;
-        case ACTION_WRIST_DORSI:      apply_full_pose(MOTOR_WRIST_DORSIFLEXION, intent->epoch); break;
+        case ACTION_ROTATE_WRIST_R: ok=drive_wrist( 1.57f, 0.0f, 100, intent->epoch); break;
+        case ACTION_ROTATE_WRIST_L: ok=drive_wrist(-1.57f, 0.0f, 100, intent->epoch); break;
+        case ACTION_THUMB_OPEN:      ok=apply_full_pose(MOTOR_THUMB_OPEN, intent->epoch); break;
+        case ACTION_THUMB_CLOSE:      ok=apply_full_pose(MOTOR_THUMB_CLOSE, intent->epoch); break;
+        case ACTION_INDEX_OPEN:      ok=apply_full_pose(MOTOR_INDEX_OPEN, intent->epoch); break;
+        case ACTION_INDEX_CLOSE:      ok=apply_full_pose(MOTOR_INDEX_CLOSE, intent->epoch); break;
+        case ACTION_MIDDLE_OPEN:      ok=apply_full_pose(MOTOR_MIDDLE_OPEN, intent->epoch); break;
+        case ACTION_MIDDLE_CLOSE:      ok=apply_full_pose(MOTOR_MIDDLE_CLOSE, intent->epoch); break;
+        case ACTION_RING_OPEN:      ok=apply_full_pose(MOTOR_RING_OPEN, intent->epoch); break;
+        case ACTION_RING_CLOSE:      ok=apply_full_pose(MOTOR_RING_CLOSE, intent->epoch); break;
+        case ACTION_LITTLE_OPEN:      ok=apply_full_pose(MOTOR_LITTLE_OPEN, intent->epoch); break;
+        case ACTION_LITTLE_CLOSE:      ok=apply_full_pose(MOTOR_LITTLE_CLOSE, intent->epoch); break;
+        case ACTION_WRIST_PALM:      ok=apply_full_pose(MOTOR_WRIST_PALMARFLEXION, intent->epoch); break;
+        case ACTION_WRIST_DORSI:      ok=apply_full_pose(MOTOR_WRIST_DORSIFLEXION, intent->epoch); break;
+        case ACTION_GRASPING:
+            ok=Motor_BeginGrip((1U<<MOTOR_THUMB)|(1U<<MOTOR_INDEX)|(1U<<MOTOR_MIDDLE)|
+                (1U<<MOTOR_RING)|(1U<<MOTOR_LITTLE),intent->epoch); break;
+        case ACTION_PINCHING:
+            ok=Motor_BeginGrip((1U<<MOTOR_THUMB)|(1U<<MOTOR_INDEX),intent->epoch); break;
         case ACTION_UNKNOWN:
             /* Safety fallback (link timeout or unrecognised intent). */
-            Motor_StopAll();
+            Motor_StopAll(); ok=false;
             break;
 
-        default:
-        {
-            #ifdef MOTOR_BACKEND_SIM
-                        /* DEBUG (sim builds only): move ONE motor, leave the others alone.
-                        *   10..17 -> motor (id - 10) to 30 deg
-                        *   20..27 -> motor (id - 20) back to 0 deg
-                        * Motor order = motor_id_t: 0 thumb, 1 index, 2 middle, 3 ring,
-                        * 4 little, 5 wrist_x, 6 wrist_y, 7 palm.
-                        * The safety filter still clamps (e.g. palm max 15 deg). */
-                        int id = (int)intent->id;
-                        if ((id >= 10) && (id < 10 + MOTOR_COUNT))
-                        {
-                            Motor_SetTarget((motor_id_t)(id - 10), 30.0f * 0.0174532925f, 100);
-                            break;
-                        }
-                        if ((id >= 20) && (id < 20 + MOTOR_COUNT))
-                        {
-                            Motor_SetTarget((motor_id_t)(id - 20), 0.0f, 100);
-                            break;
-                        }
-            #endif
-                        /* Safety fallback (unrecognised intent). */
-                        Motor_StopAll();
-                        break;
-         }
+        default: Motor_StopAll(); ok=false; break;
     }
+    Motor_Unlock(key); return ok;
 }

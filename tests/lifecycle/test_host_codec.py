@@ -2,8 +2,10 @@
 from pathlib import Path
 import importlib.util
 import unittest
+import sys
 
 ROOT=Path(__file__).resolve().parents[2]
+sys.path.insert(0,str(ROOT/'tools'))
 spec=importlib.util.spec_from_file_location('lifecycle_client',ROOT/'tools/lifecycle_client.py')
 client=importlib.util.module_from_spec(spec)
 spec.loader.exec_module(client)
@@ -23,7 +25,7 @@ class ProtocolMigration(unittest.TestCase):
         for tag in (5,6,7,8):
             payload=client.message(tag,{1:5,2:123,3:1})[2:]
             self.assertEqual(client.decode(payload),(tag,{1:5,2:123,3:1}))
-        self.assertIn('state=READY',client.describe(5,{1:3}))
+        self.assertIn('state=WORK',client.describe(5,{1:4}))
         self.assertIn('SAFETY',client.describe(6,{1:1,2:2,3:2,5:5}))
 
     def test_legacy_float_diagnostic_is_ignored(self):

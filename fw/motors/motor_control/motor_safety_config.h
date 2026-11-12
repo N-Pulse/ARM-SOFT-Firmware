@@ -24,15 +24,17 @@
 #define MOTOR_GUARD_EPS_COUNTS 6U
 #endif
 
-/* Existing software force limits only. No calibration or current protection. */
-#ifndef MOTOR_FORCE_SOFT_LIMIT_MN
-#define MOTOR_FORCE_SOFT_LIMIT_MN 1200U
+/* Hardware force-sensor voltage thresholds. kg=1.1937*V+0.0064;
+ * old mN -> kg uses 9806.65 mN/kg. No runtime force conversion is needed.
+ * 1200/1600/2000 mN correspond to these voltage limits. */
+#ifndef MOTOR_FORCE_SOFT_LIMIT_V
+#define MOTOR_FORCE_SOFT_LIMIT_V 0.09714832f
 #endif
-#ifndef MOTOR_FORCE_HARD_LIMIT_MN
-#define MOTOR_FORCE_HARD_LIMIT_MN 1600U
+#ifndef MOTOR_FORCE_HARD_LIMIT_V
+#define MOTOR_FORCE_HARD_LIMIT_V 0.13131825f
 #endif
-#ifndef MOTOR_FORCE_WRIST_HARD_LIMIT_MN
-#define MOTOR_FORCE_WRIST_HARD_LIMIT_MN 2000U
+#ifndef MOTOR_FORCE_WRIST_HARD_LIMIT_V
+#define MOTOR_FORCE_WRIST_HARD_LIMIT_V 0.16548818f
 #endif
 #ifndef MOTOR_FORCE_REDUCED_SPEED
 #define MOTOR_FORCE_REDUCED_SPEED 25U
@@ -44,10 +46,7 @@
     MOTOR_GUARD_PERIOD_MS == 0 || MOTOR_GUARD_EPS_COUNTS == 0
 #error "Motor safety timeouts and guard thresholds must be positive bounded values"
 #endif
-#if MOTOR_FORCE_SOFT_LIMIT_MN >= MOTOR_FORCE_HARD_LIMIT_MN || \
-    MOTOR_FORCE_SOFT_LIMIT_MN >= MOTOR_FORCE_WRIST_HARD_LIMIT_MN || \
-    MOTOR_FORCE_HARD_LIMIT_MN > 65535U || MOTOR_FORCE_WRIST_HARD_LIMIT_MN > 65535U || \
-    MOTOR_FORCE_REDUCED_SPEED > 100U
+#if MOTOR_FORCE_REDUCED_SPEED > 100U
 #error "Invalid software force thresholds"
 #endif
 

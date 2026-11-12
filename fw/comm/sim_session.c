@@ -73,7 +73,7 @@ static bool validate(uint8_t type,const uint8_t *p,size_t n) {
     case SIM_HELLO: case SIM_HEARTBEAT: case SIM_RECOVER: case SIM_ARM: case SIM_STOP: return n==k;
     case SIM_CONFIG: return n==k+4U && Sim_Read16(p+k)==SIM_MODEL_ROTOR_V1 && p[k+2U]==0xFFU;
     case SIM_ENABLE: return n==k+1U && p[k]!=0U;
-    case SIM_INTENT: return n==k+1U && p[k]<=ACTION_ROTATE_WRIST_L;
+    case SIM_INTENT: return n==k+1U && p[k]<ACTION_COUNT;
     case SIM_TARGET: {
         if(n<k+1U || !p[k] || p[k]>MOTOR_COUNT || n!=k+1U+(size_t)p[k]*6U) return false;
         uint8_t seen=0U;
@@ -176,7 +176,7 @@ bool SimSession_OnFrame(uint8_t type,const uint8_t *p,size_t n,uint32_t ms,uint3
         success=SimSession_IsArmedLocked() && MotorSafety_CanArmLocked() && enabled_mask()==0xFFU;
         if(success) {
             intent_t intention={.id=(intent_id_t)p[16U],.epoch=MotorSafety_EpochLocked()};
-            IntentRouter_Handle(&intention);
+            success=IntentRouter_Handle(&intention);
         }
         break;
     case SIM_FEEDBACK: {

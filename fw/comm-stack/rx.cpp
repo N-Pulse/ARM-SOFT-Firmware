@@ -2,6 +2,9 @@
 #include <ReadBufferFixedSize.h>
 #include "rx.h"
 #include "protocol_messages.h"
+#include "intent_router.h"
+static_assert(static_cast<uint32_t>(ClassificationData::Action::PINCHING)+1U==ACTION_COUNT,
+              "Protobuf and intent action counts must match");
 
 rx_result_t HandleDeviceMessage(const uint8_t *bytes, size_t length)
 {
@@ -34,7 +37,7 @@ rx_result_t HandleDeviceMessage(const uint8_t *bytes, size_t length)
     if (msg.get_which_message() == DeviceMessage::FieldNumber::DATA &&
         msg.get_data().get_which_message() == Data::FieldNumber::INSTRUCTION) {
         uint32_t action = static_cast<uint32_t>(msg.get_data().get_instruction().get_action());
-        if (action <= 16U) { result.type = RX_TYPE_ACTION; result.data.action_id = action; }
+        if (action < ACTION_COUNT) { result.type = RX_TYPE_ACTION; result.data.action_id = action; }
     } else if (msg.get_which_message() == DeviceMessage::FieldNumber::HELLO) {
         result.type = RX_TYPE_HELLO;
         result.proto_version = msg.get_hello().get_proto_ver();
