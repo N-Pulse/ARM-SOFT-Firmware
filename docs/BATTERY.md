@@ -1,12 +1,16 @@
 # Battery monitoring and low-voltage warning
 
-Pack metadata from the supplied label: 4S1P, 14.8 V nominal, 3500 mAh.
-The picture also identifies 7 A discharge and a temperature sensor; neither is
-used as an ADC calibration, a voltage warning threshold or an NTC curve.
+Current pack metadata: user-specified Keeppower 4S1P, 14.8 V nominal, 4000 mAh.
+This supersedes the earlier 3500 mAh label. The
+[manufacturer product page](https://www.keeppower.com.cn/products_detail.php?id=874)
+confirms capacity/voltage/protection but supplies no usable voltage-versus-SOC
+curve or readable SOC interface. No current rating, NTC curve or ADC calibration
+is inferred from the product title.
 No charge percentage is inferred from the nominal voltage/capacity label.
 For context, fuel-gauge SoC models use voltage, current and temperature:
 [TI fuel-gauge technical reference](https://www.ti.com/lit/ug/sluuac5c/sluuac5c.pdf).
-This implementation is a pack-voltage warning interface, not a fuel gauge.
+This module accepts pack voltage and actual state of charge; it is not a fuel
+gauge. Percentage warning/shutdown behavior is documented in [BATTERY_SOC.md](BATTERY_SOC.md).
 
 Configuration: `fw/bsp/battery/battery_config.h`.
 
@@ -18,10 +22,14 @@ Configuration: `fw/bsp/battery/battery_config.h`.
   both initially 1000 ms.
 - `BATTERY_SAMPLE_TIMEOUT_MS`: sample expiry, initially 1000 ms.
 
-The four electrical/threshold values default to zero (unconfigured), as
-requested. They are not battery-manufacturer recommendations. No ADC-to-pack
-conversion is enabled until Vref/divider are supplied; direct pack-voltage input
-still works. No voltage-based warning is enabled until both ordered thresholds
+The user confirmed power_board_lou as the final hardware. Nominal Vref is
+3.3 V from the control board's filtered analog rail. R21 is the 10 kohm upper
+divider resistor and R22 the 2.2 kohm lower resistor, so the pack multiplier is
+12200/2200, approximately 5.54545. These defaults are centralized in
+`fw/app/board_hardware_config.h`; the existing BATTERY_* overrides still work.
+Measure Vref and verify the assembled divider/cable before electrical validation.
+The low/clear thresholds remain zero (unconfigured), as requested. These are
+not battery-manufacturer recommendations. No voltage-based warning is enabled until both ordered thresholds
 are supplied. Do not copy the unit-test thresholds into production as a
 validated battery profile.
 
@@ -52,9 +60,10 @@ low warning, the low flag stays set until a fresh sustained recovery.
 ControlTask notifies `App_OnBatteryWarning(active, snapshot)` once per low/clear
 transition. Its weak implementation in `fw/app/app.c` is empty for the future
 indicator/communication policy. Keep the callback short and nonblocking.
-Battery warnings do not stop motors, clear motor faults, or change the
-handshake/work state. Critical-undervoltage shutdown, per-cell monitoring,
-temperature handling and calibrated SoC estimation are outside this change.
+Ordinary voltage/20-percent warnings do not stop motors or change the work
+state. The separately latched below-10-percent policy stops all motors after
+30 seconds and attempts the optional power-off hook. Per-cell monitoring,
+temperature handling and calibrated SoC estimation remain outside this module.
 
 Validation (HAL/RTOS/ADC mocked):
 
@@ -65,5 +74,6 @@ python3 tests/startup/run_tests.py
 ```
 
 The configured battery test uses artificial 13.2/13.6 V thresholds and an example
-3.3 V reference / divider ratio 6 solely to exercise logic; production defaults
-remain unset. No battery discharge or live-board measurement was performed.
+3.3 V reference / divider ratio 6 solely to exercise logic. The defaults test
+checks the final lou divider conversion with warning thresholds still unset.
+No battery discharge or live-board measurement was performed.

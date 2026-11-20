@@ -4,6 +4,10 @@
 #include "motor_lock.h"
 #include "motor_safety.h"
 #include "comms_session.h"
+#include "haptics_uart2.h"
+/* SIM and host fixtures do not link the physical USART2 adapter. */
+__attribute__((weak)) bool HapticsUART2_RxComplete(UART_HandleTypeDef *uart) { (void)uart; return false; }
+__attribute__((weak)) bool HapticsUART2_Error(UART_HandleTypeDef *uart) { (void)uart; return false; }
 #ifdef MOTOR_BACKEND_SIM
 #include "sim_session.h"
 #include "motor_sim_config.h"
@@ -81,6 +85,7 @@ bool UART4Transport_StartRx(TaskHandle_t owner)
 }
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *uart)
 {
+    if (HapticsUART2_RxComplete(uart)) return;
     if (uart != BoardUART_GetHandle() || !rx_task || rx_recovery) return;
     uint32_t key = Motor_Lock();
     unsigned next = (head + 1U) % COMMS_RX_CAPACITY;
@@ -98,6 +103,7 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *uart)
 }
 void HAL_UART_ErrorCallback(UART_HandleTypeDef *uart)
 {
+    if (HapticsUART2_Error(uart)) return;
     if (uart != BoardUART_GetHandle() || !rx_task) return;
     rx_fault(false);
     /* End IT RX now, including nonblocking FE/NE errors which HAL may leave

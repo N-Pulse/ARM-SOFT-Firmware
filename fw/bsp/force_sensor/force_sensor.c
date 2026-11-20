@@ -47,7 +47,7 @@ bool ForceSensor_GetLatest(motor_id_t id,force_sensor_sample_t *out) {
 }
 __attribute__((weak)) bool ForceSensor_ReadVoltage(motor_id_t id,float *voltage,uint32_t *ms) {
     (void)id; (void)voltage; (void)ms;
-    return false; /* No force channel is assigned to the existing current ADCs. */
+    return false; /* Assigned force inputs are not yet part of a hardware scan. */
 }
 void ForceSensor_Service(void) {
     static const motor_id_t ids[]={MOTOR_THUMB,MOTOR_INDEX,MOTOR_MIDDLE};

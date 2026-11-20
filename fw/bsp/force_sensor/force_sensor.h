@@ -2,6 +2,7 @@
 #define FORCE_SENSOR_H
 #include "motor_control.h"
 #include <stdint.h>
+#include "../../app/board_hardware_config.h"
 
 typedef struct {
     float voltage_v;
@@ -15,8 +16,9 @@ void ForceSensor_Init(void);
  * High-force protection is evaluated on every sample, even if telemetry skips it. */
 bool ForceSensor_PublishVoltage(motor_id_t id,float voltage_v,uint32_t timestamp_ms);
 bool ForceSensor_GetLatest(motor_id_t id,force_sensor_sample_t *out);
-/* Task-context adapter, outside Motor_Lock. Bind this weak board hook to the
- * actual force ADC channel after wiring/reference voltage have been confirmed. */
+/* Task-context adapter, outside Motor_Lock. Wiring/ADC IDs are defined in
+ * board_hardware_config.h. Acquisition still requires a shared ADC scan owner;
+ * do not reconfigure ADC1/2 concurrently with motor-current DMA. */
 bool ForceSensor_ReadVoltage(motor_id_t id,float *voltage_v,uint32_t *timestamp_ms);
 void ForceSensor_Service(void);
 #endif

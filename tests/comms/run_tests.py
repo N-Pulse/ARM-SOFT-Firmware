@@ -7,6 +7,15 @@ import subprocess
 import sys
 ROOT=Path(__file__).resolve().parents[2]
 def main():
+    out=ROOT/'build/comms-tests'
+    out.mkdir(parents=True,exist_ok=True)
+    subprocess.run(['clang','-std=c11','-Wall','-Wextra','-Werror',
+                    '-fsanitize=address,undefined','-g',
+                    '-Itests/comms/mocks','-Itests/safety/mocks',
+                    '-Ifw/comm','-Ifw/motors/motor_control',
+                    'fw/comm/haptics_uart2.c','tests/comms/test_haptics_uart2.c',
+                    '-o',str(out/'haptics-uart2')],cwd=ROOT,check=True)
+    subprocess.run([str(out/'haptics-uart2')],cwd=ROOT,check=True)
     for args in (("tests/lifecycle/run_tests.py","--handshake","--sanitize"),
                  ("tests/lifecycle/run_tests.py","--sanitize"),
                  ("tests/lifecycle/test_host_codec.py",),

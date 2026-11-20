@@ -22,8 +22,8 @@ void Haptics_Service(uint32_t now_ms,haptics_send_fn send,void *context);
 haptics_state_t Haptics_GetState(void);
 void Haptics_GetParameters(haptics_parameters_t *out);
 void Haptics_GetStatus(haptics_status_t *out);
-/* Optional one-transfer board adapter. Default hooks stay disconnected until
- * haptics UART and force ADC wiring have been specified. No UART4 reuse. */
+/* One-transfer USART2 board adapter; disconnected weak fallbacks for SIM.
+ * Force ADC wiring is independent and remains unassigned. No UART4 reuse. */
 bool Haptics_TransportStart(void);
 bool Haptics_TransportReadByte(uint8_t *byte,uint32_t *timestamp_ms);
 bool Haptics_TransportTrySend(const uint8_t *frame,size_t length);

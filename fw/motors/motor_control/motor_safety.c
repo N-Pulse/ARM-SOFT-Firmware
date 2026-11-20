@@ -104,7 +104,7 @@ void MotorSafety_RequestStopCauseLocked(motor_stop_cause_t cause, motor_id_t sou
 {
     uint32_t bits = (uint32_t)cause;
     /* This entry accepts one known cause, preserving an unambiguous history. */
-    if (bits == 0U || (bits & (bits - 1U)) != 0U || bits > MOTOR_STOP_POSITION) return;
+    if (bits == 0U || (bits & (bits - 1U)) != 0U || bits >= (1U << MOTOR_STOP_CAUSE_COUNT)) return;
     unsigned index = cause_index(cause);
     uint32_t mask = (uint32_t)source < MOTOR_COUNT ? (1U << source) :
                     ((1U << MOTOR_COUNT) - 1U);
@@ -160,7 +160,7 @@ uint32_t MotorSafety_GetStopCauses(void)
 uint32_t MotorSafety_GetCauseMotorMask(motor_stop_cause_t cause)
 {
     uint32_t bits = (uint32_t)cause;
-    if (!bits || (bits & (bits - 1U)) || bits > MOTOR_STOP_POSITION) return 0U;
+    if (!bits || (bits & (bits - 1U)) || bits >= (1U << MOTOR_STOP_CAUSE_COUNT)) return 0U;
     uint32_t key = Motor_Lock();
     uint32_t result = s_cause_motors[cause_index(cause)];
     Motor_Unlock(key);
@@ -292,6 +292,7 @@ uint32_t MotorSafety_RequiredFeedbackMaskLocked(void)
 
 bool MotorSafety_CanRecoverLocked(uint32_t now)
 {
+    if(s_causes&MOTOR_STOP_BATTERY) return false; /* Requires a board restart. */
     if (!CommsSession_CanRecoverLocked(now)) return false;
 #ifdef MOTOR_BACKEND_SIM
     if (!SimSession_CanRecoverLocked(now)) return false;
@@ -313,6 +314,14 @@ bool MotorSafety_CanRecoverLocked(uint32_t now)
             s_force_received[i] && !force_fresh((motor_id_t)i, now)) return false;
     }
     return true;
+}
+
+bool MotorSafety_StopComplete(void)
+{
+    uint32_t key=Motor_Lock();
+    bool complete=s_causes!=0 && !s_stop_pending && !s_stop_in_progress &&
+        !MotorBackend_IsArmed() && !MotorBackend_IsTransitioning();
+    Motor_Unlock(key); return complete;
 }
 
 void MotorSafety_ClearFaultLocked(void)

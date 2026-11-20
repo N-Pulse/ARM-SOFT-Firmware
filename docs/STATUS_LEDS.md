@@ -1,12 +1,12 @@
 # Three-board red/green indication
 
-The controller has three logical LED outputs, in this order:
+The controller has three logical LED outputs in physical chain order:
 
 | Logical LED | GREEN | RED |
 | --- | --- | --- |
-| Decoding / upper computer | Fresh, current-session DATA Status byte 0 equals 0 | Nonzero remote state, no status, lost link, or handshake |
-| Controller | Battery is valid/NORMAL, no low warning, no motor safety fault | Low battery, missing/stale/invalid/unconfigured battery, or local safety fault |
-| Haptics | Link STREAMING and fresh Status byte 0 equals 0 | Nonzero state, no status, stale status or renewed handshake |
+| LED1 Controller / Arm | Battery is valid/NORMAL, no low warning, no motor safety fault | Low battery, missing/stale/invalid/unconfigured battery, or local safety fault |
+| LED2 Haptics | Link STREAMING and fresh Status byte 0 equals 0 | Nonzero state, no status, stale status or renewed handshake |
+| LED3 Decoding / EMG | Fresh, current-session DATA Status byte 0 equals 0 | Nonzero remote state, no status, lost link, or handshake |
 
 These temporary remote status and unknown-state conventions were explicitly
 agreed. State display is independent of intent execution; remote state does not
@@ -30,28 +30,51 @@ status. Haptics uses the existing independent status snapshot and handshake stat
 `StatusLeds_GetSnapshot()` exposes all three computed colors. `StatusLeds_Init()`
 initializes them to RED. App_Init initializes the module, and TelemetryTask calls
 `StatusLeds_Service()`. No new RTOS task, blocking wait or blink timer is added.
-The old 500 ms timer that toggled PB10/USART3_TX has been removed; this pin is not
-assigned as any of the three status outputs.
+The old 500 ms PB10 toggle timer is removed. PB10 now carries the three-pixel
+single-wire data stream, not a directly toggled single LED.
 
-Actual LED pins/type/polarity are intentionally unassigned. Fill these weak
-interfaces in `fw/bsp/status_leds/status_leds.c` or override them in a board file:
+The V3 .ioc labels PB10/USART3_TX as LED. The SHOWBATTERY.zip schematic and PCB
+identify three Dialight 587-1024-147F LEDs in the chain LED1 -> LED2 -> LED3.
+The agreed roles are Arm/Haptics/EMG respectively. Physical zero-based indices
+are set in `fw/app/board_hardware_config.h` and used as status_led_id_t values.
+Control-board PB10 feeds R39 (47 ohm) and J8.2; J8.1 is GND. On the light board,
+J2.1 feeds LED1 DIN, J2.2 is GND, and J1.5 supplies all three RGB LEDs.
+The external cable and actual supply voltage remain to be verified.
+The manufacturer protocol is 24-bit GRB, MSB first, with 0 encoded as
+0.3 us high / 0.9 us low and 1 as 0.9 us high / 0.3 us low; reset is at least
+250 us low. Ordinary 115200-baud USART3 output is not this waveform.
+Battery-level LED behavior has not been assigned to the three status hooks.
 
-- `StatusLeds_BoardInit()`: configure the three bicolor/RGB LED outputs or driver.
-- `StatusLeds_BoardWrite(led, color)`: turn off the opposite color and select RED
-  or GREEN, respecting the actual active polarity/driver protocol.
+`status_leds_board.c` overrides the weak hooks on HW. It configures USART3 for
+inverted 4 Mbaud 8N1 and DMA1 channel 1 / USART3_TX request (free in the supplied
+.ioc). USART3 and DMA IRQ priority is 6; the driver owns both handlers. The .ioc
+still contains its old UART initializer; this board adapter overrides it at
+startup and must be preserved across future Cube configuration changes.
+Each inverted UART byte encodes two LED bits in ten 250 ns cells: LED 0 is
+HLLLL, LED 1 HHHHL. Pulses are 0.25/1.00 us or 1.00/0.25 us, within the
+[manufacturer's limits](https://s3-us-west-2.amazonaws.com/catsy.557/Dialight_datasheet_587-1024-147F_Addressable_RGB.pdf).
+Three GRB pixels produce 36 UART bytes / 90 us. DMA avoids per-byte interrupt
+gaps; no bit-banging or long interrupt-disabled section is used. Idle is low.
+After observing completion the driver waits at least two millisecond tick
+boundaries before another frame, exceeding the 250 us reset requirement.
+Brightness defaults to 32/255 in status_leds_config.h. Changes coalesce into
+the latest desired colors without modifying the active DMA buffer. A 100 ms
+TX stall aborts/retries; abort failure disables further writes until restart.
+SIM/host fixtures retain disconnected weak hooks.
 
-Calls occur at startup or in task context outside Motor_Lock; keep them short
-and nonblocking. Default hooks are empty and do not claim GPIO/UART resources,
-so no physical illumination is claimed until board binding is supplied.
+Below 20% SOC sets Arm LED1 red. Below 10% latches a 30-second red/off 5 Hz
+countdown and subsequent motor stop; see [BATTERY_SOC.md](BATTERY_SOC.md).
 Unknown/unconfigured sources compute RED as agreed: for example, the decoding
 Status length is still zero in the placeholder handshake config, and battery
-warning thresholds/divider are still unset, so these sources cannot yet be GREEN
-in a production build without configuration.
+voltage-warning thresholds are still unset. A valid SOC source can establish
+battery NORMAL without those optional voltage thresholds.
 
 Validation:
 
 ```sh
 python3 tests/lifecycle/run_tests.py --leds --sanitize
+python3 tests/lifecycle/run_tests.py --battery-soc --sanitize
+python3 tests/leds/run_tests.py
 ```
 
 The fixture uses production parsers/session/LED logic with mocked I/O and

@@ -29,7 +29,7 @@ static void haptics_task(void *context) {
 }
 void Haptics_TaskCreate(void) {
 #ifndef MOTOR_BACKEND_SIM
-    /* GPIO/UART ownership remains disconnected until the board mapping is set. */
+    /* The physical board adapter owns USART2; SIM retains disconnected hooks. */
     if(!Haptics_TransportStart()) return;
     BaseType_t result=xTaskCreate(haptics_task,"haptics",768,NULL,tskIDLE_PRIORITY+1U,NULL);
     configASSERT(result==pdPASS);

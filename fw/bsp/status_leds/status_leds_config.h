@@ -1,5 +1,11 @@
 #ifndef STATUS_LEDS_CONFIG_H
 #define STATUS_LEDS_CONFIG_H
+#ifndef STATUS_LEDS_BRIGHTNESS
+#define STATUS_LEDS_BRIGHTNESS 32U
+#endif
+#if STATUS_LEDS_BRIGHTNESS == 0 || STATUS_LEDS_BRIGHTNESS > 255U
+#error Invalid LED brightness
+#endif
 /* Provisional remote status encoding: first Status byte, 0 normal/nonzero fault. */
 #ifndef STATUS_LEDS_DECODING_NORMAL_VALUE
 #define STATUS_LEDS_DECODING_NORMAL_VALUE 0U

@@ -46,6 +46,7 @@ static void haptic_status(uint8_t state,bool corrupt) {
     haptic_feed(f,sizeof(f));
 }
 int main(void) {
+    assert(STATUS_LED_CONTROLLER==0 && STATUS_LED_HAPTICS==1 && STATUS_LED_DECODING==2);
     boot_to_handshake();
     assert(board_inits && color(STATUS_LED_DECODING)==STATUS_LED_RED &&
         color(STATUS_LED_CONTROLLER)==STATUS_LED_RED && color(STATUS_LED_HAPTICS)==STATUS_LED_RED);
@@ -79,7 +80,7 @@ int main(void) {
     haptic_status(0,false); show(); assert(color(STATUS_LED_HAPTICS)==STATUS_LED_GREEN);
     uint8_t sync[5]; Handshake_EncodeSync(sync,sizeof(sync)); haptic_feed(sync,sizeof(sync));
     show(); assert(color(STATUS_LED_HAPTICS)==STATUS_LED_RED);
-    puts("PASS haptics 0/nonzero, CRC rejection, status timeout and renewed SYNC select the third LED independently");
+    puts("PASS haptics 0/nonzero, CRC rejection, status timeout and renewed SYNC select LED2 independently");
 
     assert(Battery_PublishVoltage(14.8f,clock_ms)); show();
     assert(color(STATUS_LED_CONTROLLER)==STATUS_LED_GREEN);

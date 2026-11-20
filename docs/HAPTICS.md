@@ -53,18 +53,37 @@ conversion. Hardware accepts `MOTOR_FB_FORCE_VOLTAGE`; the separate fictitious
 SIM protocol still uses its original mN field and limits. Force voltage is not
 motor current. Existing OPAMP/current ADC channels are not reused as force inputs.
 
-Hardware binding is explicitly deferred as requested. The current source does not specify haptics
-UART ownership, the three force ADC channels/pins, or ADC reference voltage.
-`Haptics_TransportStart/ReadByte/TrySend` and `ForceSensor_ReadVoltage` therefore
-remain disconnected weak hooks. `Haptics_TaskCreate()` creates the task only
-after the board transport starts; it never claims UART4 or an arbitrary ADC.
+The user confirmed that the BLE module on USART2 connects to haptics.
+`fw/comm/haptics_uart2.c` binds the transport to huart2: PD5 TX, PD6 RX,
+115200 baud, 8N1, as initialized by main.c. PG9 is the BLE reset output and
+remains at its existing inactive high level. The module must already provide
+transparent serial delivery; module-specific AT setup/reset timing is unknown.
+RX uses one-byte HAL interrupts and a 1024-slot timestamped ring, independent
+of the allocated but inactive USART2 RX DMA channel. The adapter enables
+USART2_IRQn at priority 6 and owns USART2_IRQHandler. Shared HAL RX/error
+callbacks dispatch USART2 separately from UART4. TX uses a copied single
+in-flight frame with no telemetry queue. RX overflow/error or a TX exceeding
+100 ms flushes buffered input and resets the haptics session to WAIT_SYNC;
+an abort/restart failure leaves the transport disabled until board restart.
+SIM retains disconnected weak transport hooks.
+
+The agreed assembly order is thumb/index/middle on Haptic1/2/3 (J18.1/2/3):
+PA2 ADC1_IN3, PA5 ADC2_IN13, PC5 ADC2_IN11 respectively. These assignments and
+nominal 3.3 V ADC reference are in `fw/app/board_hardware_config.h`.
+The sensor cables must follow this convention. `ForceSensor_ReadVoltage`
+remains a disconnected weak hook pending an ADC1/2 scan shared with the current
+inputs. Pin assignment alone does not start conversions. The supplied FSR
+divider values are marked provisional in the hardware schematic; confirm that
+the voltage/force fit and ADC input range apply to the populated circuit.
+`Haptics_TaskCreate()` creates the task only after the board transport starts;
+it never claims UART4 or an arbitrary ADC.
 The haptics task polls RX and schedules DATA at a one-ms RTOS cadence using
 the integer-millisecond period in the negotiated HELLO fields. TelemetryTask is
 the sole task owner of ForceSensor_Service (currently every 10 ms); haptics only
 reads the latest published sample. Pre-scheduler homing polls the force hook
 itself, before either task exists.
-A board adapter must supply the interrupt/transport ownership and ADC conversion
-once wiring is known. No on-board haptics or force acquisition is claimed yet.
+Force ADC conversion still needs a shared acquisition implementation. Physical Bluetooth
+delivery and force acquisition have not been validated on the board.
 
 Validation:
 

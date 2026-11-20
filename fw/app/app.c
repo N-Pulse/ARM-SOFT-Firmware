@@ -89,6 +89,7 @@ __attribute__((weak)) void App_OnSafetyFault(motor_stop_cause_t cause,uint32_t m
     case MOTOR_STOP_LINK: break;          /* UART transport fault, not heartbeat. */
     case MOTOR_STOP_MOTION_TIMEOUT: break;
     case MOTOR_STOP_POSITION: break;      /* Grip exceeds configured closing travel. */
+    case MOTOR_STOP_BATTERY: break;       /* SOC countdown completed; restart required. */
     case MOTOR_STOP_MANUAL: break;        /* Internal stop request only. */
     default: break;
     }

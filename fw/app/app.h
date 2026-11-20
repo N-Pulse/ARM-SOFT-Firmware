@@ -7,7 +7,8 @@ void App_Init(void);
 void App_Task(void);
 /* Notification after heartbeat timeout has restarted the SYNC handshake. */
 void App_OnCommunicationInterrupted(void);
-/* Low-battery warning/clear notification in control-task context; no auto stop. */
+/* Low-battery warning/clear notification in control-task context.
+ * Critical SOC shutdown is handled independently by Battery_Service. */
 void App_OnBatteryWarning(bool active,const battery_snapshot_t *snapshot);
 /* Outputs are already inhibited. One callback per newly observed cause/motor.
  * Fill the corresponding case in app.c when follow-up policies are defined. */

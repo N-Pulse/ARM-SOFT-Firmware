@@ -18,6 +18,7 @@ def main():
         '--leds':('leds','test_status_leds.c'),
         '--battery':('battery','test_battery.c'),
         '--battery-defaults':('battery-defaults','test_battery.c'),
+        '--battery-soc':('battery-soc','test_battery_soc.c'),
         '--boot-safety':('boot-safety','test_boot_safety.c'),
         '--bad-force-config':('bad-force-config','test_bad_force_config.c'),
     }
@@ -42,7 +43,7 @@ def main():
         flags+=['-DHANDSHAKE_STATUS_LEN=2','-DHANDSHAKE_DATA_LEN=6']
     sources += [ROOT/'fw/app/app.c',ROOT/'fw/app/intent_router.c',ROOT/'fw/motors/motor_map/motor_map.c',ROOT/'tests/lifecycle'/test]
     if mode=='--boot-safety': sources += [ROOT/'fw/app/boot_homing.c']
-    sources += [ROOT/'fw/bsp/force_sensor/force_sensor.c',ROOT/'fw/bsp/battery/battery.c',ROOT/'fw/bsp/status_leds/status_leds.c']
+    sources += [ROOT/'fw/bsp/force_sensor/force_sensor.c',ROOT/'fw/bsp/battery/battery.c',ROOT/'fw/bsp/status_leds/status_leds.c',ROOT/'fw/bsp/status_leds/status_leds_codec.c']
     sources += [ROOT/'fw/app/hw_commission.c', ROOT/'fw/app/hw_telemetry.c',
                 ROOT/'fw/motors/estimation/motor_kalman.c', ROOT/'fw/motors/estimation/motor_estimation.c']
     objects=[]

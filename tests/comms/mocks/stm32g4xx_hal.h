@@ -5,6 +5,8 @@ typedef struct { void *Instance; uint32_t gState; uint16_t TxXferCount; } UART_H
 #define HAL_UART_STATE_READY 0U
 #define HAL_UART_STATE_BUSY_TX 1U
 #define UART4_IRQn 52
+#define USART2_IRQn 38
+#define USART2 ((void *)0x40004400U)
 #define UART_CLEAR_OREF 1U
 #define UART_CLEAR_NEF 2U
 #define UART_CLEAR_FEF 4U
@@ -16,6 +18,8 @@ uint32_t __get_IPSR(void);
 void HAL_NVIC_EnableIRQ(int);
 void HAL_NVIC_DisableIRQ(int);
 void HAL_NVIC_ClearPendingIRQ(int);
+void HAL_NVIC_SetPriority(int, uint32_t, uint32_t);
+void HAL_UART_IRQHandler(UART_HandleTypeDef *);
 HAL_StatusTypeDef HAL_UART_Receive_IT(UART_HandleTypeDef *, uint8_t *, uint16_t);
 HAL_StatusTypeDef HAL_UART_Transmit_IT(UART_HandleTypeDef *, uint8_t *, uint16_t);
 HAL_StatusTypeDef HAL_UART_AbortReceive(UART_HandleTypeDef *);

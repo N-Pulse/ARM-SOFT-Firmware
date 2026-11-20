@@ -15,10 +15,11 @@ typedef enum {
     MOTOR_STOP_LINK          = 1U << 7,
     MOTOR_STOP_INIT          = 1U << 8,
     MOTOR_STOP_MOTION_TIMEOUT= 1U << 9,
-    MOTOR_STOP_POSITION      = 1U << 10
+    MOTOR_STOP_POSITION      = 1U << 10,
+    MOTOR_STOP_BATTERY       = 1U << 11
 } motor_stop_cause_t;
 
-#define MOTOR_STOP_CAUSE_COUNT 11U
+#define MOTOR_STOP_CAUSE_COUNT 12U
 
 typedef struct {
     uint32_t ms, cause, motor_mask, epoch, state, sequence;
@@ -35,6 +36,7 @@ void MotorSafety_OnFeedbackAtTime(const motor_feedback_t *feedback, uint32_t ms)
 bool MotorSafety_HasFreshForceLocked(motor_id_t id, uint32_t now);
 void MotorSafety_Poll(void);
 bool MotorSafety_IsFaultActive(void);
+bool MotorSafety_StopComplete(void);
 uint32_t MotorSafety_GetStopCauses(void);
 uint32_t MotorSafety_GetCauseMotorMask(motor_stop_cause_t cause);
 /* All causes latch a GLOBAL stop. MOTOR_COUNT identifies a global cause. */

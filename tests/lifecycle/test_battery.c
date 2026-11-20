@@ -25,11 +25,13 @@ int main(void) {
     reply_case(4); warning_on=warning_off=0;
     assert(snapshot().state==BATTERY_UNKNOWN && !snapshot().voltage_valid && isnan(snapshot().pack_voltage_v));
 #ifndef TEST_BATTERY_CONFIGURED
-    assert(!Battery_PublishRaw(2000,clock_ms));
+    assert(Battery_PublishRaw(2000,clock_ms));
+    assert(fabsf(snapshot().pack_voltage_v - (2000.0f * 3.3f / 4095.0f * (12200.0f / 2200.0f))) < 0.0001f);
+    assert(snapshot().state==BATTERY_UNCONFIGURED);
     publish(14.8f,1); assert(snapshot().state==BATTERY_UNCONFIGURED);
     publish(10.0f,1000); publish(10.0f,1000);
     assert(!snapshot().low_warning && warning_on==0 && !MotorSafety_IsFaultActive());
-    puts("PASS production defaults never guess ADC divider, warning threshold or charge percentage; explicit voltage stays available as UNCONFIGURED");
+    puts("PASS final lou divider converts raw ADC voltage; warning thresholds remain UNCONFIGURED and no charge percentage is guessed");
 #else
     uint32_t original_epoch=epoch();
     publish(14.8f,1); assert(snapshot().state==BATTERY_NORMAL);

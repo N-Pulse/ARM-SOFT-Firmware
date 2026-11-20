@@ -4,12 +4,14 @@
 #include "haptics.h"
 #include "motor_lock.h"
 #include "controller_status.h"
+#include "battery_config.h"
 
 static status_leds_snapshot_t display;
 static uint32_t last_update_ms;
 __attribute__((weak)) void StatusLeds_BoardInit(void) { }
+__attribute__((weak)) void StatusLeds_BoardService(void) { }
 __attribute__((weak)) void StatusLeds_BoardWrite(status_led_id_t led,status_led_color_t color) {
-    (void)led; (void)color; /* GPIOs / LED driver not assigned yet. */
+    (void)led; (void)color; /* Disconnected fallback for SIM/host fixtures. */
 }
 void StatusLeds_Init(void) {
     StatusLeds_BoardInit();
@@ -25,6 +27,7 @@ void StatusLeds_GetSnapshot(status_leds_snapshot_t *out) {
     uint32_t key=Motor_Lock(); *out=display; Motor_Unlock(key);
 }
 void StatusLeds_Service(void) {
+    StatusLeds_BoardService();
     uint32_t now=HAL_GetTick();
     if((uint32_t)(now-last_update_ms)<STATUS_LEDS_UPDATE_PERIOD_MS) return;
     last_update_ms=now;
@@ -38,6 +41,13 @@ void StatusLeds_Service(void) {
        haptics.state==STATUS_LEDS_HAPTICS_NORMAL_VALUE)
         next[STATUS_LED_HAPTICS]=STATUS_LED_GREEN;
     if(ControllerStatus_Read()==0) next[STATUS_LED_CONTROLLER]=STATUS_LED_GREEN;
+    battery_snapshot_t battery; Battery_GetSnapshot(&battery);
+    if(battery.fast_warning) {
+        now=HAL_GetTick();
+        uint32_t origin=battery.shutdown_state==BATTERY_SHUTDOWN_COUNTDOWN ? battery.shutdown_started_ms : 0U;
+        next[STATUS_LED_CONTROLLER]=((uint32_t)(now-origin)/BATTERY_FAST_BLINK_HALF_PERIOD_MS)&1U ?
+            STATUS_LED_OFF : STATUS_LED_RED;
+    }
     uint32_t changed=0,key=Motor_Lock();
     for(unsigned i=0;i<STATUS_LED_COUNT;++i) {
         if(display.color[i]!=next[i]) changed|=1U<<i;
@@ -46,4 +56,5 @@ void StatusLeds_Service(void) {
     display.timestamp_ms=now; Motor_Unlock(key);
     for(unsigned i=0;i<STATUS_LED_COUNT;++i)
         if(changed&(1U<<i)) StatusLeds_BoardWrite((status_led_id_t)i,next[i]);
+    StatusLeds_BoardService();
 }
