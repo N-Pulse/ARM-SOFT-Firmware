@@ -6,9 +6,9 @@
 #define DEGREES 57.29577951308232f
 static wrist_status_t s;
 static const char *error;
-static uint32_t previous, started, settled, stall_since[2], hold_since[2];
+static uint32_t previous, started[2], settled[2], stall_since[2], hold_since[2];
 static float stall_position[2];
-static bool settling, stalled[2], hold_bad[2];
+static bool settling[2], holding[2], stalled[2], hold_bad[2];
 
 static bool reject(const char *why) { error = why; return false; }
 static bool range(float v, float lo, float hi) { return isfinite(v) && v >= lo && v <= hi; }
@@ -23,14 +23,13 @@ void Wrist_Stop(void)
 {
     BenchHW_Disable();
     s.armed = s.active = s.holding = s.reached = false;
-    settling = false;
     for (unsigned i = 0; i < 2; ++i) {
         wrist_motor_t *m = &s.motors[i];
         m->demand = m->applied = 0;
         m->target = m->position;
         m->error = 0;
         MotorPID_Reset(&m->pid);
-        stalled[i] = hold_bad[i] = false;
+        settling[i] = holding[i] = stalled[i] = hold_bad[i] = false;
     }
 }
 static void fault(const char *why, int motor)
@@ -165,8 +164,11 @@ bool Wrist_Arm(void)
             return reject("both_calibrated_zeroed_fresh_encoders_required");
         if (!m->pid_set || !m->limits_set || !m->safety_set)
             return reject("both_pid_limits_safety_required");
+        /* Compute in double, then compare at the precision of the float
+         * safety setting. One theoretical degree/count must accept 1.0f. */
+        const float resolution_deg = (float)(fabs(m->encoder.radians_per_count) * 57.29577951308232);
         if (m->safety.stall_pwm > m->pwm_cap ||
-            m->safety.stall_deg < fabs(m->encoder.radians_per_count)*DEGREES ||
+            m->safety.stall_deg < resolution_deg ||
             m->safety.hold_error_deg < m->tolerance)
             return reject("safety_incompatible_with_pid_or_resolution");
         if (!range(m->position, m->limits.min_deg, m->limits.max_deg))
@@ -192,15 +194,33 @@ bool Wrist_Move(float m1, float m2)
             fabsf(targets[i]-m->target) > m->limits.step_deg)
             return reject("target_outside_motor_limits");
     }
-    /* Atomic validation: an invalid target for M2 never starts M1. */
+    /* Atomic validation: an invalid target for M2 never starts M1.
+     * Target messages never reset stall/hold timers: their conditions are
+     * evaluated on measured control updates. Keep the PID continuous across active retargets
+     * (its derivative is on measurement, with bounded anti-windup integral). */
+    bool changed = !s.active;
     for (unsigned i = 0; i < 2; ++i) {
-        s.motors[i].target = targets[i];
-        MotorPID_Reset(&s.motors[i].pid);
-        stalled[i] = hold_bad[i] = false;
+        wrist_motor_t *m = &s.motors[i];
+        if (s.active && targets[i] == m->target) continue;
+        changed = true;
+        /* A fresh deadline is allowed only on activation or when leaving a
+         * healthy, established hold for a distinct target. Retargeting an
+         * unsettled/disturbed motor cannot extend its arrival/hold deadline.
+         * Small changes within tolerance retain support-torque holding. */
+        if (!s.active || (holding[i] && !hold_bad[i] && fabsf(m->error) <= m->tolerance &&
+                          fabsf(targets[i]-m->position) > m->tolerance)) {
+            started[i] = s.now;
+            holding[i] = false;
+        }
+        m->target = targets[i];
         sync_motor(i);
+        if (fabsf(m->error) > m->tolerance) settling[i] = false;
     }
-    s.active = true; s.holding = s.reached = settling = false;
-    started = s.now;
+    if (changed) {
+        s.active = true;
+        s.holding = holding[0] && holding[1];
+        s.reached = false;
+    }
     return true;
 }
 void Wrist_Update(uint32_t now)
@@ -221,7 +241,7 @@ void Wrist_Update(uint32_t now)
     if (!s.armed) return;
     if (dt > WRIST_MAX_CONTROL_MS) { fault("loop_timeout", 0); return; }
     if ((uint32_t)(now-s.last_ping) > WRIST_HEARTBEAT_MS) { fault("communication_timeout", 0); return; }
-    bool all_settled = true;
+    bool all_reached = true;
     float outputs[2] = {0, 0};
     for (unsigned i = 0; i < 2; ++i) {
         wrist_motor_t *m = &s.motors[i];
@@ -235,10 +255,9 @@ void Wrist_Update(uint32_t now)
             { fault("position_limit", (int)i+1); return; }
         if (!s.active) continue; /* Armed only: zero PWM until an explicit target. */
         bool within = fabsf(m->error) <= m->tolerance;
-        all_settled &= within && fabsf(m->velocity) <= m->safety.settle_deg_s;
-        if (!s.holding && (uint32_t)(now-started) >= m->limits.move_ms)
+        if (!holding[i] && (uint32_t)(now-started[i]) >= m->limits.move_ms)
             { fault("motion_timeout", (int)i+1); return; }
-        if (s.holding && fabsf(m->error) > m->safety.hold_error_deg) {
+        if (holding[i] && fabsf(m->error) > m->safety.hold_error_deg) {
             if (!hold_bad[i]) { hold_bad[i] = true; hold_since[i] = now; }
             else if ((uint32_t)(now-hold_since[i]) >= m->safety.hold_error_ms)
                 { fault("hold_error", (int)i+1); return; }
@@ -253,15 +272,18 @@ void Wrist_Update(uint32_t now)
                 stall_since[i] = now; stall_position[i] = m->position;
             }
         } else stalled[i] = false;
+        if (within && fabsf(m->velocity) <= m->safety.settle_deg_s) {
+            if (!settling[i]) { settling[i] = true; settled[i] = now; }
+            bool reached = (uint32_t)(now-settled[i]) >= WRIST_SETTLE_MS;
+            if (reached) holding[i] = true;
+            all_reached &= reached;
+        } else { settling[i] = false; all_reached = false; }
         if (!MotorPID_Update(&m->pid, m->target, m->position, s.dt, m->pwm_cap, &outputs[i]))
             { fault("pid_invalid", (int)i+1); return; }
     }
     if (!s.active) return;
-    if (all_settled) {
-        if (!settling) { settling = true; settled = now; }
-        s.reached = (uint32_t)(now-settled) >= WRIST_SETTLE_MS;
-        if (s.reached) s.holding = true;
-    } else { settling = false; s.reached = false; }
+    s.reached = all_reached;
+    s.holding = holding[0] && holding[1];
     BenchHW_SetMotors(outputs[0], outputs[1]);
     for (unsigned i = 0; i < 2; ++i) {
         s.motors[i].demand = outputs[i];

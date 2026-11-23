@@ -1,14 +1,18 @@
 # Test Mechanical Wrist
 
-Banc autonome à deux moteurs pour **NUCLEO-G474RE / STM32G474RET6** et un module
+Banc autonome à deux moteurs pour **NUCLEO-G474RE MB1367 / STM32G474RET6** et un module
 **L298N**. Ouvrir directement ce dossier dans VS Code. Sources, HAL/CMSIS, scripts
 et tests sont locaux : le dossier peut être déplacé hors du dépôt parent.
 
 ## Matériel et paramètres inconnus
 
 Deux moteurs identiques `1627.G0042 SXR 0626`, chacun avec réducteur
-`16GPT 203:1 8000777`. Alimentation disponible : **12 V, limitée à 1 A au total**.
-La tension nominale des moteurs et la référence, résolution, position, tension
+`16GPT 203:1 8000777`. Alimentation disponible : **12 V**. La valeur **1 A** dans
+`bench_config.py` est informative (total des deux moteurs) : elle ne règle pas
+l'alimentation et n'impose **aucune limitation physique du courant**. Vérifier et
+régler la limitation matérielle selon les caractéristiques réelles des moteurs ;
+1 A n'est pas une valeur de courant moteur validée.
+La tension nominale du bobinage **G0042** et la référence, résolution, position, tension
 et interface des encodeurs restent à identifier. Les limites mécaniques et la
 relation entre angles des réducteurs et angles anatomiques sont inconnues.
 
@@ -16,6 +20,13 @@ relation entre angles des réducteurs et angles anatomiques sont inconnues.
 limite le rapport cyclique, pas la tension des impulsions. Identifier la variante
 du moteur avant alimentation. Ne pas alimenter un encodeur inconnu en 12 V ni
 relier ses sorties au STM32 sans vérifier leurs niveaux électriques.
+
+Le banc génère du **PWM à 20 kHz**. Les SXR ne doivent pas être reliés directement
+aux sorties PWM du L298N : le manuel constructeur impose une alimentation DC ou
+un **filtre PWM** pour ces moteurs à balais précieux et antiparasitage RC intégré.
+Voir [FAULHABER 7000.05078, §4.2.2.1, p. 21](https://www.faulhaber.com/fileadmin/Import/Media/EN_7000_05078.pdf#page=21).
+Prévoir un canal filtré par moteur, comme décrit ci-dessous, avant toute mise
+sous puissance. La référence et le dimensionnement des filtres restent à choisir.
 
 Le banc démarre désarmé. Le mouvement exige les deux calibrations, un zéro commun,
 les deux PID, limites et safety. Aucun PPR ou paramètre physique n'est inventé.
@@ -69,7 +80,26 @@ pas à trois sorties moteur. Vérifier le marquage du module réel.
 | USB série PC | PA2/PA3 LPUART1 | Routage interne ST-LINK | USB ST-LINK de la Nucleo |
 | Masse commune | GND | CN7-20 ou CN7-22 | Driver, alimentation et référence encodeurs |
 
-- M1 entre OUT1/OUT2 ; M2 entre OUT3/OUT4. Retirer les cavaliers **ENA et ENB**.
+- **Deux canaux de filtrage PWM indépendants**, compatibles avec un pont complet
+  bidirectionnel à **20 kHz**, la tension, les courants et les moteurs retenus :
+
+  ```text
+  L298N OUT1/OUT2 --> entrée paire filtre PWM canal 1 --> sortie paire --> M1
+  L298N OUT3/OUT4 --> entrée paire filtre PWM canal 2 --> sortie paire --> M2
+  ```
+
+  Les deux fils de chaque moteur passent par son canal. Aucun fil moteur ni
+  aucune sortie OUT1..OUT4 ne doit être raccordé directement au 0 V. Si le filtre
+  retenu comporte une borne **0 V/GND**, la relier au 0 V de puissance commun
+  (GND du L298N / négatif alimentation), suivant sa notice et avec une liaison
+  courte. Respecter séparément ses éventuelles prescriptions de blindage/terre.
+  Le manuel SXR cite la gamme FAULHABER EFM à titre d'exemple ; cela ne valide pas
+  automatiquement une référence EFM à 20 kHz avec ce L298N. Faire confirmer la
+  compatibilité et le dimensionnement, sans inventer de valeurs L/C.
+- Retirer les cavaliers **ENA et ENB** qui forcent l'activation des ponts : ENA
+  reçoit PB7, ENB reçoit PB6, conformément au tableau. Ils sont **distincts** du
+  cavalier du régulateur 5 V (souvent marqué `5V-EN`), qui concerne l'alimentation
+  logique du module et non l'activation des moteurs.
 - Positif de puissance vers VS du module, négatif vers GND. Alimenter la Nucleo
   par USB ST-LINK ; ne jamais connecter 12 V à ses broches logiques.
 - Le cavalier régulateur/5 V dépend du module : vérifier son fonctionnement et
@@ -200,23 +230,47 @@ ou perte de lien. Ce maintien régule la position, pas un couple mesuré.
 Un blocage exige une erreur hors tolérance et un PWM appliqué dépassant le seuil :
 un moteur immobile à sa consigne n'est pas déclaré bloqué uniquement parce qu'il
 soutient une charge. En maintien, une erreur supérieure à HOLD_ERROR_DEG pendant
-HOLD_ERROR_MS coupe les deux moteurs. MOVE_MS limite l'arrivée initiale, pas le
-maintien établi. Il n'y a **ni mesure de courant ni mesure de température** ; les
+HOLD_ERROR_MS coupe les deux moteurs. Une cible identique réémise conserve le PID,
+l'établissement et les délais. Les variations de cible pendant un mouvement non
+établi ne prolongent pas MOVE_MS et n'effacent pas les surveillances stall/hold.
+Ces surveillances sont propres à chaque moteur : changer l'autre consigne ne les
+réinitialise pas. Un nouveau déplacement depuis un maintien établi sans erreur
+hors tolérance reçoit un nouveau délai d'arrivée pour le moteur concerné ; une
+petite variation restant dans la tolérance conserve le maintien.
+MOVE_MS borne le mouvement non établi de chaque moteur, pas son maintien établi.
+Il n'y a **ni mesure de courant ni mesure de température** ; les
 limites thermiques du maintien prolongé restent à déterminer matériellement.
 
 ## Ordre de mise en service
 
-1. Alimentation moteur coupée : programmer, ouvrir le client, inspecter `status`
-   et `encoder`.
-2. Identifier l'encodeur et son alimentation/interface ; vérifier les signaux et
-   comptes. Le fonctionnement d'un timer ne prouve pas la présence d'un encodeur.
-3. Renseigner les calibrations, puis `calibrate_config`. Vérifier sens et échelle
+1. Garder l'alimentation moteur coupée. Identifier la tension nominale du bobinage
+   G0042 et les courants admissibles auprès du constructeur ; le marquage fourni
+   ne les établit pas. Choisir une tension et une limitation **matérielle** adaptées,
+   sans supposer que les 12 V disponibles ou la valeur informative 1 A conviennent.
+2. Hors tension, câbler les deux canaux filtrés OUT1/OUT2 vers M1 et OUT3/OUT4
+   vers M2, leurs références 0 V selon la notice des filtres, et les masses communes.
+   Vérifier la compatibilité des filtres à 20 kHz, les broches MB1367 et les ponts
+   de soudure du tableau. Retirer ENA/ENB ; vérifier séparément le régulateur 5 V
+   et éviter toute mise en parallèle de sources 5 V.
+3. Puissance moteur toujours coupée : programmer si nécessaire, alimenter la
+   Nucleo par USB ST-LINK, ouvrir le client, inspecter `status` et `encoder`.
+   Identifier les encodeurs et leur alimentation/interface avant raccordement ;
+   vérifier les deux paires A/B et les comptes par déplacement manuel contrôlé.
+   Le fonctionnement d'un timer ne prouve pas la présence d'un encodeur.
+4. Renseigner les calibrations, puis `calibrate_config`. Vérifier sens et échelle
    avec un déplacement connu ; aucune confirmation logicielle à saisir ensuite.
-4. Placer manuellement au neutre, puis `zero`.
-5. Renseigner les limites/PID/safety adaptés, puis `setup` et `status`.
-6. Une fois tensions et montage vérifiés, alimenter, `arm`, puis une petite
-   consigne choisie pour ce montage.
-7. Terminer par `stop`. Un lien absent au-delà de 500 ms, une boucle bloquée
+5. Placer manuellement au neutre, puis `zero`. Renseigner les limites/PID/safety
+   adaptés, puis `setup` et `status`. Encodeur, tension encodeur, PPR, gains et
+   limites réels restent inconnus tant qu'ils ne sont pas identifiés et validés ;
+   ne pas recopier les paramètres synthétiques des tests. Aucun mode de mouvement
+   sans encodeurs n'est prévu.
+6. Après validation des tensions, de la limitation physique de courant et du
+   montage filtré, préparer un arrêt physique et un mécanisme supportant la perte
+   de couple. Alimenter, `arm`, puis une petite consigne adaptée au montage.
+   Lors des essais encadrés, contrôler la tension réellement filtrée aux moteurs,
+   les courants et l'échauffement ; le rapport cyclique seul ne les valide pas.
+7. Terminer par `stop`, puis couper la puissance. Un lien absent au-delà de 500 ms,
+   une boucle bloquée
    au-delà de 50 ms ou une panne d'un timer encodeur coupe les deux canaux dans
    l'interruption SysTick indépendante de la boucle PID. `!` coupe dans l'IRQ UART.
 
@@ -250,7 +304,23 @@ parent avec leurs avis/licences. PID, encodeur et communication reprennent les
 composants du banc à un moteur, adaptés ici. Les modifications futures du banc
 parent ne sont pas automatiquement répercutées dans ce dossier.
 
-Validation logicielle réalisée : compilation ARM depuis ce dossier et depuis
-une copie autonome dans un autre chemin ; tests natifs contrôleur/protocole et
-registres simulés ; 10 tests Python, incluant CSV et export PNG. Les courbes de
-vérification utilisent des données synthétiques, sans moteur connecté.
+Validation de cette correction : `python tests/run_tests.py` avec le venv local
+(13 groupes contrôleur/protocole C, registres simulés et 10 tests Python, dont
+CSV/PNG), contrôle C supplémentaire avec calcul SSE et compilation complète
+`python tools/build.py --rebuild` avec ARM GNU 14.3.1. La fixture d'armement
+conserve 90 PPR, quadrature x4 et `stall_deg = 1` ; un seuil immédiatement
+inférieur à un compte est refusé sur chacun des moteurs.
+
+Sur compteurs simulés immobiles, heartbeat valide, cible 10° et réémission toutes
+les 10 ms (`stall_ms = 100`) : avant correction des temporisations, le banc reste
+armé à 500 ms ; après correction, défaut `stall` à 120 ms depuis la commande
+initiale (20 ms pour appliquer/observer le PWM, puis 100 ms de surveillance),
+désarmement et deux PWM nuls. Les variantes cible identique, oscillations de
+0,01°, incréments de 0,01° et changement de l'autre consigne passent sur M1 et M2.
+Les tests couvrent aussi les délais d'arrivée, la perte de maintien, le PID
+conservé, le progrès encodeur et les changements légitimes de consigne.
+
+Toutes ces validations sont logicielles, avec données synthétiques. Aucune carte
+n'a été flashée pour cette correction. Le câblage MB1367/L298N, les filtres à
+20 kHz, les tensions/courants, les encodeurs, les gains/limites et les coupures
+physiques restent à vérifier sur banc.
