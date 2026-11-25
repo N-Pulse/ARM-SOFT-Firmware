@@ -24,12 +24,21 @@ typedef struct {
     bool limits_set, pid_set, safety_set;
 } wrist_motor_t;
 typedef struct {
+    bool valid, command_active;
+    uint32_t t_ms, raw;
+    int32_t delta;
+    int64_t counts;
+    float dt_s, velocity_deg_s, velocity_limit_deg_s;
+    float position_deg, target_deg, pwm_percent;
+} wrist_fault_detail_t;
+typedef struct {
     wrist_motor_t motors[2];
     uint32_t now, last_ping;
     float dt;
     bool armed, active, holding, reached, ping_seen;
     const char *fault;
     int fault_motor; /* 0: global; 1/2: affected motor */
+    wrist_fault_detail_t fault_detail; /* First fault sample, before outputs are cut. */
 } wrist_status_t;
 
 void Wrist_Init(uint32_t now);

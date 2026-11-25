@@ -113,6 +113,55 @@ static void assert_cutoff(const char *why, unsigned motor)
     assert(pwm[0] == 0 && pwm[1] == 0);
     assert(status->motors[0].applied == 0 && status->motors[1].applied == 0);
 }
+static void pwm_cap_at_high_speed(void)
+{
+    ready(); Wrist_Stop();
+    for (unsigned i = 0; i < 2; ++i) {
+        wrist_limits_t limits = Wrist_Status()->motors[i].limits;
+        limits.velocity_deg_s = 10; /* Legacy protocol field. */
+        assert(Wrist_Limits(i, &limits));
+    }
+    assert(Wrist_Arm() && Wrist_Move(45, -45));
+    raw[0] += 1; raw[1] -= 1; step(true); /* +/-100 deg/s */
+    assert(pwm[0] == 5 && pwm[1] == -5 && !Wrist_Status()->fault);
+}
+
+static void position_fault_details(void)
+{
+    for (unsigned motor = 0; motor < 2; ++motor) {
+        for (unsigned active = 0; active < 2; ++active) {
+            ready();
+            Wrist_Stop();
+            wrist_limits_t limits = Wrist_Status()->motors[motor].limits;
+            limits.velocity_deg_s = 10;
+            limits.max_deg = 0.5f;
+            assert(Wrist_Limits(motor, &limits));
+            assert(Wrist_Arm());
+            if (active) { assert(Wrist_Move(-10, -10)); step(true); }
+            raw[motor] += 1; /* Fixture: 1 degree/count -> 100 deg/s over 10 ms. */
+            step(true);
+            assert_cutoff("position_limit", motor);
+            wrist_fault_detail_t saved = Wrist_Status()->fault_detail;
+            assert(saved.valid && saved.command_active == (active != 0));
+            assert(saved.t_ms == tick && fabsf(saved.dt_s - .01f) < 1e-6f);
+            assert(saved.delta == 1 && saved.counts == 1 && saved.raw == 1);
+            assert(fabsf(saved.velocity_deg_s - 100) < .01f);
+            assert(saved.velocity_limit_deg_s == 10);
+            assert(active ? fabsf(saved.pwm_percent) > 0 : saved.pwm_percent == 0);
+            assert(saved.target_deg == (active ? -10 : 0));
+            for (unsigned j = 0; j < 20; ++j) step(true); /* Live speed returns to zero. */
+            assert(Wrist_Status()->motors[motor].velocity == 0);
+            assert(Wrist_Status()->fault_detail.t_ms == saved.t_ms);
+            assert(Wrist_Status()->fault_detail.velocity_deg_s == saved.velocity_deg_s);
+            Wrist_Estop(); /* A later stop must not overwrite the first fault. */
+            assert(Wrist_Status()->fault_detail.t_ms == saved.t_ms);
+            packet_len = 0; Protocol_Init(tick); command("status");
+            fputs(packets, stdout); /* Validate extended production JSON in Python. */
+            assert(Wrist_ClearFault());
+            assert(!Wrist_Status()->fault_detail.valid);
+        }
+    }
+}
 /* 0: identical; 1: jitter; 2: only the other motor; 3: incremental changes.
  * Real controller/PID/encoders, mocked stationary counters and valid heartbeat. */
 static void stall_stream(unsigned mode, unsigned blocked)
@@ -268,6 +317,8 @@ int main(int argc, char **argv)
 {
     const struct { const char *name; void (*run)(void); } tests[] = {
         {"resolution_boundary", resolution_boundary},
+        {"pwm_cap_at_high_speed", pwm_cap_at_high_speed},
+        {"position_fault_details", position_fault_details},
         {"repeated_stall", repeated_stall}, {"jitter_stall", jitter_stall},
         {"other_motor_stall", other_motor_stall}, {"incremental_stall", incremental_stall},
         {"progress_then_stall", progress_then_stall},

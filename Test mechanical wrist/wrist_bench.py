@@ -18,10 +18,16 @@ import sys
 import threading
 import time
 
+from wrist_motion import (Cycle, Step, MotionProfile, MotionCancelled, MotionRunner, run_cycle,
+                          run_move, wait_for_target)
+
 MOTOR_FLOAT_FIELDS = ("target_deg", "position_deg", "error_deg", "velocity_deg_s", "pid_percent", "pwm_percent")
 MOTOR_BOOL_FIELDS = ("encoder_available", "calibrated", "zeroed", "feedback_valid")
 MOTOR_FIELDS = MOTOR_FLOAT_FIELDS + ("raw", "counts", "delta") + MOTOR_BOOL_FIELDS
+FAULT_FLOAT_FIELDS = ("dt_s", "velocity_deg_s", "velocity_limit_deg_s", "position_deg", "target_deg", "pwm_percent")
+FAULT_FIELDS = ("t_ms", "command_active") + FAULT_FLOAT_FIELDS + ("raw", "delta", "counts")
 CSV_FIELDS = ("host_utc", "host_monotonic_s", "t_ms", "state", "armed", "target_reached", "dt_s", "fault", "fault_motor") + tuple(
+    f"fault_{field}" for field in FAULT_FIELDS) + tuple(
     f"m{i}_{field}" for i in (1, 2) for field in MOTOR_FIELDS)
 
 
@@ -72,6 +78,19 @@ def parse_packet(line):
                 raise ValueError("armed without calibrated zeroed feedback")
         if p["armed"] != (p["state"] in ("armed", "moving", "holding")) or (p["fault"] != "none" and p["armed"]):
             raise ValueError("inconsistent armed state")
+        detail = p.get("fault_detail")  # Optional extension: old firmware remains readable.
+        if detail is not None:
+            if not isinstance(detail, dict) or p["fault"] == "none" or p["fault_motor"] not in (1, 2):
+                raise ValueError("invalid fault detail")
+            if type(detail.get("command_active")) is not bool:
+                raise ValueError("invalid fault command flag")
+            for field, low, high in (("t_ms", 0, 0xffffffff), ("raw", 0, 0xffffffff if p["fault_motor"] == 1 else 0xffff),
+                                     ("delta", -(1 << 31), (1 << 31) - 1), ("counts", -(1 << 63), (1 << 63) - 1)):
+                if type(detail.get(field)) is not int or not low <= detail[field] <= high:
+                    raise ValueError(f"invalid fault {field}")
+            for field in FAULT_FLOAT_FIELDS:
+                if field not in detail or (detail[field] is not None and not finite(detail[field])):
+                    raise ValueError(f"invalid fault {field}")
     else:
         raise ValueError("unknown packet type")
     return p
@@ -80,28 +99,57 @@ def parse_packet(line):
 
 class LineDecoder:
     """Bounded byte decoder. Overlong/invalid lines never become commands."""
-    def __init__(self, maximum=8192):
+    def __init__(self, maximum=8192, synchronize=False):
         self.maximum = maximum
         self.buffer = bytearray()
         self.dropping = False
         self.errors = 0
+        self.last_error = None
+        self.synchronize = synchronize
+        self.discarded_prefix = False
+
+    def _invalid(self, reason):
+        self.errors += 1
+        self.last_error = reason
+
+    def _packet(self):
+        try:
+            line = self.buffer.decode("ascii")
+            # Only a syntactically incomplete first line can be a connection
+            # starting in the middle of the board's existing telemetry stream.
+            json.loads(line)
+        except (ValueError, UnicodeError) as exc:
+            if self.synchronize and not self.buffer.lstrip().startswith(b"{"):
+                self.synchronize = False
+                self.discarded_prefix = True
+            else:
+                self._invalid(f"{type(exc).__name__}: {exc}; début={bytes(self.buffer[:96])!r}")
+            return None
+        self.synchronize = False
+        try:
+            return parse_packet(line)
+        except ValueError as exc:
+            # Wrong firmware and semantically invalid full packets stay fatal,
+            # including at startup; no relaxation after the first valid line.
+            self._invalid(f"{exc}; début={line[:96]!r}")
+            return None
 
     def feed(self, data):
         packets = []
         for byte in data:
             if byte == 10:
                 if not self.dropping and self.buffer:
-                    try:
-                        packets.append(parse_packet(self.buffer.decode("ascii")))
-                    except (ValueError, UnicodeError):
-                        self.errors += 1
+                    packet = self._packet()
+                    if packet is not None:
+                        packets.append(packet)
                 self.buffer.clear()
                 self.dropping = False
             elif not self.dropping:
                 if len(self.buffer) >= self.maximum:
                     self.buffer.clear()
                     self.dropping = True
-                    self.errors += 1
+                    self._invalid(f"trame supérieure à {self.maximum} octets")
+                    self.synchronize = False
                 else:
                     self.buffer.append(byte)
         return packets
@@ -115,7 +163,9 @@ class CSVRecorder:
         self.lock = threading.Lock()
 
     def write(self, packet):
-        row = {key: value for key, value in packet.items() if key != "motors"}
+        row = {key: value for key, value in packet.items() if key not in ("motors", "fault_detail")}
+        detail = packet.get("fault_detail") or {}
+        row.update({f"fault_{field}": detail.get(field) for field in FAULT_FIELDS})
         row.update(host_utc=datetime.now(timezone.utc).isoformat(), host_monotonic_s=f"{time.monotonic():.6f}")
         for m in packet["motors"]:
             row.update({f"m{m['id']}_{key}": m.get(key) for key in MOTOR_FIELDS})
@@ -142,7 +192,7 @@ class SerialSession:
         self.serial = serial_port
         self.recorder = recorder
         self.heartbeat_s = heartbeat_s
-        self.decoder = LineDecoder()
+        self.decoder = LineDecoder(synchronize=True)
         self.write_lock = threading.Lock()
         self.command_lock = threading.Lock()
         self.condition = threading.Condition()
@@ -160,18 +210,20 @@ class SerialSession:
     def start(self):
         self.thread.start()
 
-    def _write(self, data):
-        if self.stop_event.is_set():
-            raise ConnectionError(self.failure or "serial session closed")
+    def _write(self, data, cancel=None):
         with self.write_lock:
+            if cancel is not None and cancel.is_set():
+                raise MotionCancelled("Opération arrêtée.")
+            if self.stop_event.is_set():
+                raise ConnectionError(self.failure or "serial session closed")
             count = self.serial.write(data)
             if count != len(data):
                 raise ConnectionError("incomplete serial write")
 
-    def send(self, command):
+    def send(self, command, cancel=None):
         if "\n" in command or "\r" in command or not command.isascii() or len(command) > 190:
             raise ValueError("command must be one ASCII line of at most 190 characters")
-        self._write((command + "\n").encode("ascii"))
+        self._write((command + "\n").encode("ascii"), cancel)
 
     def _run(self):
         next_ping = 0.0
@@ -184,7 +236,7 @@ class SerialSession:
                 data = self.serial.read(1024)
                 packets = self.decoder.feed(data)
                 if self.decoder.errors:
-                    raise ValueError("invalid telemetry/framing: session stopped")
+                    raise ValueError(f"invalid telemetry/framing: {self.decoder.last_error}; session stopped")
                 for packet in packets:
                     packet = dict(packet, host_monotonic_s=time.monotonic())
                     with self.condition:
@@ -227,7 +279,7 @@ class SerialSession:
         except queue.Full:
             pass
 
-    def command(self, text, timeout=1.5):
+    def command(self, text, timeout=1.5, cancel=None):
         """Wait for the reply to this command, ignoring telemetry/heartbeats."""
         name = text.split()[0] if text.split() else ""
         if not name:
@@ -235,12 +287,16 @@ class SerialSession:
         with self.command_lock:
             with self.condition:
                 after = self.sequence
-            self.send(text)
+            self.send(text, cancel)
             deadline = time.monotonic() + timeout
             with self.condition:
                 while True:
                     for index, packet in self.replies:
                         if index > after and packet["command"] in (name, "invalid", "busy"):
+                            # Drain this ACK even after cancellation. Otherwise a
+                            # late reply could acknowledge the next same-name command.
+                            if cancel is not None and cancel.is_set():
+                                raise MotionCancelled("Opération arrêtée.")
                             if not packet["ok"]:
                                 raise CommandRejected(packet["message"])
                             return packet
@@ -253,13 +309,16 @@ class SerialSession:
                         finally:
                             self.stop_event.set()
                         raise TimeoutError(f"no reply to {name}; both motors stopped, reopen session")
-                    self.condition.wait(remaining)
+                    self.condition.wait(min(remaining, .1) if cancel is not None else remaining)
 
     def emergency_stop(self):
         self._write(b"!\nstop\ndisarm\n")
 
-    def snapshot(self):
-        self.command("status")
+    def priority_stop(self):
+        self._write(b"stop\ndisarm\n")
+
+    def snapshot(self, cancel=None):
+        self.command("status", cancel=cancel)
         with self.condition:
             if self.latest_status is None:
                 raise RuntimeError("no status snapshot received")
@@ -276,7 +335,7 @@ class SerialSession:
     def close(self):
         if not self.stop_event.is_set():
             try:
-                self.emergency_stop()
+                self.priority_stop()
                 self.command("disarm", timeout=0.3)
             except Exception:
                 pass
@@ -288,6 +347,40 @@ class SerialSession:
 
 
 import bench_config as config
+
+
+def motion_profile():
+    return MotionProfile(config.MOTION_SPEED_DEG_S, config.MOTION_ACCEL_DEG_S2)
+
+
+def fault_diagnostic(packet, board_status=None):
+    detail = packet.get("fault_detail")
+    if not detail:
+        return "Mesure au déclenchement indisponible pour ce défaut."
+    def value(field, unit=""):
+        number = detail.get(field)
+        return "indisponible" if number is None else f"{number:.4g}{unit}"
+    action = "consigne active" if detail["command_active"] else "aucune consigne moteur active"
+    if packet.get("fault") != "velocity_limit":
+        target, position = detail.get("target_deg"), detail.get("position_deg")
+        error = f"{abs(target - position):.4g}°" if finite(target) and finite(position) else "indisponible"
+        message = (f"Au déclenchement t={detail['t_ms']} ms : cible {value('target_deg', '°')}, "
+                   f"position {value('position_deg', '°')}, erreur {error}, "
+                   f"PWM {value('pwm_percent', '%')}, {action}.")
+        if packet.get("fault") == "stall":
+            motor = packet.get("fault_motor", 0) - 1
+            for source in (packet, board_status):
+                motors = source.get("motors", []) if source else []
+                cfg = motors[motor].get("configuration", {}) if 0 <= motor < len(motors) else {}
+                safety, pid = cfg.get("safety"), cfg.get("pid")
+                if isinstance(safety, (tuple, list)) and len(safety) == 7 and isinstance(pid, (tuple, list)) and len(pid) == 7:
+                    message += (f" Critère stall chargé : progression < {safety[2]:g}° sur {safety[3] / 1000:g} s, "
+                                f"avec PWM ≥ {safety[1]:g}% et erreur > {pid[6]:g}°.")
+                    break
+        return message
+    return (f"Au déclenchement t={detail['t_ms']} ms : vitesse {value('velocity_deg_s', '°/s')}, "
+            f"limite {value('velocity_limit_deg_s', '°/s')}, Δ={detail['delta']} comptes "
+            f"sur {value('dt_s', ' s')}, PWM {value('pwm_percent', '%')}, {action}.")
 
 
 def step_metrics(samples, target=None, initial=None, step_time_s=None, tolerance_deg=None):
@@ -385,17 +478,17 @@ def configuration_commands(calibration=False):
                 else:
                     commands.append(f"{name} {i} " + " ".join(str(x) for x in values))
     if missing:
-        raise ValueError("Complete bench_config.py: " + ", ".join(missing))
+        raise ValueError("Compléter bench_config.py : " + ", ".join(missing))
     return commands
 
 
-def apply_configuration(session, calibration=False):
+def apply_configuration(session, calibration=False, cancel=None):
     commands = configuration_commands(calibration)
-    status = session.snapshot()
+    status = session.snapshot(cancel=cancel)
     if status["armed"] or status["fault"] != "none":
         raise ValueError("stop / clear_fault before changing configuration")
     for command in commands:
-        session.command(command)
+        session.command(command, cancel=cancel)
     print("Calibration applied: position the wrist at neutral, then zero." if calibration else "PID, safety and limits applied. Use status to inspect, then arm explicitly.")
 
 
@@ -474,31 +567,6 @@ def axis_value(packet, axis):
     return {"m1": a, "m2": b, "flex": (a-b)/2, "rotation": (a+b)/2}[axis]
 
 
-def wait_for_target(session, finished):
-    # Request a fresh status after the movement ACK: old reached telemetry cannot
-    # finish a new test. Configuration supplies per-motor firmware timeouts.
-    status = session.snapshot()
-    requested_targets = [m["target_deg"] for m in status["motors"]]
-    deadline = time.monotonic() + 62
-    while True:
-        if finished.is_set() or session.stop_event.is_set():
-            raise RuntimeError("Test cancelled")
-        if status["fault"] != "none" or not status["armed"]:
-            raise RuntimeError(f"Test stopped: {status['fault']}")
-        if [m["target_deg"] for m in status["motors"]] != requested_targets:
-            raise RuntimeError("Test interrupted by a different target")
-        if status["target_reached"]:
-            return
-        if time.monotonic() >= deadline:
-            raise TimeoutError("Target did not settle")
-        finished.wait(.1)
-        # Use the stream: repeatedly requesting full configuration at 10 Hz
-        # would saturate the 115200-baud link and delay command replies.
-        current, _ = session.current()
-        if current is not None:
-            status = current
-
-
 def motion_test(session, words, finished):
     if len(words) not in (4, 5) or words[1] not in ("step", "positive", "negative", "repeat"):
         raise ValueError("test step|positive|negative AXIS DELTA; test repeat AXIS DELTA COUNT")
@@ -509,25 +577,28 @@ def motion_test(session, words, finished):
     if not 1 <= count <= 20 or (kind == "repeat") != (len(words) == 5):
         raise ValueError("Repeat count must be 1..20")
     try:
-        status = session.snapshot()
+        status = session.snapshot(cancel=finished)
         if not status["armed"] or status["fault"] != "none":
             raise ValueError("arm explicitly before starting a test")
         if finished.is_set():
             raise RuntimeError("Test cancelled")
-        session.command(f"stream on {config.TELEMETRY_HZ}")
+        session.command(f"stream on {config.TELEMETRY_HZ}", cancel=finished)
         base = axis_value(status, axis)
         for j in range(count):
             if finished.is_set():
                 raise RuntimeError("Test cancelled")
             target = base + delta * (-1 if kind == "negative" or (kind == "repeat" and j % 2) else 1)
-            session.command(axis_command(axis, target))
+            session.command(axis_command(axis, target), cancel=finished)
             wait_for_target(session, finished)
         if kind == "repeat":
             if finished.is_set():
                 raise RuntimeError("Test cancelled")
-            session.command(axis_command(axis, base))
+            session.command(axis_command(axis, base), cancel=finished)
             wait_for_target(session, finished)
         print("Test complete; stop/disarm releases both motors.")
+    except MotionCancelled:
+        session.priority_stop()
+        raise
     except BaseException:
         try:
             session.emergency_stop()
@@ -536,7 +607,17 @@ def motion_test(session, words, finished):
         raise
 
 
-PC_HELP = """Firmware: help, status, encoder, fault, calibrate, zero, limits, pid, safety,
+PC_HELP = """Commandes simples (angles absolus en degrés de sortie de réducteur) :
+  cycle N [FLEXION EXTENSION]  Cycle complet N fois, rotation à 180°.
+  neutre                     Retour au zéro commun, sans refaire le zéro.
+  flexion ANGLE              M1 = +ANGLE, M2 = -ANGLE ; rotation = 0.
+  extension ANGLE            M1 = -ANGLE, M2 = +ANGLE ; rotation = 0.
+  rotation ANGLE             M1 = M2 = ANGLE ; flexion = 0.
+  stop                       Annule l'opération et libère les moteurs.
+  !                          Arrêt d'urgence avec défaut mémorisé.
+Préparation : calibrate_config ; placer au neutre ; zero ; setup ; arm.
+Les amplitudes de cycle omises viennent de bench_config.py.
+Firmware: help, status, encoder, fault, calibrate, zero, limits, pid, safety,
 arm, move, jog, stop, disarm, !, estop, clear_fault, stream.
 PC: show_config; calibrate_config; setup; save FILE.png;
 test step|positive|negative AXIS DELTA; test repeat AXIS DELTA COUNT;
@@ -548,21 +629,12 @@ After movement the PID keeps holding until stop/disarm, fault or disconnect.
 
 def console(session, finished):
     print(PC_HELP)
-    test_cancel = threading.Event()
-    test_worker = None
-
-    class TestCancellation:
-        def is_set(self):
-            return finished.is_set() or test_cancel.is_set()
-        def wait(self, seconds):
-            test_cancel.wait(seconds)
-            return self.is_set()
-
-    def run_test(words):
-        try:
-            motion_test(session, words, TestCancellation())
-        except Exception as exc:
-            print(f"Test ended: {exc}")
+    def notify(event):
+        if event["kind"] == "progress":
+            print(f"Cycle {event['cycle']}/{event['total']} — {event['stage']} ({event['completed']} terminé(s))")
+        else:
+            print(event["message"])
+    runner = MotionRunner(session, notify)
 
     try:
         while not finished.is_set() and not session.stop_event.is_set():
@@ -574,13 +646,12 @@ def console(session, finished):
                 if line in ("quit", "exit"):
                     break
                 if words[0] in ("!", "stop", "disarm", "estop"):
-                    test_cancel.set()
-                test_running = test_worker is not None and test_worker.is_alive()
-                if test_running and words[0] not in ("!", "stop", "disarm", "estop", "status", "encoder", "fault", "pc_help", "help"):
-                    raise ValueError("A test is running; stop it before changing targets/configuration")
-                if test_running and words[0] in ("!", "stop", "disarm", "estop"):
-                    session.emergency_stop()  # Bypass pending ordinary command ACK.
-                if line in ("pc_help",):
+                    runner.stop(emergency=words[0] in ("!", "estop"))
+                    print("Arrêt demandé ; moteurs désarmés.")
+                    continue
+                if runner.busy and words[0] not in ("status", "encoder", "fault", "pc_help", "help"):
+                    raise ValueError("Une opération est en cours ; stop pour l'annuler.")
+                if line == "pc_help":
                     print(PC_HELP)
                 elif line == "show_config":
                     print(json.dumps(config.MOTORS, indent=2))
@@ -589,11 +660,15 @@ def console(session, finished):
                 elif words[0] == "save" and len(words) == 2:
                     save_plot(session.sample_copy(), words[1])
                 elif words[0] == "test":
-                    test_cancel.clear()
-                    test_worker = threading.Thread(target=run_test, args=(words,), daemon=True)
-                    test_worker.start()
-                elif line == "!":
-                    session.emergency_stop()
+                    runner.start(lambda cancel, w=words: motion_test(session, w, cancel))
+                elif words[0] == "cycle":
+                    cycle = parse_cycle(words)
+                    profile = motion_profile()
+                    runner.start(lambda cancel, c=cycle, p=profile: run_cycle(session, c, cancel, notify, config.TELEMETRY_HZ, p))
+                elif words[0] in ("neutre", "neutral", "flexion", "extension", "rotation"):
+                    step = simple_step(words)
+                    profile = motion_profile()
+                    runner.start(lambda cancel, s=step, p=profile: run_move(session, s, cancel, config.TELEMETRY_HZ, p))
                 else:
                     print(json.dumps(session.command(line)))
                     if words[0] in ("status", "encoder", "fault"):
@@ -606,11 +681,32 @@ def console(session, finished):
         print(f"Session ended: {exc}", file=sys.stderr)
     finally:
         finished.set()
-        test_cancel.set()
         try:
-            session.emergency_stop()
+            runner.stop()
         except Exception:
             pass
+        runner.join()
+
+
+def parse_cycle(words):
+    if len(words) not in (2, 4):
+        raise ValueError("Utilisation : cycle N [FLEXION EXTENSION]")
+    flex, extension = ((float(v.replace(",", ".")) for v in words[2:]) if len(words) == 4 else
+                       (config.CYCLE_FLEXION_DEG, config.CYCLE_EXTENSION_DEG))
+    return Cycle(int(words[1]), flex, extension)
+
+
+def simple_step(words):
+    if words[0] in ("neutre", "neutral") and len(words) == 1:
+        return Step("Retour au neutre", 0, 0)
+    if len(words) != 2 or words[0] not in ("flexion", "extension", "rotation"):
+        raise ValueError("Utilisation : neutre | flexion ANGLE | extension ANGLE | rotation ANGLE")
+    value = float(words[1].replace(",", "."))
+    if not finite(value) or (words[0] != "rotation" and value <= 0):
+        raise ValueError("Angle fini requis ; amplitude de flexion/extension strictement positive.")
+    if words[0] == "rotation":
+        return Step("Rotation", 0, value)
+    return Step(words[0].capitalize(), value if words[0] == "flexion" else -value, 0)
 
 
 def report_events(session):
@@ -626,9 +722,11 @@ def report_events(session):
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--list", action="store_true")
+    parser.add_argument("--console", action="store_true", help="console technique au lieu de l'interface graphique")
     parser.add_argument("--port", default=config.PORT)
     parser.add_argument("--csv")
-    parser.add_argument("--plot", action=argparse.BooleanOptionalAction, default=True)
+    parser.add_argument("--plot", action=argparse.BooleanOptionalAction, default=True,
+                        help="courbes automatiques en mode --console ; bouton Courbes dans l'interface")
     parser.add_argument("--save-plot")
     parser.add_argument("--analyze", metavar="CSV", help="offline per-motor step metrics and optional PNG")
     args = parser.parse_args(argv)
@@ -648,6 +746,9 @@ def main(argv=None):
         for port in list_ports.comports():
             print(f"{port.device}: {port.description}")
         return 0
+    if not args.console:
+        from wrist_gui import launch
+        return launch(args)
     if not args.port:
         parser.error("Select --port COMx or set PORT in bench_config.py; use --list")
     session = recorder = None

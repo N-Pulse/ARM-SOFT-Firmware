@@ -34,8 +34,22 @@ void Wrist_Stop(void)
 }
 static void fault(const char *why, int motor)
 {
+    if (!s.fault) {
+        s.fault = why; s.fault_motor = motor;
+        memset(&s.fault_detail, 0, sizeof s.fault_detail);
+        if (motor >= 1 && motor <= 2) {
+            const wrist_motor_t *m = &s.motors[motor - 1];
+            s.fault_detail = (wrist_fault_detail_t){
+                .valid = true, .command_active = s.active,
+                .t_ms = s.now, .dt_s = s.dt,
+                .velocity_deg_s = m->velocity, .velocity_limit_deg_s = m->limits.velocity_deg_s,
+                .position_deg = m->position, .target_deg = m->target, .pwm_percent = m->applied,
+                .raw = m->encoder.sample.raw, .delta = m->encoder.sample.delta,
+                .counts = m->encoder.sample.counts
+            };
+        }
+    }
     Wrist_Stop();
-    if (!s.fault) { s.fault = why; s.fault_motor = motor; }
 }
 static bool consume_async(void)
 {
@@ -84,6 +98,7 @@ bool Wrist_ClearFault(void)
         sync_motor(i);
     }
     s.fault = NULL; s.fault_motor = 0;
+    memset(&s.fault_detail, 0, sizeof s.fault_detail);
     return true;
 }
 bool Wrist_Calibrate(unsigned i, const bench_encoder_config_t *c)
@@ -132,9 +147,9 @@ bool Wrist_PID(unsigned i, const motor_pid_config_t *c, float pwm, float toleran
     if (!configurable(i)) return false;
     motor_pid_t candidate;
     if (!c || !range(c->kp, 0, 1e6f) || !range(c->ki, 0, 1e6f) || !range(c->kd, 0, 1e6f) ||
-        c->kp + c->ki + c->kd <= 0 || !range(c->integral_limit, 0, WRIST_HARD_PWM_PERCENT) ||
+        c->kp + c->ki + c->kd <= 0 || !range(c->integral_limit, 0, Wrist_MaxPWM(i)) ||
         !range(c->derivative_tau_s, 0, 10) || !range(c->max_dt_s, .001f, WRIST_MAX_CONTROL_MS / 1000.0f) ||
-        !range(pwm, .001f, WRIST_HARD_PWM_PERCENT) || !range(tolerance, 1e-6f, 1000) ||
+        !range(pwm, .001f, Wrist_MaxPWM(i)) || !range(tolerance, 1e-6f, 1000) ||
         !MotorPID_Init(&candidate, c)) return reject("invalid_pid");
     wrist_motor_t *m = &s.motors[i];
     m->pid = candidate; m->pwm_cap = pwm; m->tolerance = tolerance; m->pid_set = true;
@@ -144,7 +159,7 @@ bool Wrist_Safety(unsigned i, const wrist_safety_t *c)
 {
     if (!configurable(i)) return false;
     uint32_t max_delta = i == 0 ? 100000000U : 32767U;
-    if (!c || !c->delta || c->delta > max_delta || !range(c->stall_pwm, .001f, WRIST_HARD_PWM_PERCENT) ||
+    if (!c || !c->delta || c->delta > max_delta || !range(c->stall_pwm, .001f, Wrist_MaxPWM(i)) ||
         !range(c->stall_deg, 1e-9f, 1000) || c->stall_ms < 50 || c->stall_ms > 5000 ||
         !range(c->settle_deg_s, 1e-6f, 1000) || !range(c->hold_error_deg, 1e-6f, 1000) ||
         c->hold_error_ms < 10 || c->hold_error_ms > 60000) return reject("invalid_safety");
@@ -249,8 +264,6 @@ void Wrist_Update(uint32_t now)
             { fault("encoder_invalid", (int)i+1); return; }
         if (fabs((double)m->encoder.sample.delta) > m->safety.delta)
             { fault("counter_delta", (int)i+1); return; }
-        if (fabsf(m->velocity) > m->limits.velocity_deg_s)
-            { fault("velocity_limit", (int)i+1); return; }
         if (!range(m->position, m->limits.min_deg, m->limits.max_deg))
             { fault("position_limit", (int)i+1); return; }
         if (!s.active) continue; /* Armed only: zero PWM until an explicit target. */
@@ -280,6 +293,7 @@ void Wrist_Update(uint32_t now)
         } else { settling[i] = false; all_reached = false; }
         if (!MotorPID_Update(&m->pid, m->target, m->position, s.dt, m->pwm_cap, &outputs[i]))
             { fault("pid_invalid", (int)i+1); return; }
+
     }
     if (!s.active) return;
     s.reached = all_reached;

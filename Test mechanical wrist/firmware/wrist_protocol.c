@@ -82,11 +82,31 @@ static bool snapshot(const char *type, bool config)
     int n = snprintf(packet, sizeof packet,
         "{\"type\":\"%s\",\"firmware\":\"stm32-wrist-bench/1\",\"t_ms\":%lu,"
         "\"state\":\"%s\",\"armed\":%s,\"target_reached\":%s,\"dt_s\":%.9g,"
-        "\"fault\":\"%s\",\"fault_motor\":%d,\"telemetry_dropped\":%lu,\"motors\":[",
+        "\"fault\":\"%s\",\"fault_motor\":%d,\"telemetry_dropped\":%lu,",
         type, (unsigned long)s->now, Wrist_State(), json_bool(s->armed), json_bool(s->reached),
         (double)s->dt, s->fault ? s->fault : "none", s->fault_motor, (unsigned long)telemetry_dropped);
     if (n < 0 || (size_t)n >= sizeof packet) return false;
     size_t used = (size_t)n;
+    if (s->fault_detail.valid) {
+        const wrist_fault_detail_t *d = &s->fault_detail;
+        char velocity[32], limit[32], position[32], target[32], pwm[32], counts[24];
+        number(velocity, sizeof velocity, d->velocity_deg_s, true);
+        number(limit, sizeof limit, d->velocity_limit_deg_s, true);
+        number(position, sizeof position, d->position_deg, true);
+        number(target, sizeof target, d->target_deg, true);
+        number(pwm, sizeof pwm, d->pwm_percent, true);
+        count_string(counts, d->counts);
+        n = snprintf(packet+used, sizeof packet-used,
+            "\"fault_detail\":{\"t_ms\":%lu,\"dt_s\":%.9g,\"command_active\":%s,"
+            "\"velocity_deg_s\":%s,\"velocity_limit_deg_s\":%s,\"position_deg\":%s,"
+            "\"target_deg\":%s,\"pwm_percent\":%s,\"raw\":%lu,\"delta\":%ld,\"counts\":%s},\"motors\":[",
+            (unsigned long)d->t_ms, (double)d->dt_s, json_bool(d->command_active),
+            velocity, limit, position, target, pwm, (unsigned long)d->raw, (long)d->delta, counts);
+    } else {
+        n = snprintf(packet+used, sizeof packet-used, "\"fault_detail\":null,\"motors\":[");
+    }
+    if (n < 0 || (size_t)n >= sizeof packet-used) return false;
+    used += (size_t)n;
     for (unsigned i = 0; i < 2; ++i) {
         const wrist_motor_t *m = &s->motors[i];
         char target[32], position[32], velocity[32], error[32], counts[24];

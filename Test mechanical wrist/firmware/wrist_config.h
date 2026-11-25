@@ -6,7 +6,12 @@
 #define WRIST_CONTROL_MS 10U
 #define WRIST_MAX_CONTROL_MS 50U
 #define WRIST_HEARTBEAT_MS 500U
-#define WRIST_HARD_PWM_PERCENT 25.0f
+#define WRIST_M1_MAX_PWM_PERCENT 7.0f
+#define WRIST_M2_MAX_PWM_PERCENT 7.0f
+static inline float Wrist_MaxPWM(unsigned motor)
+{
+    return motor == 0 ? WRIST_M1_MAX_PWM_PERCENT : WRIST_M2_MAX_PWM_PERCENT;
+}
 #define WRIST_SETTLE_MS 100U
 #define WRIST_REVERSAL_MS 2U
 #define WRIST_PWM_PERIOD 8499U /* 170 MHz / 8500 = 20 kHz */

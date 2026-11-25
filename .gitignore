@@ -10,6 +10,9 @@
 *.su
 .DS_Store
 
+# Environnements Python locaux (ne pas committer)
+.venv/
+
 # venv Python embarqué dans comm-stack (ne pas committer)
 fw/comm-stack/PyUART/venv_py/
 __pycache__/

@@ -205,7 +205,7 @@ void BenchHW_SetMotors(float m1, float m2)
 {
     uint32_t saved = lock();
     if (!gate || !isfinite(m1) || !isfinite(m2) ||
-        fabsf(m1) > WRIST_HARD_PWM_PERCENT || fabsf(m2) > WRIST_HARD_PWM_PERCENT) {
+        fabsf(m1) > WRIST_M1_MAX_PWM_PERCENT || fabsf(m2) > WRIST_M2_MAX_PWM_PERCENT) {
         shutdown(gate ? BENCH_ASYNC_ESTOP : 0U); unlock(saved); return;
     }
     float commands[] = {m1, m2};
