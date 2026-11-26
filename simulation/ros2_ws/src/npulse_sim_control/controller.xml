@@ -1,0 +1,5 @@
+<library path="npulse_actuator_controller">
+  <class name="npulse_sim_control/ActuatorController" type="npulse_sim_control::ActuatorController" base_class_type="controller_interface::ControllerInterface">
+    <description>Simulation actuator, passive finger coupling, steady-clock command expiry, and measured state.</description>
+  </class>
+</library>
