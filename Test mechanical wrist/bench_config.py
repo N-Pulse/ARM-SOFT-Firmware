@@ -13,8 +13,8 @@ CYCLE_FLEXION_DEG = None
 CYCLE_EXTENSION_DEG = None
 MOTION_SPEED_DEG_S = 9.0
 MOTION_ACCEL_DEG_S2 = 4.5
-M1_MAX_PWM_PERCENT = 7.0
-M2_MAX_PWM_PERCENT = 7.0
+M1_MAX_PWM_PERCENT = 50.0
+M2_MAX_PWM_PERCENT = 50.0
 
 # Informational only: these do not program or limit the bench supply.
 SUPPLY_VOLTS = 12.0
@@ -32,8 +32,8 @@ def motor_config(max_pwm_percent):
         "encoder_location": "motor",
         # min_deg, max_deg, step_deg, legacy speed field, move_ms
         "limits": [-200.0, 200.0, 400.0, 10.0, 60000],
-        # KP KI KD I_LIMIT TAU PWM TOLERANCE_DEG. Gains use %/degree, seconds.
-        "pid": [10.0, 1.0, 0.2, 1.0, 0.02, max_pwm_percent, 0.5],
+        # Kp Ki Kd I_LIMITAU PWM max tolérance
+        "pid": [15.0, 1.0, 0.2, 2.0, 0.02, max_pwm_percent, 1.0],
         # DELTA STALL_PWM STALL_DEG STALL_MS SETTLE_DEG_S HOLD_ERROR_DEG HOLD_ERROR_MS
         "safety": [5000, 2.0, 0.1, 1500, 1.0, 2.0, 500],
     }

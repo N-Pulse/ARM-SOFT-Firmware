@@ -45,6 +45,52 @@ static void ready(void)
     }
     assert(Wrist_Arm());
 }
+static void onboard_profile(void)
+{
+    ready();
+    assert(!Wrist_MoveProfile(4, 91, 10, 100));
+    assert(!Wrist_MoveProfile(4, -2, 1, 1)); /* Exceeds the 1 s timeout. */
+    assert(!Wrist_MoveProfile(4, -2, NAN, 100));
+    assert(!Wrist_Status()->active);
+
+    Protocol_Init(tick);
+    command("move wrist 3 1 10 100"); /* M1 +4, M2 -2, duration 0.5 s. */
+    assert(Wrist_Goal(0) == 4 && Wrist_Goal(1) == -2);
+    float prev = 0, prev_speed = 0;
+    for (int j = 1; j <= 50; ++j) {
+        raw[0] = (uint32_t)lroundf(prev);
+        raw[1] = (uint16_t)lroundf(-prev / 2);
+        step(true);
+        const wrist_status_t *s = Wrist_Status();
+        float target = s->motors[0].target;
+        float speed = (target - prev) / .01f;
+        assert(!s->fault && !s->reached && !s->holding);
+        assert(speed >= 0 && speed <= 10.001f && fabsf(speed-prev_speed) <= 1.001f);
+        assert(fabsf(target + 2 * s->motors[1].target) < 1e-5f);
+        if (j == 1) assert(fabsf(target - .005f) < 1e-5f);
+        prev = target; prev_speed = speed;
+    }
+    assert(prev == 4);
+    raw[0] = 4; raw[1] = (uint16_t)-2;
+    for (int j = 0; j < 12; ++j) step(true);
+    assert(Wrist_Status()->reached && Wrist_Status()->holding);
+    assert(Wrist_MoveProfile(3, -2, 20, 100)); /* Triangle: 1 degree in 0.2 s. */
+    for (int j = 0; j < 10; ++j) step(true);
+    assert(fabsf(Wrist_Status()->motors[0].target - 3.5f) < 1e-5f);
+    for (int j = 0; j < 10; ++j) step(true);
+    assert(Wrist_Status()->motors[0].target == 3);
+
+    ready(); assert(Wrist_MoveProfile(4, -2, 10, 100));
+    step(true); Wrist_Stop(); step(true);
+    assert(!gate && !Wrist_Status()->active && Wrist_Goal(0) == 0);
+    ready(); assert(Wrist_MoveProfile(4, -2, 10, 100));
+    for (int j = 0; j < 50 && !Wrist_Status()->fault; ++j) step(true);
+    assert(!gate && Wrist_Status()->fault && !strcmp(Wrist_Status()->fault, "stall"));
+    ready(); assert(Wrist_MoveProfile(4, -2, 10, 100));
+    raw[0] = 21000; step(true);
+    assert(!gate && Wrist_Status()->fault && !strcmp(Wrist_Status()->fault, "counter_delta"));
+}
+
 static void holding_and_atomicity(void)
 {
     ready(); assert(pwm[0] == 0 && pwm[1] == 0);
@@ -317,6 +363,7 @@ int main(int argc, char **argv)
 {
     const struct { const char *name; void (*run)(void); } tests[] = {
         {"resolution_boundary", resolution_boundary},
+        {"onboard_profile", onboard_profile},
         {"pwm_cap_at_high_speed", pwm_cap_at_high_speed},
         {"position_fault_details", position_fault_details},
         {"repeated_stall", repeated_stall}, {"jitter_stall", jitter_stall},

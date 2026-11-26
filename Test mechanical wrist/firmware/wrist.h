@@ -54,6 +54,8 @@ bool Wrist_PID(unsigned motor, const motor_pid_config_t *config, float pwm, floa
 bool Wrist_Safety(unsigned motor, const wrist_safety_t *config);
 bool Wrist_Arm(void);
 bool Wrist_Move(float m1, float m2);
+bool Wrist_MoveProfile(float m1, float m2, float speed, float acceleration);
+float Wrist_Goal(unsigned motor);
 const wrist_status_t *Wrist_Status(void);
 const char *Wrist_Error(void);
 const char *Wrist_State(void);

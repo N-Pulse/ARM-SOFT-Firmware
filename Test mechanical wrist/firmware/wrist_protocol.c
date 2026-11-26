@@ -109,17 +109,18 @@ static bool snapshot(const char *type, bool config)
     used += (size_t)n;
     for (unsigned i = 0; i < 2; ++i) {
         const wrist_motor_t *m = &s->motors[i];
-        char target[32], position[32], velocity[32], error[32], counts[24];
+        char target[32], goal[32], position[32], velocity[32], error[32], counts[24];
         number(target, sizeof target, m->target, true);
+        number(goal, sizeof goal, Wrist_Goal(i), true);
         number(position, sizeof position, m->position, m->encoder.sample.valid);
         number(velocity, sizeof velocity, m->velocity, m->encoder.sample.valid);
         number(error, sizeof error, m->error, m->encoder.sample.valid);
         count_string(counts, m->encoder.sample.counts);
         n = snprintf(packet+used, sizeof packet-used,
-            "%s{\"id\":%u,\"target_deg\":%s,\"position_deg\":%s,\"velocity_deg_s\":%s,\"error_deg\":%s,"
+            "%s{\"id\":%u,\"target_deg\":%s,\"goal_deg\":%s,\"position_deg\":%s,\"velocity_deg_s\":%s,\"error_deg\":%s,"
             "\"pid_percent\":%.9g,\"pwm_percent\":%.9g,\"raw\":%lu,\"counts\":%s,\"delta\":%ld,"
             "\"encoder_available\":%s,\"calibrated\":%s,\"zeroed\":%s,\"feedback_valid\":%s",
-            i ? "," : "", i+1U, target, position, velocity, error, (double)m->demand, (double)m->applied,
+            i ? "," : "", i+1U, target, goal, position, velocity, error, (double)m->demand, (double)m->applied,
             (unsigned long)m->encoder.sample.raw, counts, (long)m->encoder.sample.delta,
             json_bool(m->encoder.sample.available), json_bool(m->encoder.sample.calibrated),
             json_bool(m->encoder.sample.zeroed), json_bool(m->encoder.sample.valid));
@@ -214,6 +215,12 @@ static bool movement(char **v, unsigned n, bool relative)
     float a = s->active ? s->motors[0].target : s->motors[0].position;
     float b = s->active ? s->motors[1].target : s->motors[1].position;
     float x, y; unsigned i;
+    if (!relative && n == 6 && strcmp(v[1], "wrist") == 0) {
+        float speed, acceleration;
+        return parse_float(v[2], &x) && parse_float(v[3], &y) &&
+               parse_float(v[4], &speed) && parse_float(v[5], &acceleration) &&
+               Wrist_MoveProfile(y+x, y-x, speed, acceleration);
+    }
     if (n == 4 && strcmp(v[1], "motor") == 0 && motor_id(v[2], &i) && parse_float(v[3], &x)) {
         if (i == 0) a = relative ? a+x : x; else b = relative ? b+x : x;
     } else if (n == 4 && strcmp(v[1], "motors") == 0 && parse_float(v[2], &x) && parse_float(v[3], &y)) {
@@ -258,7 +265,7 @@ static void command(uint32_t now_ms)
     else if ((strcmp(name, "status") == 0 || strcmp(name, "encoder") == 0 || strcmp(name, "fault") == 0) && n == 1) {
         ok = snapshot("status", true);
     } else if (strcmp(name, "help") == 0 && n == 1) {
-        ok = true; message = "status encoder zero calibrate MOTOR PPR 4 GEAR SIGN LOCATION; limits/pid/safety MOTOR ...; arm; move/jog motor ID DEG | motors M1 M2 | flex DEG | rotation DEG | wrist FLEX ROTATION; stop estop clear_fault stream on [HZ] stream off; degrees=gearbox outputs";
+        ok = true; message = "status encoder zero calibrate MOTOR PPR 4 GEAR SIGN LOCATION; limits/pid/safety MOTOR ...; arm; move/jog motor ID DEG | motors M1 M2 | flex DEG | rotation DEG | wrist FLEX ROTATION; move wrist FLEX ROTATION SPEED ACCEL; stop estop clear_fault stream on [HZ] stream off; degrees=gearbox outputs";
     } else if (strcmp(name, "zero") == 0 && n == 1) ok = Wrist_Zero();
     else if (strcmp(name, "arm") == 0 && n == 1) ok = Wrist_Arm();
     else if (strcmp(name, "clear_fault") == 0 && n == 1) ok = Wrist_ClearFault();

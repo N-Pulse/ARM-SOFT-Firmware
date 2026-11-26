@@ -46,10 +46,12 @@ class SimulatedSession:
         self.move_count += 1
         if self.reject_on_move == self.move_count:
             raise bench.CommandRejected("target_outside_motor_limits")
-        flex, rotation = map(float, text.split()[2:])
+        flex, rotation = map(float, text.split()[2:4])
+        profiled = len(text.split()) == 6
         self.pending = (rotation + flex, rotation - flex)
         for motor, target in zip(self.packet["motors"], self.pending):
-            motor["target_deg"] = target
+            motor["goal_deg"] = target
+            motor["target_deg"] = motor["position_deg"] if profiled else target
         self.packet.update(target_reached=False, state="moving", host_monotonic_s=time.monotonic())
         if self.fault_on_move == self.move_count:
             self.packet.update(fault="stall", armed=False)
@@ -59,7 +61,7 @@ class SimulatedSession:
     def current(self):
         if self.pending is not None:
             for motor, target in zip(self.packet["motors"], self.pending):
-                motor["position_deg"] = target
+                motor["position_deg"] = motor["target_deg"] = target
             self.arrivals.append(self.pending)
             self.pending = None
             self.packet.update(target_reached=True, state="holding", host_monotonic_s=time.monotonic())
@@ -91,40 +93,18 @@ class VirtualClock:
 
 
 class MotionTests(unittest.TestCase):
-    def test_trapezoid_speed_acceleration_and_endpoint(self):
+    def test_profile_duration_for_triangular_and_cruising_routes(self):
         profile = MotionProfile(4, 8)
-        for distance in (.2, 180):
-            duration = profile.duration(distance)
-            dt = .001
-            positions = [profile.position(distance, j * dt) for j in range(int(duration / dt) + 1)]
-            speeds = [(b - a) / dt for a, b in zip(positions, positions[1:])]
-            self.assertTrue(all(-1e-8 <= v <= 4 + 1e-8 for v in speeds))
-            self.assertTrue(all(abs(b - a) / dt <= 8 + 1e-6 for a, b in zip(speeds, speeds[1:])))
-            self.assertEqual(profile.position(distance, duration), distance)
+        self.assertAlmostEqual(profile.duration(.5), .5)
         self.assertAlmostEqual(profile.duration(180), 45.5)
 
-    def test_ramped_moves_keep_both_motors_on_the_same_path_and_end_at_goal(self):
+    def test_profiled_move_sends_one_goal_and_waits_for_arrival(self):
         clock = VirtualClock()
         with patch("wrist_motion.time.monotonic", side_effect=lambda: clock.now):
             session = SimulatedSession()
-            sent = []
-            command = session.command
-            def record(text, cancel=None):
-                if text.startswith("move wrist"):
-                    flex, rotation = map(float, text.split()[2:])
-                    sent.append((clock.now, rotation + flex, rotation - flex))
-                return command(text, cancel)
-            session.command = record
             run_move(session, Step("Flexion", 180, 0), clock, profile=MotionProfile(4, 8))
-            self.assertGreater(len(sent), 400)
-            self.assertTrue(all(abs(a + b) < 1e-9 for _, a, b in sent))
-            previous = (0.0, 0.0, 0.0)
-            for item in sent:
-                dt = item[0] - previous[0]
-                if dt:
-                    self.assertLessEqual(abs(item[1] - previous[1]) / dt, 4.00001)
-                previous = item
-            self.assertEqual(session.arrivals[-1], (180, -180))
+            self.assertEqual(session.commands, ["stream on 10", "move wrist 180 0 4 8"])
+            self.assertEqual(session.arrivals, [(180, -180)])
             self.assertFalse(session.estopped)
 
     def test_profile_checks_arrival_budget_only(self):
@@ -142,11 +122,11 @@ class MotionTests(unittest.TestCase):
             clock = VirtualClock()
             with patch("wrist_motion.time.monotonic", side_effect=lambda: clock.now):
                 session = SimulatedSession()
-                setattr(session, attribute, 3)
+                setattr(session, attribute, 1)
                 with self.assertRaises(RuntimeError):
                     run_move(session, Step("Rotation", 0, 180), clock, profile=MotionProfile(4, 8))
-                self.assertEqual(session.move_count, 3)
-                self.assertNotIn("move wrist 0 180", session.commands)
+                self.assertEqual(session.move_count, 1)
+                self.assertEqual(session.arrivals, [])
                 self.assertTrue(session.stopped if attribute == "cancel_on_move" else session.estopped)
 
     def test_ramped_cycles_still_count_only_final_neutral_arrivals(self):

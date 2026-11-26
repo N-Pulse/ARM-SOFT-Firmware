@@ -23,7 +23,7 @@ from wrist_motion import (Cycle, Step, MotionProfile, MotionCancelled, MotionRun
 
 MOTOR_FLOAT_FIELDS = ("target_deg", "position_deg", "error_deg", "velocity_deg_s", "pid_percent", "pwm_percent")
 MOTOR_BOOL_FIELDS = ("encoder_available", "calibrated", "zeroed", "feedback_valid")
-MOTOR_FIELDS = MOTOR_FLOAT_FIELDS + ("raw", "counts", "delta") + MOTOR_BOOL_FIELDS
+MOTOR_FIELDS = MOTOR_FLOAT_FIELDS + ("raw", "counts", "delta") + MOTOR_BOOL_FIELDS + ("goal_deg",)
 FAULT_FLOAT_FIELDS = ("dt_s", "velocity_deg_s", "velocity_limit_deg_s", "position_deg", "target_deg", "pwm_percent")
 FAULT_FIELDS = ("t_ms", "command_active") + FAULT_FLOAT_FIELDS + ("raw", "delta", "counts")
 CSV_FIELDS = ("host_utc", "host_monotonic_s", "t_ms", "state", "armed", "target_reached", "dt_s", "fault", "fault_motor") + tuple(
@@ -67,6 +67,8 @@ def parse_packet(line):
             for key in MOTOR_BOOL_FIELDS:
                 if type(m.get(key)) is not bool:
                     raise ValueError(f"invalid {key}")
+            if "goal_deg" in m and (p["armed"] or m["goal_deg"] is not None) and not finite(m["goal_deg"]):
+                raise ValueError("invalid goal_deg")
             for key in ("raw", "counts", "delta"):
                 if type(m.get(key)) is not int:
                     raise ValueError(f"invalid {key}")
@@ -545,7 +547,8 @@ def read_csv(path):
             for i in (1, 2):
                 m = {"id": i}
                 for key in MOTOR_FIELDS:
-                    value = row[f"m{i}_{key}"]
+                    column = f"m{i}_{key}"
+                    value = row.get(column, "") if key == "goal_deg" else row[column]
                     m[key] = (value == "True") if key in MOTOR_BOOL_FIELDS else (
                         None if value == "" else int(value) if key in ("counts", "raw", "delta") else float(value))
                 p["motors"].append(m)

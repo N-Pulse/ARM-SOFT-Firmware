@@ -1,4 +1,5 @@
 {
     "cmake.sourceDirectory": "C:/Users/decju/OneDrive/Bureau/N-Pulse_STM32G474QET6/ARM-SOFT-Firmware/Middlewares/Third_Party/FreeRTOS-Kernel",
-    "cmake.ignoreCMakeListsMissing": true
+    "cmake.ignoreCMakeListsMissing": true,
+    "makefile.configureOnOpen": false
 }

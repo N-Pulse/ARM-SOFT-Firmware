@@ -122,7 +122,7 @@ Après modification : relancer l'application, recharger le profil, refaire le ne
 | Encodeurs | `ppr`, `gear_ratio`, `encoder_sign`, `encoder_location`, séparément pour M1 et M2. |
 | PC / cycle | `PORT`, `BAUDRATE`, `TELEMETRY_HZ`, `PLOT_HISTORY_SECONDS`, `CYCLE_FLEXION_DEG`, `CYCLE_EXTENSION_DEG`. |
 | Trajectoire | `MOTION_SPEED_DEG_S` (9°/s) et `MOTION_ACCEL_DEG_S2` (4,5°/s²), pour les cycles et commandes simples. |
-| PWM maximal | 7 % pour les deux moteurs, plafonds utilisés au 6e emplacement de `pid` pour chaque moteur. |
+| PWM maximal | 50 % sur les deux moteurs, au 6e emplacement de `pid` pour chaque moteur. |
 
 `motor_config()` fournit les valeurs communes initiales ; `MOTORS[1]` et
 `MOTORS[2]` peuvent ensuite être ajustés séparément. Les amplitudes de cycle
@@ -145,11 +145,15 @@ M2 = rotation − flexion
 
 **Angles en degrés de sortie des réducteurs**, y compris les 180° : vérifier les sens et la correspondance avec le poignet réel. Les PID maintiennent la position après arrivée.
 
-Les cycles et commandes simples font progresser la consigne avec une rampe
-d'accélération, une vitesse constante puis une décélération. Les deux références
+Pour les cycles et commandes simples, le PC envoie une seule commande par trajet :
+`move wrist FLEX ROTATION VITESSE ACCELERATION` (°, °/s, °/s²). Reflasher la carte
+et relancer le client pour utiliser cette commande. Le STM32 calcule la rampe
+à chaque cycle de contrôle (10 ms). La télémétrie distingue la consigne instantanée
+`target_deg` de la destination `goal_deg`. L'arrivée exige la fin de la rampe et
+la stabilisation des deux moteurs. Les deux références
 moteur suivent ensemble le même trajet, à 9°/s au maximum par défaut. Cette vitesse règle la rampe de consigne. La vitesse mesurée
 reste disponible pour le PID, la détection de stabilisation et les courbes.
-Le firmware borne le PWM à 7 % pour les deux moteurs dans les deux sens.
+Le firmware borne le PWM à 50 % pour les deux moteurs dans les deux sens.
 Un trajet de 180° prend environ 22 s de rampe, plus l'attente finale de position.
 Un trajet prévu trop long pour le délai moteur est refusé avant mouvement.
 Les commandes avancées `move`, `jog` et `test` restent des consignes directes.
@@ -164,22 +168,22 @@ Le profil initial proposé pour les deux moteurs est **approximatif, à régler 
 le montage** :
 
 ```python
-"pid": [10.0, 1.0, 0.2, 1.0, 0.02, 7.0, 0.5]
+"pid": [15.0, 1.0, 0.2, 2.0, 0.02, max_pwm_percent, 1.0]
 #       KP   KI   KD   Imax  TAU   PWM  tolérance
 ```
 
-Le profil d’essai utilise `Kp = 10` pour les deux moteurs,
-soit 10 % de PWM par degré d’erreur avant saturation.
+Le profil d’essai utilise `Kp = 15` pour les deux moteurs,
+soit 15 % de PWM par degré d’erreur avant saturation.
 `Kd = 0.2` freine selon la vitesse mesurée ; `TAU = 0.02` filtre cette dérivée
 sur 20 ms. Avec `Ki = 1`, une erreur persistante de 0,5° ajoute 0,5 point
-de PWM par seconde, avec une contribution intégrale limitée à ±1 point.
-Le PWM maximal est de **7 % pour les deux moteurs** et la
-tolérance à **0,5°**. Ces gains et ce plafond ne sont pas des caractéristiques
+de PWM par seconde, avec une contribution intégrale limitée à ±2 points.
+Le profil plafonne la PWM à **50 % sur les deux moteurs**, avec une
+tolérance de **±1°**. Ces gains et ces plafonds ne sont pas des caractéristiques
 validées des moteurs.
 
 Les paramètres `M1_MAX_PWM_PERCENT` et `M2_MAX_PWM_PERCENT` règlent les plafonds
 du profil PC. La carte refuse les valeurs supérieures à la borne du moteur
-correspondant (7 % pour les deux moteurs). Le PWM est un rapport cyclique,
+correspondant (50 % pour les deux moteurs). Le PWM est un rapport cyclique,
 pas une limitation de courant. Une courbe centrée autour de zéro peut afficher
 automatiquement une échelle ±0,05 % sans que cela représente le plafond configuré.
 

@@ -59,12 +59,10 @@ class Cycle:
 class MotionProfile:
     speed: float
     acceleration: float
-    interval: float = 0.1
 
     def __post_init__(self):
         positive(self.speed, "Vitesse de consigne")
         positive(self.acceleration, "Accélération de consigne")
-        positive(self.interval, "Intervalle de consigne")
 
     def timing(self, distance):
         if distance <= 0:
@@ -77,23 +75,12 @@ class MotionProfile:
         ramp, cruise = self.timing(distance)
         return 2 * ramp + cruise
 
-    def position(self, distance, elapsed):
-        ramp, cruise = self.timing(distance)
-        elapsed = max(0.0, elapsed)
-        if elapsed >= 2 * ramp + cruise:
-            return distance
-        if elapsed < ramp:
-            return 0.5 * self.acceleration * elapsed * elapsed
-        if elapsed < ramp + cruise:
-            return 0.5 * self.acceleration * ramp * ramp + self.acceleration * ramp * (elapsed - ramp)
-        remaining = 2 * ramp + cruise - elapsed
-        return distance - 0.5 * self.acceleration * remaining * remaining
-
 
 def validate_profile(status, steps, profile):
     if profile is None:
         return
-    previous = tuple(m["position_deg"] for m in status["motors"])
+    previous = tuple(m["target_deg"] if status["target_reached"] else m["position_deg"]
+                     for m in status["motors"])
     for step in steps:
         travel = tuple(abs(t - p) for t, p in zip(step.targets, previous))
         distance = max(travel)
@@ -141,7 +128,7 @@ def wait_for_target(session, cancel, expected=None, timeout=62):
         check_cancelled(session, cancel)
         if status["fault"] != "none" or not status["armed"]:
             raise RuntimeError(f"Mouvement interrompu : {status['fault']}.")
-        if any(not math.isclose(m["target_deg"], t, rel_tol=1e-6, abs_tol=1e-5)
+        if any(not math.isclose(m.get("goal_deg", m["target_deg"]), t, rel_tol=1e-6, abs_tol=1e-5)
                for m, t in zip(status["motors"], targets)):
             raise RuntimeError("Mouvement interrompu par une autre consigne.")
         now = time.monotonic()
@@ -157,51 +144,15 @@ def wait_for_target(session, cancel, expected=None, timeout=62):
             status = current
 
 
-def check_feedback(status):
-    if status["fault"] != "none" or not status["armed"]:
-        raise RuntimeError(f"Mouvement interrompu : {status['fault']}.")
-    now = time.monotonic()
-    if now - status.get("host_monotonic_s", now) > 1.0:
-        raise TimeoutError("Télémétrie absente depuis plus d'une seconde.")
-
-
 def execute_step(session, cancel, step, profile=None):
     check_cancelled(session, cancel)
+    command = f"move wrist {step.flex:.9g} {step.rotation:.9g}"
     if profile is not None:
         status = session.snapshot(cancel=cancel)
         validate_steps(status, (step,))
         validate_profile(status, (step,), profile)
-        initial = tuple(m["position_deg"] for m in status["motors"])
-        difference = tuple(t - p for t, p in zip(step.targets, initial))
-        distance = max(abs(d) for d in difference)
-        duration = profile.duration(distance)
-        started = time.monotonic()
-        previous_targets = None
-        last_ack_time = None
-        while distance > 1e-6 and time.monotonic() - started < duration - 1e-9:
-            cancel.wait(max(0.0, min(profile.interval, duration - (time.monotonic() - started))))
-            check_cancelled(session, cancel)
-            current, _ = session.current()
-            if current is not None:
-                status = current
-            check_feedback(status)
-            if (last_ack_time is not None and status.get("host_monotonic_s", 0) > last_ack_time and
-                    any(not math.isclose(m["target_deg"], t, rel_tol=1e-6, abs_tol=1e-5)
-                        for m, t in zip(status["motors"], previous_targets))):
-                raise RuntimeError("Mouvement interrompu par une autre consigne.")
-            elapsed = time.monotonic() - started
-            fraction = profile.position(distance, elapsed) / distance
-            targets = tuple(p + d * fraction for p, d in zip(initial, difference))
-            flex, rotation = (targets[0] - targets[1]) / 2, (targets[0] + targets[1]) / 2
-            reply = session.command(f"move wrist {flex:.9g} {rotation:.9g}", cancel=cancel)
-            previous_targets = targets
-            last_ack_time = reply.get("host_monotonic_s") if reply else None
-        # Check the latest ramp feedback before committing the final target.
-        check_cancelled(session, cancel)
-        current, _ = session.current()
-        if current is not None:
-            check_feedback(current)
-    session.command(f"move wrist {step.flex:.9g} {step.rotation:.9g}", cancel=cancel)
+        command += f" {profile.speed:.9g} {profile.acceleration:.9g}"
+    session.command(command, cancel=cancel)
     wait_for_target(session, cancel, step.targets)
 
 

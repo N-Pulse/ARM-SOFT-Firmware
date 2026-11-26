@@ -86,10 +86,10 @@ static void startup_pwm_and_reversal(void)
     mock_tick++; BenchHW_SetMotors(-5, -4); assert(TIM4->CCR2 == 425);
     assert(BenchHW_AppliedPWM(0) == -5 && TIM4->EGR == egr);
     BenchHW_SetMotors(-4.999f, 0); assert(fabsf(BenchHW_AppliedPWM(0)) <= 5.0f && TIM4->CCR1 == 0);
-    BenchHW_SetMotors(-7.0f, 0); assert(TIM4->CCR2 == 595);
-    BenchHW_SetMotors(-7.001f, 0); off(); assert(BenchHW_TakeAsyncFault() == BENCH_ASYNC_ESTOP);
-    arm_at(1500); drive(); BenchHW_SetMotors(0, -7.0f); assert(TIM4->CCR1 == 595);
-    BenchHW_SetMotors(0, 7.001f); off(); assert(BenchHW_TakeAsyncFault() == BENCH_ASYNC_ESTOP);
+    BenchHW_SetMotors(-50.0f, 0); assert(TIM4->CCR2 == 4250);
+    BenchHW_SetMotors(-50.001f, 0); off(); assert(BenchHW_TakeAsyncFault() == BENCH_ASYNC_ESTOP);
+    arm_at(1500); drive(); BenchHW_SetMotors(0, -50.0f); assert(TIM4->CCR1 == 4250);
+    BenchHW_SetMotors(0, 50.001f); off(); assert(BenchHW_TakeAsyncFault() == BENCH_ASYNC_ESTOP);
     arm_at(2000); drive(); BenchHW_SetMotors(5, NAN); off();
     assert(BenchHW_TakeAsyncFault() == BENCH_ASYNC_ESTOP);
 }

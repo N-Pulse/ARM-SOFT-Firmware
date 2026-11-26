@@ -9,6 +9,17 @@ static const char *error;
 static uint32_t previous, started[2], settled[2], stall_since[2], hold_since[2];
 static float stall_position[2];
 static bool settling[2], holding[2], stalled[2], hold_bad[2];
+static struct {
+    bool active;
+    uint32_t start_ms;
+    float origin[2], goal[2];
+    double distance, acceleration, ramp_s, duration_s;
+} trajectory;
+
+float Wrist_Goal(unsigned motor)
+{
+    return trajectory.active ? trajectory.goal[motor] : s.motors[motor].target;
+}
 
 static bool reject(const char *why) { error = why; return false; }
 static bool range(float v, float lo, float hi) { return isfinite(v) && v >= lo && v <= hi; }
@@ -22,6 +33,7 @@ static void sync_motor(unsigned i)
 void Wrist_Stop(void)
 {
     BenchHW_Disable();
+    trajectory.active = false;
     s.armed = s.active = s.holding = s.reached = false;
     for (unsigned i = 0; i < 2; ++i) {
         wrist_motor_t *m = &s.motors[i];
@@ -213,7 +225,8 @@ bool Wrist_Move(float m1, float m2)
      * Target messages never reset stall/hold timers: their conditions are
      * evaluated on measured control updates. Keep the PID continuous across active retargets
      * (its derivative is on measurement, with bounded anti-windup integral). */
-    bool changed = !s.active;
+    bool changed = !s.active || trajectory.active;
+    trajectory.active = false;
     for (unsigned i = 0; i < 2; ++i) {
         wrist_motor_t *m = &s.motors[i];
         if (s.active && targets[i] == m->target) continue;
@@ -238,6 +251,67 @@ bool Wrist_Move(float m1, float m2)
     }
     return true;
 }
+bool Wrist_MoveProfile(float m1, float m2, float speed, float acceleration)
+{
+    if (consume_async()) return reject("hardware_fault");
+    if (!s.armed || s.fault) return reject("requires_arm");
+    if (!isfinite(speed) || speed <= 0 || !isfinite(acceleration) || acceleration <= 0)
+        return reject("invalid_profile");
+    if (s.active && !s.reached) return reject("movement_in_progress");
+
+    /* Start at the reference already held by the PID, preserving support torque. */
+    float origin[2], goal[] = {m1, m2};
+    double distance = 0;
+    for (unsigned i = 0; i < 2; ++i) {
+        origin[i] = s.active ? s.motors[i].target : s.motors[i].position;
+        distance = fmax(distance, fabs((double)goal[i] - origin[i]));
+    }
+    if (distance == 0) return Wrist_Move(m1, m2);
+    double ramp = fmin((double)speed / acceleration, sqrt(distance / acceleration));
+    double duration = ramp + distance / (acceleration * ramp);
+    for (unsigned i = 0; i < 2; ++i)
+        if (goal[i] != origin[i] && duration * 1000 >= s.motors[i].limits.move_ms)
+            return reject("profile_exceeds_move_timeout");
+
+    if (!Wrist_Move(m1, m2)) return false; /* Validate both endpoints atomically. */
+    trajectory.active = true;
+    trajectory.start_ms = s.now;
+    trajectory.distance = distance;
+    trajectory.acceleration = acceleration;
+    trajectory.ramp_s = ramp;
+    trajectory.duration_s = duration;
+    for (unsigned i = 0; i < 2; ++i) {
+        trajectory.origin[i] = origin[i];
+        trajectory.goal[i] = goal[i];
+        if (origin[i] != goal[i]) {
+            started[i] = s.now;
+            holding[i] = settling[i] = false;
+        }
+        s.motors[i].target = origin[i];
+        sync_motor(i);
+    }
+    s.holding = s.reached = false;
+    return true;
+}
+
+static void advance_trajectory(uint32_t now)
+{
+    if (!trajectory.active) return;
+    double t = (uint32_t)(now - trajectory.start_ms) * 0.001;
+    double remaining = trajectory.duration_s - t;
+    double a = trajectory.acceleration, ramp = trajectory.ramp_s;
+    double fraction = 1;
+    if (remaining <= 0) trajectory.active = false;
+    else if (t < ramp) fraction = 0.5 * a * t * t / trajectory.distance;
+    else if (remaining < ramp) fraction = 1 - 0.5 * a * remaining * remaining / trajectory.distance;
+    else fraction = a * ramp * (t - 0.5 * ramp) / trajectory.distance;
+    for (unsigned i = 0; i < 2; ++i) {
+        double start = trajectory.origin[i];
+        s.motors[i].target = trajectory.active ?
+            (float)(start + (trajectory.goal[i] - start) * fraction) : trajectory.goal[i];
+    }
+}
+
 void Wrist_Update(uint32_t now)
 {
     uint32_t dt = now-previous;
@@ -245,6 +319,7 @@ void Wrist_Update(uint32_t now)
     consume_async();
     if (!dt) return;
     previous = now; s.dt = dt / 1000.0f;
+    advance_trajectory(now);
     bool sampled[2];
     for (unsigned i = 0; i < 2; ++i) {
         wrist_motor_t *m = &s.motors[i];
@@ -285,7 +360,8 @@ void Wrist_Update(uint32_t now)
                 stall_since[i] = now; stall_position[i] = m->position;
             }
         } else stalled[i] = false;
-        if (within && fabsf(m->velocity) <= m->safety.settle_deg_s) {
+        bool following = trajectory.active && trajectory.origin[i] != trajectory.goal[i];
+        if (!following && within && fabsf(m->velocity) <= m->safety.settle_deg_s) {
             if (!settling[i]) { settling[i] = true; settled[i] = now; }
             bool reached = (uint32_t)(now-settled[i]) >= WRIST_SETTLE_MS;
             if (reached) holding[i] = true;
