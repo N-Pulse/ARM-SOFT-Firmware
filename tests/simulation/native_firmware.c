@@ -209,9 +209,29 @@ static void realtime_loop(void) {
             if(!n) break;
         }
         if(eof) break;
-        if((uint32_t)(clock_ms-last_control)>=10U) { last_control=clock_ms; Motor_Update(); }
+        if((uint32_t)(clock_ms-last_control)>=10U) {
+            uint32_t gap = (uint32_t)(clock_ms-last_control);
+            last_control=clock_ms;
+            uint64_t before = monotonic_ms();
+            Motor_Update();
+            uint64_t duration = monotonic_ms()-before;
+            if (gap > 50U || duration > 50U)
+                fprintf(stderr, "NATIVE TIMING: gap=%u ms, Motor_Update=%llu ms\n",
+                        gap, (unsigned long long)duration);
+        }
         if((uint32_t)(clock_ms-last_safety)>=20U) {
             last_safety=clock_ms; MotorGuard_Poll(); MotorSafety_Poll(); Motor_ServiceStop();
+        }
+        static uint32_t last_rx_log = 0U, last_logged_causes = 0U;
+        uint32_t causes = MotorSafety_GetStopCauses();
+        if ((uint32_t)(clock_ms-last_rx_log) >= 1000U || causes != last_logged_causes) {
+            sim_diagnostics_t d;
+            SimSession_GetDiagnostics(&d);
+            fprintf(stderr,
+                    "NATIVE RX: t=%u causes=%u accepted=%u old=%u rejected=%u malformed=%u\n",
+                    clock_ms, causes, d.accepted, d.old, d.rejected, d.malformed);
+            last_rx_log = clock_ms;
+            last_logged_causes = causes;
         }
         SimSession_Service(); current_task=1U;
         if(!tx_blocked || (int32_t)(clock_ms-tx_blocked_until)>=0) {

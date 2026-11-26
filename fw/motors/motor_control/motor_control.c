@@ -4,9 +4,15 @@
 #include "motor_safety.h"
 #include "motor_safety_config.h"
 #include "motor_lock.h"
+#ifdef N_PULSE_NATIVE_SIM_DIAG
+#include <stdio.h>
+#endif
 #include "motor_guard.h"
 #include "motor_grip_config.h"
 #include "motor_pid_config.h"
+#ifndef N_PULSE_NATIVE_SIM_PID_MAX_DT_S
+#define N_PULSE_NATIVE_SIM_PID_MAX_DT_S 0.05f
+#endif
 #include "drv8848.h"
 #include "motor_backend_state.h"
 #include "hw_test_config.h"
@@ -72,7 +78,7 @@ void Motor_InitAll(void)
     for (unsigned i = 0U; i < MOTOR_COUNT; ++i) {
 #ifdef MOTOR_BACKEND_SIM
         const motor_pid_config_t sim_rotor_pid = { .kp = 40.0f, .ki = 0.0f, .kd = 4.0f,
-            .integral_limit = 10.0f, .derivative_tau_s = 0.02f, .max_dt_s = 0.05f };
+            .integral_limit = 10.0f, .derivative_tau_s = 0.02f, .max_dt_s = N_PULSE_NATIVE_SIM_PID_MAX_DT_S };
         s_motors[i].max_reference_rate = SIM_REFERENCE_RATE_RAD_S;
         const motor_pid_config_t *config = &sim_rotor_pid;
 #else
@@ -119,11 +125,20 @@ void Motor_CheckHealth(void)
         key = Motor_Lock();
         now = HAL_GetTick();
         bool fresh = feedback_fresh_locked((motor_id_t)i, now);
-        if (s_motors[i].enabled && (!fresh || !MotorBackend_FeedbackReady((motor_id_t)i) ||
-                                  !MotorSafety_CanEnableLocked((motor_id_t)i, now)))
-            MotorSafety_RequestStopCauseLocked(MOTOR_STOP_FEEDBACK, (motor_id_t)i);
-        Motor_Unlock(key);
+        if (s_motors[i].enabled &&
+           (!fresh || !MotorBackend_FeedbackReady((motor_id_t)i) ||
+            !MotorSafety_CanEnableLocked((motor_id_t)i, now))) {
+        #ifdef N_PULSE_NATIVE_SIM_DIAG
+            fprintf(stderr, "NATIVE FEEDBACK STOP: motor=%u age=%lu ms valid=%d backend=%d safety=%d\n",
+                    i, (unsigned long)(now - s_motors[i].feedback_ms),
+                    s_motors[i].feedback_valid,
+                    MotorBackend_FeedbackReady((motor_id_t)i),
+                    MotorSafety_CanEnableLocked((motor_id_t)i, now));
+        #endif
+    MotorSafety_RequestStopCauseLocked(MOTOR_STOP_FEEDBACK, (motor_id_t)i);
     }
+        Motor_Unlock(key);
+  }
 }
 
 /* One ControlTask owns PID calculation. Other tasks/ISRs may update feedback,

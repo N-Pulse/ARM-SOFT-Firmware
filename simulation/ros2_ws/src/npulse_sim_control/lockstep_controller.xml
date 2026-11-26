@@ -1,0 +1,5 @@
+<library path="npulse_lockstep_controller">
+ <class name="npulse_sim_control/LockstepIndexController" type="npulse_sim_control::LockstepIndexController" base_class_type="controller_interface::ControllerInterface">
+  <description>Native production C controller scheduled synchronously with Gazebo physics; index isolation bench.</description>
+ </class>
+</library>
